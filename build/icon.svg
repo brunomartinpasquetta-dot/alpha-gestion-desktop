@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Icono de Alpha Gestion.
+
+    La letra griega alfa sobre el caramelo de la marca. Una sola forma, mucho
+    contraste y nada de detalle fino: es lo unico que sobrevive a los 16px del
+    Dock y de la barra de tareas de Windows.
+
+    La paleta sale del sistema de diseno del producto (tailwind.config.cjs):
+    fondo `dulce` (primario de marca), glifo en `masa` (neutro calido claro).
+
+    NOTA: el glifo se toma de una fuente del sistema al rasterizar. Se probaron
+    trazos dibujados a mano y ninguno leia como alfa: sin el cruce tipografico
+    exacto, el ojo lo interpreta como una "a" latina con cola. Los binarios
+    (icon.png/.icns/.ico) quedan versionados, asi que la fuente solo importa al
+    correr `npm run iconos`; si se regenera en otro sistema operativo, conviene
+    mirar el PNG resultante antes de empaquetar.
+  -->
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c9812f"/>
+      <stop offset="1" stop-color="#7d4a1c"/>
+    </linearGradient>
+
+    <linearGradient id="glifo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fdfaf4"/>
+      <stop offset="1" stop-color="#ecdfc8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo con esquinas redondeadas. El margen deja respirar al icono en el Dock. -->
+  <rect x="88" y="88" width="848" height="848" rx="196" fill="url(#fondo)"/>
+
+  <!--
+    Alfa minuscula (α): un cuenco ovalado cerrado mas la pata que baja a la
+    derecha. Se construye con dos trazos de grosor constante, redondeados en las
+    puntas, para que a tamano chico lea como una sola forma solida.
+  -->
+  <text x="512" y="474"
+        text-anchor="middle" dominant-baseline="central"
+        font-family="Helvetica Neue, Helvetica, Arial, Liberation Sans, sans-serif"
+        font-size="700" font-weight="500"
+        fill="url(#glifo)">&#945;</text>
+</svg>

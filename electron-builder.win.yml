@@ -1,0 +1,16 @@
+# Config de Windows: hereda TODO de electron-builder.yml y solo desactiva el
+# rebuild de nativos que hace electron-builder.
+#
+# Por que: los modulos nativos (better-sqlite3, bcrypt) ya quedan compilados para
+# win32-x64 por el `postinstall` (electron-rebuild) durante `npm install`. El
+# rebuild extra de electron-builder es redundante y, en runners de Windows, suele
+# fallar al invocar el gestor de paquetes como ejecutable.
+#
+# npmRebuild tiene que ser booleano real (electron-builder lo compara con
+# `=== false`), por eso va en YAML y no como `-c.npmRebuild=false`, que llegaria
+# como string y no tendria efecto.
+#
+# Alcance: SOLO Windows. macOS sigue usando electron-builder.yml con su rebuild
+# intacto.
+extends: electron-builder.yml
+npmRebuild: false

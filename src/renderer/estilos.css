@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #raiz {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-masa-100 font-sans text-base text-masa-800 antialiased;
+  }
+
+  /* Numeros tabulares: las cantidades y montos de las tablas deben alinear en columna. */
+  .font-mono,
+  code,
+  kbd,
+  samp,
+  pre {
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Foco visible y consistente en toda la app (uso intensivo de teclado). */
+  :focus-visible {
+    @apply outline-none ring-2 ring-dulce-400 ring-offset-1 ring-offset-masa-50;
+  }
+}

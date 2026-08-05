@@ -1,0 +1,73 @@
+appId: ar.com.alfajores.erp
+productName: Alpha Gestion
+copyright: Copyright © 2026
+
+directories:
+  buildResources: build
+  output: release
+
+# Solo viaja lo compilado. El codigo fuente TypeScript no entra al paquete.
+files:
+  - dist/**/*
+  - package.json
+
+# Las migraciones de Drizzle NO van dentro del asar: `rutas-db.ts` las busca
+# primero en process.resourcesPath/drizzle, que es exactamente donde caen aca.
+extraResources:
+  - from: drizzle
+    to: drizzle
+    filter:
+      - "**/*"
+
+asar: true
+# Los modulos nativos tienen que quedar fuera del asar para poder cargarse.
+# No alcanza con "**/*.node": better-sqlite3 y bcrypt resuelven su binario en
+# tiempo de ejecucion recorriendo su propia carpeta de prebuilds.
+asarUnpack:
+  - "**/*.node"
+  - "**/node_modules/better-sqlite3/**"
+  - "**/node_modules/bcrypt/**"
+
+mac:
+  category: public.app-category.business
+  icon: build/icon.icns
+  # Build local sin firmar: Gatekeeper va a pedir "Abrir de todos modos" la
+  # primera vez. Para distribuir de verdad hay que configurar CSC_LINK +
+  # CSC_KEY_PASSWORD y activar hardenedRuntime + notarizacion.
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+    - target: zip   # requerido por electron-updater en macOS
+      arch:
+        - arm64
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Alpha Gestion
+
+publish:
+  - provider: github
+    owner: brunomartinpasquetta-dot
+    repo: alpha-gestion-desktop
+    # Repo PUBLICO a proposito: asi el updater baja latest.yml y el instalador
+    # por URL directa, sin necesidad de que el cliente tenga un token.
+    private: false
+    # El workflow lo pisa con EP_PRE_RELEASE=true cuando el tag lleva sufijo
+    # -beta: una prerelease queda fuera de /releases/latest y no le llega a
+    # nadie en el canal estable.
+    releaseType: release

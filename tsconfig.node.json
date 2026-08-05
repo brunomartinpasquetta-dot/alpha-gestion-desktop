@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "types": ["node"],
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "sourceMap": true,
+    "isolatedModules": false
+  },
+  "include": ["src/main/**/*.ts", "src/server/**/*.ts", "src/seed/**/*.ts", "src/compartido/**/*.ts"]
+}

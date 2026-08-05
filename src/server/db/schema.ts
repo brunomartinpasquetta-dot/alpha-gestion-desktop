@@ -1,0 +1,724 @@
+/**
+ * Schema completo de la base de datos del ERP (Drizzle + SQLite).
+ *
+ * Principios rectores:
+ *  - ARTICULO UNIFICADO: insumos y productos finales viven en la misma tabla `articulos`.
+ *    La separacion "Stock de Insumos" vs "Stock de Productos" es una VISTA DERIVADA del
+ *    campo `tipo`, no tablas distintas.
+ *  - LEDGER UNICO DE STOCK: `movimientos_stock` es la unica fuente de verdad. El stock
+ *    actual de un articulo es SUM(cantidad). No existe un campo `stock` mutable.
+ *  - LEDGER UNICO DE CUENTA CORRIENTE: `cuentas_corrientes` sirve a clientes y proveedores.
+ *    Saldo = SUM(debe) - SUM(haber) por entidad.
+ *  - DINERO SIEMPRE EN CENTAVOS (INTEGER). Nunca REAL para importes.
+ *  - CANTIDADES EN REAL, expresadas en la unidad base del articulo.
+ */
+
+import { sql } from 'drizzle-orm';
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+
+/** Timestamp UTC en formato ISO-8601, usado como default de columnas de fecha. */
+const AHORA = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`;
+
+/* ------------------------------------------------------------------------- */
+/* Catalogos base                                                            */
+/* ------------------------------------------------------------------------- */
+
+export const TIPOS_MAGNITUD = ['peso', 'volumen', 'unidad'] as const;
+export type TipoMagnitud = (typeof TIPOS_MAGNITUD)[number];
+
+export const unidadesMedida = sqliteTable(
+  'unidades_medida',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    abreviatura: text('abreviatura').notNull(),
+    tipoMagnitud: text('tipo_magnitud', { enum: TIPOS_MAGNITUD }).notNull(),
+  },
+  (tabla) => [
+    uniqueIndex('ux_unidades_medida_abreviatura').on(tabla.abreviatura),
+    check('ck_unidades_medida_tipo_magnitud', sql`${tabla.tipoMagnitud} IN ('peso','volumen','unidad')`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Articulos (insumos + productos, tabla unificada)                          */
+/* ------------------------------------------------------------------------- */
+
+export const TIPOS_ARTICULO = ['materia_prima', 'pre_elaborado', 'producto_terminado'] as const;
+export type TipoArticulo = (typeof TIPOS_ARTICULO)[number];
+
+export const articulos = sqliteTable(
+  'articulos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    codigo: text('codigo').notNull(),
+    nombre: text('nombre').notNull(),
+    /** materia_prima + pre_elaborado => Stock Insumos. producto_terminado => Stock Productos. */
+    tipo: text('tipo', { enum: TIPOS_ARTICULO }).notNull(),
+    unidadBaseId: integer('unidad_base_id')
+      .notNull()
+      .references(() => unidadesMedida.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    stockMin: real('stock_min'),
+    /** Costo cacheado en centavos por unidad base. Recalculable desde compras/recetas. */
+    costoActual: integer('costo_actual'),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+    createdAt: text('created_at').notNull().default(AHORA),
+    updatedAt: text('updated_at').notNull().default(AHORA),
+  },
+  (tabla) => [
+    uniqueIndex('ux_articulos_codigo').on(tabla.codigo),
+    index('ix_articulos_tipo').on(tabla.tipo),
+    index('ix_articulos_activo').on(tabla.activo),
+    check(
+      'ck_articulos_tipo',
+      sql`${tabla.tipo} IN ('materia_prima','pre_elaborado','producto_terminado')`,
+    ),
+    check('ck_articulos_stock_min', sql`${tabla.stockMin} IS NULL OR ${tabla.stockMin} >= 0`),
+    check('ck_articulos_costo_actual', sql`${tabla.costoActual} IS NULL OR ${tabla.costoActual} >= 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Listas de precio y precios                                                */
+/* ------------------------------------------------------------------------- */
+
+export const listasPrecio = sqliteTable(
+  'listas_precio',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    activa: integer('activa', { mode: 'boolean' }).notNull().default(true),
+  },
+  (tabla) => [uniqueIndex('ux_listas_precio_nombre').on(tabla.nombre)],
+);
+
+export const precios = sqliteTable(
+  'precios',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    listaPrecioId: integer('lista_precio_id')
+      .notNull()
+      .references(() => listasPrecio.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /** Precio en centavos por unidad base del articulo. */
+    precio: integer('precio').notNull(),
+    vigenteDesde: text('vigente_desde').notNull().default(AHORA),
+  },
+  (tabla) => [
+    index('ix_precios_articulo_lista').on(tabla.articuloId, tabla.listaPrecioId, tabla.vigenteDesde),
+    check('ck_precios_precio', sql`${tabla.precio} >= 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Terceros                                                                  */
+/* ------------------------------------------------------------------------- */
+
+export const proveedores = sqliteTable(
+  'proveedores',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    cuit: text('cuit'),
+    telefono: text('telefono'),
+    email: text('email'),
+    direccion: text('direccion'),
+    notas: text('notas'),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+  },
+  (tabla) => [index('ix_proveedores_nombre').on(tabla.nombre)],
+);
+
+export const TIPOS_CLIENTE = ['mostrador', 'mayorista', 'distribuidor'] as const;
+export type TipoCliente = (typeof TIPOS_CLIENTE)[number];
+
+export const clientes = sqliteTable(
+  'clientes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    cuit: text('cuit'),
+    telefono: text('telefono'),
+    email: text('email'),
+    direccion: text('direccion'),
+    tipo: text('tipo', { enum: TIPOS_CLIENTE }).notNull().default('mostrador'),
+    listaPrecioId: integer('lista_precio_id').references(() => listasPrecio.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    notas: text('notas'),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+  },
+  (tabla) => [
+    index('ix_clientes_nombre').on(tabla.nombre),
+    index('ix_clientes_tipo').on(tabla.tipo),
+    check('ck_clientes_tipo', sql`${tabla.tipo} IN ('mostrador','mayorista','distribuidor')`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Recetas (BOM encadenable)                                                 */
+/* ------------------------------------------------------------------------- */
+
+export const recetas = sqliteTable(
+  'recetas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Articulo que produce esta receta: un pre_elaborado o un producto_terminado. */
+    articuloProducidoId: integer('articulo_producido_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    rindeCantidad: real('rinde_cantidad').notNull(),
+    rindeUnidadId: integer('rinde_unidad_id')
+      .notNull()
+      .references(() => unidadesMedida.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    activa: integer('activa', { mode: 'boolean' }).notNull().default(true),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_recetas_articulo_producido').on(tabla.articuloProducidoId),
+    check('ck_recetas_rinde_cantidad', sql`${tabla.rindeCantidad} > 0`),
+  ],
+);
+
+export const recetaItems = sqliteTable(
+  'receta_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    recetaId: integer('receta_id')
+      .notNull()
+      .references(() => recetas.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /** Insumo consumido: materia_prima u otro pre_elaborado (encadenamiento de BOM). */
+    articuloInsumoId: integer('articulo_insumo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Cantidad expresada en la unidad base del insumo. */
+    cantidad: real('cantidad').notNull(),
+    mermaEsperadaPct: real('merma_esperada_pct').notNull().default(0),
+  },
+  (tabla) => [
+    index('ix_receta_items_receta').on(tabla.recetaId),
+    index('ix_receta_items_insumo').on(tabla.articuloInsumoId),
+    uniqueIndex('ux_receta_items_receta_insumo').on(tabla.recetaId, tabla.articuloInsumoId),
+    check('ck_receta_items_cantidad', sql`${tabla.cantidad} > 0`),
+    check(
+      'ck_receta_items_merma',
+      sql`${tabla.mermaEsperadaPct} >= 0 AND ${tabla.mermaEsperadaPct} <= 100`,
+    ),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Pedidos (feature estrella: carga desde el celular)                        */
+/* ------------------------------------------------------------------------- */
+
+export const ORIGENES_PEDIDO = ['celular', 'mostrador', 'sistema'] as const;
+export type OrigenPedido = (typeof ORIGENES_PEDIDO)[number];
+
+export const ESTADOS_PEDIDO = [
+  'pendiente',
+  'confirmado',
+  'en_produccion',
+  'listo',
+  'entregado',
+  'cancelado',
+] as const;
+export type EstadoPedido = (typeof ESTADOS_PEDIDO)[number];
+
+export const pedidos = sqliteTable(
+  'pedidos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    clienteId: integer('cliente_id').references(() => clientes.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    origen: text('origen', { enum: ORIGENES_PEDIDO }).notNull().default('sistema'),
+    estado: text('estado', { enum: ESTADOS_PEDIDO }).notNull().default('pendiente'),
+    fechaPedido: text('fecha_pedido').notNull().default(AHORA),
+    fechaEntregaEstimada: text('fecha_entrega_estimada'),
+    cargadoPor: text('cargado_por'),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_pedidos_estado_fecha').on(tabla.estado, tabla.fechaPedido),
+    index('ix_pedidos_cliente').on(tabla.clienteId),
+    check('ck_pedidos_origen', sql`${tabla.origen} IN ('celular','mostrador','sistema')`),
+    check(
+      'ck_pedidos_estado',
+      sql`${tabla.estado} IN ('pendiente','confirmado','en_produccion','listo','entregado','cancelado')`,
+    ),
+  ],
+);
+
+export const pedidoItems = sqliteTable(
+  'pedido_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    pedidoId: integer('pedido_id')
+      .notNull()
+      .references(() => pedidos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /** Siempre un articulo de tipo producto_terminado. */
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    cantidad: real('cantidad').notNull(),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_pedido_items_pedido').on(tabla.pedidoId),
+    check('ck_pedido_items_cantidad', sql`${tabla.cantidad} > 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Produccion                                                                */
+/* ------------------------------------------------------------------------- */
+
+export const ESTADOS_ORDEN_PRODUCCION = [
+  'planificada',
+  'en_proceso',
+  'finalizada',
+  'cancelada',
+] as const;
+export type EstadoOrdenProduccion = (typeof ESTADOS_ORDEN_PRODUCCION)[number];
+
+export const ordenesProduccion = sqliteTable(
+  'ordenes_produccion',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    recetaId: integer('receta_id')
+      .notNull()
+      .references(() => recetas.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Denormalizado desde la receta para consultas rapidas e historicas. */
+    articuloProducidoId: integer('articulo_producido_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    cantidadPlanificada: real('cantidad_planificada').notNull(),
+    /** Media tanda = 0.5, doble tanda = 2, etc. */
+    factorEscala: real('factor_escala').notNull().default(1),
+    estado: text('estado', { enum: ESTADOS_ORDEN_PRODUCCION }).notNull().default('planificada'),
+    /** Produccion contra pedido: permite trazar que orden cubre que pedido. */
+    pedidoId: integer('pedido_id').references(() => pedidos.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    rindeReal: real('rinde_real'),
+    fechaPlanificada: text('fecha_planificada').notNull().default(AHORA),
+    fechaInicio: text('fecha_inicio'),
+    fechaFin: text('fecha_fin'),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_ordenes_produccion_estado_fecha').on(tabla.estado, tabla.fechaPlanificada),
+    index('ix_ordenes_produccion_articulo').on(tabla.articuloProducidoId),
+    index('ix_ordenes_produccion_pedido').on(tabla.pedidoId),
+    check(
+      'ck_ordenes_produccion_estado',
+      sql`${tabla.estado} IN ('planificada','en_proceso','finalizada','cancelada')`,
+    ),
+    check('ck_ordenes_produccion_cantidad', sql`${tabla.cantidadPlanificada} > 0`),
+    check('ck_ordenes_produccion_factor', sql`${tabla.factorEscala} > 0`),
+  ],
+);
+
+export const produccionConsumos = sqliteTable(
+  'produccion_consumos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ordenId: integer('orden_id')
+      .notNull()
+      .references(() => ordenesProduccion.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    articuloInsumoId: integer('articulo_insumo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Cantidad que la receta indica (en unidad base del insumo). */
+    cantidadTeorica: real('cantidad_teorica').notNull(),
+    /** Cantidad realmente consumida. NULL => se asume el teorico. Merma = real - teorico. */
+    cantidadReal: real('cantidad_real'),
+  },
+  (tabla) => [
+    index('ix_produccion_consumos_orden').on(tabla.ordenId),
+    index('ix_produccion_consumos_insumo').on(tabla.articuloInsumoId),
+    check('ck_produccion_consumos_teorica', sql`${tabla.cantidadTeorica} >= 0`),
+    check(
+      'ck_produccion_consumos_real',
+      sql`${tabla.cantidadReal} IS NULL OR ${tabla.cantidadReal} >= 0`,
+    ),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* LEDGER DE STOCK - fuente de verdad unica                                  */
+/* ------------------------------------------------------------------------- */
+
+export const TIPOS_MOVIMIENTO_STOCK = [
+  'compra',
+  'venta',
+  'consumo_produccion',
+  'ingreso_produccion',
+  'merma',
+  'ajuste',
+] as const;
+export type TipoMovimientoStock = (typeof TIPOS_MOVIMIENTO_STOCK)[number];
+
+export const TIPOS_DOCUMENTO_STOCK = ['compra', 'venta', 'orden_produccion', 'ajuste'] as const;
+export type TipoDocumentoStock = (typeof TIPOS_DOCUMENTO_STOCK)[number];
+
+export const movimientosStock = sqliteTable(
+  'movimientos_stock',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    tipo: text('tipo', { enum: TIPOS_MOVIMIENTO_STOCK }).notNull(),
+    /** Con signo: (+) ingreso, (-) egreso. Siempre en la unidad base del articulo. */
+    cantidad: real('cantidad').notNull(),
+    /** Centavos por unidad base, para valuacion de inventario. */
+    costoUnitario: integer('costo_unitario'),
+    documentoTipo: text('documento_tipo', { enum: TIPOS_DOCUMENTO_STOCK }),
+    documentoId: integer('documento_id'),
+    fecha: text('fecha').notNull().default(AHORA),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_movimientos_stock_articulo_fecha').on(tabla.articuloId, tabla.fecha),
+    index('ix_movimientos_stock_documento').on(tabla.documentoTipo, tabla.documentoId),
+    index('ix_movimientos_stock_tipo').on(tabla.tipo),
+    check(
+      'ck_movimientos_stock_tipo',
+      sql`${tabla.tipo} IN ('compra','venta','consumo_produccion','ingreso_produccion','merma','ajuste')`,
+    ),
+    check(
+      'ck_movimientos_stock_documento_tipo',
+      sql`${tabla.documentoTipo} IS NULL OR ${tabla.documentoTipo} IN ('compra','venta','orden_produccion','ajuste')`,
+    ),
+    check('ck_movimientos_stock_cantidad', sql`${tabla.cantidad} <> 0`),
+    check(
+      'ck_movimientos_stock_costo',
+      sql`${tabla.costoUnitario} IS NULL OR ${tabla.costoUnitario} >= 0`,
+    ),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Compras                                                                   */
+/* ------------------------------------------------------------------------- */
+
+export const FORMAS_PAGO = ['contado', 'cuenta_corriente'] as const;
+export type FormaPago = (typeof FORMAS_PAGO)[number];
+
+export const ESTADOS_COMPRA = ['pendiente', 'recibida'] as const;
+export type EstadoCompra = (typeof ESTADOS_COMPRA)[number];
+
+export const compras = sqliteTable(
+  'compras',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    proveedorId: integer('proveedor_id')
+      .notNull()
+      .references(() => proveedores.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    fecha: text('fecha').notNull().default(AHORA),
+    /** Total en centavos. */
+    total: integer('total').notNull().default(0),
+    formaPago: text('forma_pago', { enum: FORMAS_PAGO }).notNull().default('contado'),
+    estado: text('estado', { enum: ESTADOS_COMPRA }).notNull().default('pendiente'),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_compras_proveedor_fecha').on(tabla.proveedorId, tabla.fecha),
+    index('ix_compras_estado').on(tabla.estado),
+    check('ck_compras_forma_pago', sql`${tabla.formaPago} IN ('contado','cuenta_corriente')`),
+    check('ck_compras_estado', sql`${tabla.estado} IN ('pendiente','recibida')`),
+    check('ck_compras_total', sql`${tabla.total} >= 0`),
+  ],
+);
+
+export const compraItems = sqliteTable(
+  'compra_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    compraId: integer('compra_id')
+      .notNull()
+      .references(() => compras.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Cantidad tal cual se compra (ej: 2 bolsas). */
+    cantidadCompra: real('cantidad_compra').notNull(),
+    unidadCompraId: integer('unidad_compra_id')
+      .notNull()
+      .references(() => unidadesMedida.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Convierte cantidad_compra a unidad base del articulo (ej: bolsa 25kg -> 25000 g). */
+    factorConversion: real('factor_conversion').notNull().default(1),
+    /** Calculada: cantidad_compra * factor_conversion. */
+    cantidadBase: real('cantidad_base').notNull(),
+    /** Centavos por unidad base. */
+    costoUnitario: integer('costo_unitario').notNull().default(0),
+    /** Centavos. */
+    subtotal: integer('subtotal').notNull().default(0),
+  },
+  (tabla) => [
+    index('ix_compra_items_compra').on(tabla.compraId),
+    index('ix_compra_items_articulo').on(tabla.articuloId),
+    check('ck_compra_items_cantidad_compra', sql`${tabla.cantidadCompra} > 0`),
+    check('ck_compra_items_factor', sql`${tabla.factorConversion} > 0`),
+    check('ck_compra_items_cantidad_base', sql`${tabla.cantidadBase} > 0`),
+    check('ck_compra_items_costo', sql`${tabla.costoUnitario} >= 0`),
+    check('ck_compra_items_subtotal', sql`${tabla.subtotal} >= 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Ventas                                                                    */
+/* ------------------------------------------------------------------------- */
+
+export const ESTADOS_VENTA = ['pendiente', 'entregada', 'anulada'] as const;
+export type EstadoVenta = (typeof ESTADOS_VENTA)[number];
+
+export const ventas = sqliteTable(
+  'ventas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    /** NULL = venta de mostrador sin cliente identificado. */
+    clienteId: integer('cliente_id').references(() => clientes.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    fecha: text('fecha').notNull().default(AHORA),
+    /** Total en centavos. */
+    total: integer('total').notNull().default(0),
+    formaPago: text('forma_pago', { enum: FORMAS_PAGO }).notNull().default('contado'),
+    pedidoId: integer('pedido_id').references(() => pedidos.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    estado: text('estado', { enum: ESTADOS_VENTA }).notNull().default('entregada'),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_ventas_fecha').on(tabla.fecha),
+    index('ix_ventas_cliente_fecha').on(tabla.clienteId, tabla.fecha),
+    index('ix_ventas_pedido').on(tabla.pedidoId),
+    check('ck_ventas_forma_pago', sql`${tabla.formaPago} IN ('contado','cuenta_corriente')`),
+    check('ck_ventas_estado', sql`${tabla.estado} IN ('pendiente','entregada','anulada')`),
+    check('ck_ventas_total', sql`${tabla.total} >= 0`),
+  ],
+);
+
+export const ventaItems = sqliteTable(
+  'venta_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ventaId: integer('venta_id')
+      .notNull()
+      .references(() => ventas.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /** Siempre un articulo de tipo producto_terminado. */
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    cantidad: real('cantidad').notNull(),
+    /** Centavos por unidad base. */
+    precioUnitario: integer('precio_unitario').notNull().default(0),
+    /** Centavos. */
+    subtotal: integer('subtotal').notNull().default(0),
+  },
+  (tabla) => [
+    index('ix_venta_items_venta').on(tabla.ventaId),
+    index('ix_venta_items_articulo').on(tabla.articuloId),
+    check('ck_venta_items_cantidad', sql`${tabla.cantidad} > 0`),
+    check('ck_venta_items_precio', sql`${tabla.precioUnitario} >= 0`),
+    check('ck_venta_items_subtotal', sql`${tabla.subtotal} >= 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* LEDGER DE CUENTAS CORRIENTES (clientes y proveedores)                     */
+/* ------------------------------------------------------------------------- */
+
+export const TIPOS_ENTIDAD_CC = ['cliente', 'proveedor'] as const;
+export type TipoEntidadCc = (typeof TIPOS_ENTIDAD_CC)[number];
+
+export const TIPOS_MOVIMIENTO_CC = ['debe', 'haber'] as const;
+export type TipoMovimientoCc = (typeof TIPOS_MOVIMIENTO_CC)[number];
+
+export const TIPOS_DOCUMENTO_CC = ['venta', 'compra', 'cobro', 'pago'] as const;
+export type TipoDocumentoCc = (typeof TIPOS_DOCUMENTO_CC)[number];
+
+export const cuentasCorrientes = sqliteTable(
+  'cuentas_corrientes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    entidadTipo: text('entidad_tipo', { enum: TIPOS_ENTIDAD_CC }).notNull(),
+    /** FK logica a clientes.id o proveedores.id segun entidad_tipo (polimorfica, sin FK fisica). */
+    entidadId: integer('entidad_id').notNull(),
+    tipoMovimiento: text('tipo_movimiento', { enum: TIPOS_MOVIMIENTO_CC }).notNull(),
+    /** Monto en centavos, siempre positivo. El signo lo da tipo_movimiento. */
+    monto: integer('monto').notNull(),
+    documentoTipo: text('documento_tipo', { enum: TIPOS_DOCUMENTO_CC }).notNull(),
+    documentoId: integer('documento_id'),
+    fecha: text('fecha').notNull().default(AHORA),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_cuentas_corrientes_entidad_fecha').on(tabla.entidadTipo, tabla.entidadId, tabla.fecha),
+    index('ix_cuentas_corrientes_documento').on(tabla.documentoTipo, tabla.documentoId),
+    check('ck_cuentas_corrientes_entidad_tipo', sql`${tabla.entidadTipo} IN ('cliente','proveedor')`),
+    check('ck_cuentas_corrientes_tipo_movimiento', sql`${tabla.tipoMovimiento} IN ('debe','haber')`),
+    check(
+      'ck_cuentas_corrientes_documento_tipo',
+      sql`${tabla.documentoTipo} IN ('venta','compra','cobro','pago')`,
+    ),
+    check('ck_cuentas_corrientes_monto', sql`${tabla.monto} >= 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Caja                                                                      */
+/* ------------------------------------------------------------------------- */
+
+export const ESTADOS_CAJA = ['abierta', 'cerrada'] as const;
+export type EstadoCaja = (typeof ESTADOS_CAJA)[number];
+
+export const cajas = sqliteTable(
+  'cajas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    fechaApertura: text('fecha_apertura').notNull().default(AHORA),
+    fechaCierre: text('fecha_cierre'),
+    /** Todos los montos en centavos. */
+    montoApertura: integer('monto_apertura').notNull().default(0),
+    montoCierreTeorico: integer('monto_cierre_teorico'),
+    montoCierreReal: integer('monto_cierre_real'),
+    /** monto_cierre_real - monto_cierre_teorico (puede ser negativo). */
+    diferencia: integer('diferencia'),
+    estado: text('estado', { enum: ESTADOS_CAJA }).notNull().default('abierta'),
+    usuario: text('usuario'),
+  },
+  (tabla) => [
+    index('ix_cajas_estado').on(tabla.estado),
+    index('ix_cajas_fecha_apertura').on(tabla.fechaApertura),
+    check('ck_cajas_estado', sql`${tabla.estado} IN ('abierta','cerrada')`),
+  ],
+);
+
+export const TIPOS_MOVIMIENTO_CAJA = ['ingreso', 'egreso'] as const;
+export type TipoMovimientoCaja = (typeof TIPOS_MOVIMIENTO_CAJA)[number];
+
+export const cajaMovimientos = sqliteTable(
+  'caja_movimientos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    cajaId: integer('caja_id').references(() => cajas.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    tipo: text('tipo', { enum: TIPOS_MOVIMIENTO_CAJA }).notNull(),
+    concepto: text('concepto').notNull(),
+    /** Centavos, siempre positivo. El signo lo da `tipo`. */
+    monto: integer('monto').notNull(),
+    documentoTipo: text('documento_tipo'),
+    documentoId: integer('documento_id'),
+    fecha: text('fecha').notNull().default(AHORA),
+    usuario: text('usuario'),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_caja_movimientos_caja_fecha').on(tabla.cajaId, tabla.fecha),
+    index('ix_caja_movimientos_documento').on(tabla.documentoTipo, tabla.documentoId),
+    check('ck_caja_movimientos_tipo', sql`${tabla.tipo} IN ('ingreso','egreso')`),
+    check('ck_caja_movimientos_monto', sql`${tabla.monto} >= 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Usuarios                                                                  */
+/* ------------------------------------------------------------------------- */
+
+export const ROLES_USUARIO = ['admin', 'empleado'] as const;
+export type RolUsuario = (typeof ROLES_USUARIO)[number];
+
+export const usuarios = sqliteTable(
+  'usuarios',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    username: text('username').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    rol: text('rol', { enum: ROLES_USUARIO }).notNull().default('empleado'),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+  },
+  (tabla) => [
+    uniqueIndex('ux_usuarios_username').on(tabla.username),
+    check('ck_usuarios_rol', sql`${tabla.rol} IN ('admin','empleado')`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* Tipos inferidos (select / insert) para uso en repositorios y servicios    */
+/* ------------------------------------------------------------------------- */
+
+export type UnidadMedida = typeof unidadesMedida.$inferSelect;
+export type NuevaUnidadMedida = typeof unidadesMedida.$inferInsert;
+
+export type Articulo = typeof articulos.$inferSelect;
+export type NuevoArticulo = typeof articulos.$inferInsert;
+
+export type ListaPrecio = typeof listasPrecio.$inferSelect;
+export type NuevaListaPrecio = typeof listasPrecio.$inferInsert;
+
+export type Precio = typeof precios.$inferSelect;
+export type NuevoPrecio = typeof precios.$inferInsert;
+
+export type Proveedor = typeof proveedores.$inferSelect;
+export type NuevoProveedor = typeof proveedores.$inferInsert;
+
+export type Cliente = typeof clientes.$inferSelect;
+export type NuevoCliente = typeof clientes.$inferInsert;
+
+export type Receta = typeof recetas.$inferSelect;
+export type NuevaReceta = typeof recetas.$inferInsert;
+
+export type RecetaItem = typeof recetaItems.$inferSelect;
+export type NuevoRecetaItem = typeof recetaItems.$inferInsert;
+
+export type Pedido = typeof pedidos.$inferSelect;
+export type NuevoPedido = typeof pedidos.$inferInsert;
+
+export type PedidoItem = typeof pedidoItems.$inferSelect;
+export type NuevoPedidoItem = typeof pedidoItems.$inferInsert;
+
+export type OrdenProduccion = typeof ordenesProduccion.$inferSelect;
+export type NuevaOrdenProduccion = typeof ordenesProduccion.$inferInsert;
+
+export type ProduccionConsumo = typeof produccionConsumos.$inferSelect;
+export type NuevoProduccionConsumo = typeof produccionConsumos.$inferInsert;
+
+export type MovimientoStock = typeof movimientosStock.$inferSelect;
+export type NuevoMovimientoStock = typeof movimientosStock.$inferInsert;
+
+export type Compra = typeof compras.$inferSelect;
+export type NuevaCompra = typeof compras.$inferInsert;
+
+export type CompraItem = typeof compraItems.$inferSelect;
+export type NuevoCompraItem = typeof compraItems.$inferInsert;
+
+export type Venta = typeof ventas.$inferSelect;
+export type NuevaVenta = typeof ventas.$inferInsert;
+
+export type VentaItem = typeof ventaItems.$inferSelect;
+export type NuevoVentaItem = typeof ventaItems.$inferInsert;
+
+export type CuentaCorriente = typeof cuentasCorrientes.$inferSelect;
+export type NuevaCuentaCorriente = typeof cuentasCorrientes.$inferInsert;
+
+export type Caja = typeof cajas.$inferSelect;
+export type NuevaCaja = typeof cajas.$inferInsert;
+
+export type CajaMovimiento = typeof cajaMovimientos.$inferSelect;
+export type NuevoCajaMovimiento = typeof cajaMovimientos.$inferInsert;
+
+export type Usuario = typeof usuarios.$inferSelect;
+export type NuevoUsuario = typeof usuarios.$inferInsert;
