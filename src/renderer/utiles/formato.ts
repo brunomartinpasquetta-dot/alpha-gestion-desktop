@@ -131,3 +131,16 @@ export function formatearTexto(valor: string | null | undefined): string {
 export function pluralizar(cantidad: number, singular: string, plural: string): string {
   return `${formatearEntero(cantidad)} ${cantidad === 1 ? singular : plural}`;
 }
+
+/**
+ * Presenta un stock en cajas cerradas: "4 cajas + 3 u", "5 cajas", "7 u".
+ * Los clientes piden por caja cerrada; el resto es resto.
+ */
+export function formatearCajas(unidades: number, unidadesPorCaja: number | null): string {
+  if (unidadesPorCaja === null || unidadesPorCaja <= 0) return SIN_DATO;
+  const cajas = Math.floor(unidades / unidadesPorCaja);
+  const resto = Math.round(unidades - cajas * unidadesPorCaja);
+  if (cajas === 0) return `${formatearEntero(resto)} u`;
+  const base = `${formatearEntero(cajas)} ${cajas === 1 ? 'caja' : 'cajas'}`;
+  return resto === 0 ? base : `${base} + ${formatearEntero(resto)} u`;
+}

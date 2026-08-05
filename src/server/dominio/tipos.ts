@@ -21,6 +21,8 @@ export interface SaldoStock {
   unidadAbreviatura: string;
   stock: number;
   stockMin: number | null;
+  /** Unidades por caja cerrada. null = no se comercializa por caja. */
+  unidadesPorCaja: number | null;
   bajoMinimo: boolean;
 }
 
@@ -33,6 +35,7 @@ export interface ArticuloConStock {
   unidadBaseId: number;
   unidadAbreviatura: string;
   stockMin: number | null;
+  unidadesPorCaja: number | null;
   costoActual: number | null;
   activo: boolean;
   stock: number;

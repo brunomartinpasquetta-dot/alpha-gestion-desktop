@@ -155,6 +155,7 @@ const ARTICULOS_DEMO = [
     tipo: 'producto_terminado',
     unidad: 'u',
     stockMin: 80,
+    unidadesPorCaja: 12,
     costoActual: 110000,
   },
   {
@@ -163,6 +164,7 @@ const ARTICULOS_DEMO = [
     tipo: 'producto_terminado',
     unidad: 'u',
     stockMin: 60,
+    unidadesPorCaja: 12,
     costoActual: 130000,
   },
 ] as const;
@@ -225,6 +227,7 @@ function sembrarArticulosDemo(ctx: Contexto): number {
           tipo: definicion.tipo,
           unidadBaseId: exigir(ctx.unidades.get(definicion.unidad), `la unidad ${definicion.unidad}`),
           stockMin: definicion.stockMin,
+          unidadesPorCaja: 'unidadesPorCaja' in definicion ? definicion.unidadesPorCaja : null,
           costoActual: definicion.costoActual,
           activo: true,
         })

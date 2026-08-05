@@ -42,6 +42,7 @@ export interface FilaPedidoItem {
   nombre: string;
   cantidad: number;
   unidadAbreviatura: string;
+  unidadesPorCaja: number | null;
   notas: string | null;
 }
 
@@ -81,6 +82,7 @@ export function listarItemsDePedidos(pedidoIds: readonly number[]): FilaPedidoIt
         nombre: articulos.nombre,
         cantidad: pedidoItems.cantidad,
         unidadAbreviatura: unidadesMedida.abreviatura,
+        unidadesPorCaja: articulos.unidadesPorCaja,
         notas: pedidoItems.notas,
       })
       .from(pedidoItems)

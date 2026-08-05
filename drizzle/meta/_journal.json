@@ -8,6 +8,13 @@
       "when": 1785887115136,
       "tag": "0000_inicial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785965096804,
+      "tag": "0001_unidades_por_caja",
+      "breakpoints": true
     }
   ]
 }

@@ -82,6 +82,7 @@ function aSaldoStock(fila: FilaArticuloConStock): SaldoStock {
     unidadAbreviatura: fila.unidadAbreviatura,
     stock: fila.stock,
     stockMin: fila.stockMin,
+    unidadesPorCaja: fila.unidadesPorCaja,
     bajoMinimo: estaBajoMinimo(fila.stock, fila.stockMin),
   };
 }
@@ -96,6 +97,7 @@ function aArticuloConStock(fila: FilaArticuloConStock): ArticuloConStock {
     unidadBaseId: fila.unidadBaseId,
     unidadAbreviatura: fila.unidadAbreviatura,
     stockMin: fila.stockMin,
+    unidadesPorCaja: fila.unidadesPorCaja,
     costoActual: fila.costoActual,
     activo: fila.activo,
     stock: fila.stock,

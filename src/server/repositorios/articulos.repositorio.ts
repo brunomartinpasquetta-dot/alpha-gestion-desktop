@@ -42,6 +42,7 @@ export interface FilaArticuloConStock {
   unidadBaseId: number;
   unidadAbreviatura: string;
   stockMin: number | null;
+  unidadesPorCaja: number | null;
   costoActual: number | null;
   activo: boolean;
   stock: number;
@@ -62,6 +63,7 @@ const COLUMNAS_CON_STOCK = {
   unidadBaseId: articulos.unidadBaseId,
   unidadAbreviatura: unidadesMedida.abreviatura,
   stockMin: articulos.stockMin,
+  unidadesPorCaja: articulos.unidadesPorCaja,
   costoActual: articulos.costoActual,
   activo: articulos.activo,
   stock: sql<number>`COALESCE(SUM(${movimientosStock.cantidad}), 0)`.mapWith(Number),

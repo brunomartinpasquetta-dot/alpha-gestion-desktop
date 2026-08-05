@@ -120,6 +120,7 @@ export const consultasServicio = {
         nombre: item.nombre,
         cantidad: item.cantidad,
         unidadAbreviatura: item.unidadAbreviatura,
+        unidadesPorCaja: item.unidadesPorCaja,
         notas: item.notas,
       })),
     }));

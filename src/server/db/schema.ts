@@ -59,6 +59,12 @@ export const articulos = sqliteTable(
       .notNull()
       .references(() => unidadesMedida.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
     stockMin: real('stock_min'),
+    /**
+     * Unidades por caja cerrada (ej: 12 alfajores por caja). Los clientes piden
+     * por cajas; el stock y el ledger siguen SIEMPRE en unidad base. NULL = el
+     * articulo no se comercializa por caja (insumos, pre-elaborados).
+     */
+    unidadesPorCaja: integer('unidades_por_caja'),
     /** Costo cacheado en centavos por unidad base. Recalculable desde compras/recetas. */
     costoActual: integer('costo_actual'),
     activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
@@ -74,6 +80,10 @@ export const articulos = sqliteTable(
       sql`${tabla.tipo} IN ('materia_prima','pre_elaborado','producto_terminado')`,
     ),
     check('ck_articulos_stock_min', sql`${tabla.stockMin} IS NULL OR ${tabla.stockMin} >= 0`),
+    check(
+      'ck_articulos_unidades_por_caja',
+      sql`${tabla.unidadesPorCaja} IS NULL OR ${tabla.unidadesPorCaja} > 0`,
+    ),
     check('ck_articulos_costo_actual', sql`${tabla.costoActual} IS NULL OR ${tabla.costoActual} >= 0`),
   ],
 );

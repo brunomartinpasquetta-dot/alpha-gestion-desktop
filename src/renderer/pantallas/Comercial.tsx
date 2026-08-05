@@ -28,6 +28,7 @@ import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import { cambiarEstadoPedido, obtenerCompras, obtenerPedidos, obtenerVentas } from '../servicios/cliente';
 import {
+  formatearCajas,
   formatearCantidadConUnidad,
   formatearFecha,
   formatearMoneda,
@@ -200,7 +201,9 @@ export function PantallaPedidos(): JSX.Element {
                               {item.nombre}
                             </td>
                             <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
-                              {formatearCantidadConUnidad(item.cantidad, item.unidadAbreviatura)}
+                              {item.unidadesPorCaja === null
+                                ? formatearCantidadConUnidad(item.cantidad, item.unidadAbreviatura)
+                                : `${formatearCajas(item.cantidad, item.unidadesPorCaja)} (${item.cantidad} u)`}
                             </td>
                             <td className="py-1.5 text-masa-700">{formatearTexto(item.notas)}</td>
                           </tr>

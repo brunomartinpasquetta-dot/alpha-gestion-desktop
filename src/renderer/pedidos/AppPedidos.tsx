@@ -24,8 +24,15 @@ import {
 } from './api';
 import { encolar, pendientes, sincronizar } from './cola';
 
-/** Cantidades elegidas por articulo. Solo los > 0 forman el pedido. */
+/**
+ * Cantidades elegidas por articulo, EN CAJAS para los productos que se venden
+ * por caja cerrada (los clientes piden asi) y en unidades para el resto.
+ * Al enviar se convierte todo a unidad base: el servidor no sabe de cajas.
+ */
 type Seleccion = Readonly<Record<number, number>>;
+
+/** El cliente es obligatorio elegirlo (aunque sea "mostrador") antes de cargar. */
+type ClienteElegido = number | 'mostrador' | '';
 
 const MS_REINTENTO_COLA = 30_000;
 
@@ -35,7 +42,7 @@ export function AppPedidos(): JSX.Element {
   const [desdeCache, setDesdeCache] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
 
-  const [clienteId, setClienteId] = useState<number | ''>('');
+  const [clienteId, setClienteId] = useState<ClienteElegido>('');
   const [seleccion, setSeleccion] = useState<Seleccion>({});
   const [notas, setNotas] = useState('');
 
@@ -95,15 +102,19 @@ export function AppPedidos(): JSX.Element {
 
   /* --------------------------------- Derivados ----------------------------- */
 
-  const items = useMemo(
-    () =>
-      Object.entries(seleccion)
-        .map(([id, cantidad]) => ({ articuloId: Number(id), cantidad }))
-        .filter((item) => item.cantidad > 0),
-    [seleccion],
-  );
+  const items = useMemo(() => {
+    const porId = new Map((catalogo?.productos ?? []).map((p) => [p.id, p]));
+    return Object.entries(seleccion)
+      .map(([id, elegido]) => {
+        const producto = porId.get(Number(id));
+        const upc = producto?.unidadesPorCaja ?? null;
+        // Lo elegido esta en cajas si el producto se vende por caja.
+        return { articuloId: Number(id), cantidad: upc === null ? elegido : elegido * upc };
+      })
+      .filter((item) => item.cantidad > 0);
+  }, [seleccion, catalogo]);
 
-  const totalUnidades = items.reduce((suma, item) => suma + item.cantidad, 0);
+  const totalCajas = Object.values(seleccion).reduce((suma, n) => suma + Math.max(n, 0), 0);
 
   /* ---------------------------------- Envio -------------------------------- */
 
@@ -113,7 +124,7 @@ export function AppPedidos(): JSX.Element {
     setAviso(null);
 
     const pedido: EntradaNuevoPedido = {
-      clienteId: clienteId === '' ? null : clienteId,
+      clienteId: clienteId === 'mostrador' || clienteId === '' ? null : clienteId,
       origen: 'celular',
       cargadoPor: nombre || null,
       notas: notas.trim() || null,
@@ -215,10 +226,13 @@ export function AppPedidos(): JSX.Element {
             <select
               id="cliente"
               value={clienteId}
-              onChange={(e) => setClienteId(e.target.value === '' ? '' : Number(e.target.value))}
+              onChange={(e) => {
+                const valor = e.target.value;
+                setClienteId(valor === '' ? '' : valor === 'mostrador' ? 'mostrador' : Number(valor));
+              }}
               className="h-12 w-full rounded-ficha border border-masa-300 bg-white px-3 text-base text-masa-900"
             >
-              <option value="">Mostrador / sin cliente</option>
+              <option value="">Elegi el cliente...</option>
               {catalogo.clientes
                 .filter((c) => c.activo)
                 .map((c) => (
@@ -226,25 +240,34 @@ export function AppPedidos(): JSX.Element {
                     {c.nombre}
                   </option>
                 ))}
+              <option value="mostrador">Mostrador / sin cliente</option>
             </select>
           </section>
 
-          <section>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-masa-700">Productos</p>
-            <div className="overflow-hidden rounded-ficha border border-masa-200 bg-white">
-              {catalogo.productos.map((producto, indice) => (
-                <FilaProducto
-                  key={producto.id}
-                  producto={producto}
-                  cantidad={seleccion[producto.id] ?? 0}
-                  conBorde={indice > 0}
-                  alCambiar={(cantidad) =>
-                    setSeleccion((actual) => ({ ...actual, [producto.id]: Math.max(cantidad, 0) }))
-                  }
-                />
-              ))}
-            </div>
-          </section>
+          {clienteId === '' ? (
+            <p className="rounded-ficha border border-dashed border-masa-300 bg-white px-4 py-8 text-center text-sm text-masa-700">
+              Elegi el cliente para cargar las cajas de cada producto.
+            </p>
+          ) : (
+            <section>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-masa-700">
+                Productos · cantidades en cajas
+              </p>
+              <div className="overflow-hidden rounded-ficha border border-masa-200 bg-white">
+                {catalogo.productos.map((producto, indice) => (
+                  <FilaProducto
+                    key={producto.id}
+                    producto={producto}
+                    cantidad={seleccion[producto.id] ?? 0}
+                    conBorde={indice > 0}
+                    alCambiar={(cantidad) =>
+                      setSeleccion((actual) => ({ ...actual, [producto.id]: Math.max(cantidad, 0) }))
+                    }
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
           <section>
             <label htmlFor="notas" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
@@ -273,9 +296,11 @@ export function AppPedidos(): JSX.Element {
         >
           {enviando
             ? 'Enviando...'
-            : items.length === 0
-              ? 'Elegi productos'
-              : `Enviar pedido · ${totalUnidades} u.`}
+            : clienteId === ''
+              ? 'Elegi el cliente'
+              : items.length === 0
+                ? 'Elegi productos'
+                : `Enviar pedido · ${totalCajas} ${totalCajas === 1 ? 'caja' : 'cajas'}`}
         </button>
       </div>
 
@@ -315,7 +340,12 @@ function FilaProducto({
       <div className="min-w-0">
         <p className="truncate text-base font-medium text-masa-900">{producto.nombre}</p>
         <p className="text-xs text-masa-700">
-          Stock: {producto.stock} {producto.unidadAbreviatura}
+          {producto.unidadesPorCaja === null
+            ? `Stock: ${producto.stock} ${producto.unidadAbreviatura}`
+            : `Caja de ${producto.unidadesPorCaja} · stock ${Math.floor(producto.stock / producto.unidadesPorCaja)} cajas`}
+          {producto.unidadesPorCaja !== null && cantidad > 0
+            ? ` · pedis ${cantidad * producto.unidadesPorCaja} u`
+            : ''}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">

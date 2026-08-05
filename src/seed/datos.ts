@@ -78,6 +78,8 @@ export interface DefinicionArticulo {
   readonly abreviaturaUnidadBase: string;
   /** Minimo de stock expresado en la unidad base. */
   readonly stockMin: number;
+  /** Unidades por caja cerrada; los clientes piden por caja. Solo terminados. */
+  readonly unidadesPorCaja?: number;
   /** Centavos por unidad base (por gramo, por ml o por unidad segun corresponda). */
   readonly costoActual: number;
 }
@@ -126,6 +128,7 @@ export const ARTICULOS: readonly DefinicionArticulo[] = [
     tipo: 'producto_terminado',
     abreviaturaUnidadBase: 'u',
     stockMin: 100,
+    unidadesPorCaja: 12,
     // $950 el alfajor -> 95000 centavos la unidad.
     costoActual: centavosPorUnidad(950),
   },

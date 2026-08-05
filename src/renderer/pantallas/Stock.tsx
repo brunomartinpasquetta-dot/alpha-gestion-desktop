@@ -16,7 +16,7 @@ import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import { obtenerArticulos, obtenerStock } from '../servicios/cliente';
-import { formatearCantidad, formatearMoneda } from '../utiles/formato';
+import { formatearCajas, formatearCantidad, formatearMoneda } from '../utiles/formato';
 
 export interface PropsConSeleccion {
   readonly articuloSeleccionadoId: number | null;
@@ -39,6 +39,12 @@ function columnasSaldo(): readonly Columna<SaldoStock>[] {
     { clave: 'tipo', titulo: 'Tipo', celda: (a) => ETIQUETA_TIPO_ARTICULO[a.tipo] },
     { clave: 'unidad', titulo: 'Unidad', celda: (a) => a.unidadAbreviatura },
     { clave: 'stock', titulo: 'Stock', celda: (a) => formatearCantidad(a.stock), numerica: true },
+    {
+      clave: 'cajas',
+      titulo: 'Cajas',
+      celda: (a) => formatearCajas(a.stock, a.unidadesPorCaja),
+      numerica: true,
+    },
     {
       clave: 'minimo',
       titulo: 'Minimo',
@@ -118,6 +124,12 @@ const COLUMNAS_ARTICULOS: readonly Columna<ArticuloConStock>[] = [
   { clave: 'tipo', titulo: 'Tipo', celda: (a) => ETIQUETA_TIPO_ARTICULO[a.tipo] },
   { clave: 'unidad', titulo: 'Unidad', celda: (a) => a.unidadAbreviatura },
   { clave: 'stock', titulo: 'Stock', celda: (a) => formatearCantidad(a.stock), numerica: true },
+  {
+    clave: 'cajas',
+    titulo: 'Cajas',
+    celda: (a) => formatearCajas(a.stock, a.unidadesPorCaja),
+    numerica: true,
+  },
   {
     clave: 'minimo',
     titulo: 'Minimo',
