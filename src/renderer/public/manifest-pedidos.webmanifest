@@ -1,0 +1,18 @@
+{
+  "name": "Alpha Gestión — Pedidos",
+  "short_name": "Pedidos",
+  "description": "Carga de pedidos de la fábrica desde el celular.",
+  "start_url": "/pedidos",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#faf7f2",
+  "theme_color": "#8d5f23",
+  "icons": [
+    {
+      "src": "/icono-alpha.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

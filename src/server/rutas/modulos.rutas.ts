@@ -122,6 +122,18 @@ export function registrarRutasModulos(app: FastifyInstance): void {
     return reply.status(200).send({ datos: consultasServicio.listarMovimientosCaja(cajaId) });
   });
 
+  app.get('/api/caja/general', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: consultasServicio.obtenerCajaGeneral() });
+  });
+
+  app.get('/api/estadisticas', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: consultasServicio.obtenerEstadisticas() });
+  });
+
+  app.get('/api/usuarios', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: consultasServicio.listarUsuarios() });
+  });
+
   app.get('/api/cuentas-corrientes', (_request: FastifyRequest, reply: FastifyReply) => {
     return reply
       .status(200)

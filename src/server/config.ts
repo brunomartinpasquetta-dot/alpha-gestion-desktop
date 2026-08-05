@@ -20,6 +20,13 @@ export interface ConfigServidor {
   readonly rutaDb: string | undefined;
   readonly esDesarrollo: boolean;
   readonly nivelLog: string;
+  /**
+   * PIN que protege la carga de pedidos desde el celular. Si no esta definido,
+   * los endpoints de escritura de pedidos quedan abiertos: aceptable mientras el
+   * servidor solo escucha en localhost/LAN, obligatorio antes de exponer el
+   * tunel a internet.
+   */
+  readonly pinPedidos: string | undefined;
 }
 
 function enteroDesdeEntorno(clave: string, porDefecto: number): number {
@@ -37,5 +44,6 @@ export function leerConfig(): ConfigServidor {
     rutaDb: process.env.ALFAJORES_DB_PATH?.trim() || undefined,
     esDesarrollo,
     nivelLog: process.env.ALFAJORES_LOG_LEVEL?.trim() || (esDesarrollo ? 'info' : 'warn'),
+    pinPedidos: process.env.ALFAJORES_PIN_PEDIDOS?.trim() || undefined,
   };
 }

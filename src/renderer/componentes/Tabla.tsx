@@ -54,7 +54,7 @@ export function Tabla<T>({
                 key={columna.clave}
                 scope="col"
                 className={[
-                  'border-b border-masa-200 px-3 py-2 text-micro font-semibold uppercase tracking-wide text-masa-600',
+                  'border-b border-masa-200 px-3 py-2 text-micro font-semibold uppercase tracking-wide text-masa-700',
                   columna.numerica === true ? 'text-right' : 'text-left',
                   columna.ancho ?? '',
                 ].join(' ')}
@@ -96,7 +96,7 @@ export function Tabla<T>({
                   <td
                     key={columna.clave}
                     className={[
-                      'px-3 py-1.5 text-masa-800',
+                      'px-3 py-1.5 text-masa-900',
                       columna.numerica === true ? 'text-right font-mono tabular-nums' : 'text-left',
                     ].join(' ')}
                   >

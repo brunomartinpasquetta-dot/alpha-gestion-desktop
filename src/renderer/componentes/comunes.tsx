@@ -10,14 +10,19 @@ import type { ReactNode } from 'react';
 
 /* --------------------------------- Pastilla -------------------------------- */
 
-export type TonoPastilla = 'neutro' | 'positivo' | 'alerta' | 'peligro' | 'marca';
+/**
+ * Tonos SEMANTICOS. Ninguno usa el caramelo de la marca: el color de marca
+ * identifica al producto (barra de titulo, menu activo, foco), no comunica
+ * informacion. Un rol o un estado pintado de marron se lee como decoracion.
+ */
+export type TonoPastilla = 'neutro' | 'positivo' | 'alerta' | 'peligro' | 'info';
 
 const CLASES_PASTILLA: Readonly<Record<TonoPastilla, string>> = {
-  neutro: 'bg-masa-100 text-masa-700 ring-masa-200',
+  neutro: 'bg-masa-100 text-masa-800 ring-masa-200',
   positivo: 'bg-menta-50 text-menta-700 ring-menta-200',
   alerta: 'bg-alerta-50 text-alerta-700 ring-alerta-200',
-  peligro: 'bg-peligro-50 text-peligro-700 ring-peligro-200',
-  marca: 'bg-dulce-50 text-dulce-700 ring-dulce-200',
+  peligro: 'bg-peligro-50 text-peligro-600 ring-peligro-200',
+  info: 'bg-info-50 text-info-700 ring-info-200',
 };
 
 export function Pastilla({
@@ -40,7 +45,7 @@ export function Pastilla({
 
 export function EstadoCargando({ que = 'los datos' }: { readonly que?: string }): JSX.Element {
   return (
-    <div className="flex items-center gap-3 rounded-ficha border border-masa-200 bg-white px-4 py-8 text-masa-600 shadow-ficha">
+    <div className="flex items-center gap-3 rounded-ficha border border-masa-200 bg-white px-4 py-8 text-masa-700 shadow-ficha">
       <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-dulce-500" aria-hidden="true" />
       <span>Cargando {que}...</span>
     </div>
@@ -59,8 +64,8 @@ export function EstadoError({
       role="alert"
       className="rounded-ficha border border-peligro-200 bg-peligro-50 px-4 py-5 shadow-ficha"
     >
-      <p className="font-semibold text-peligro-800">No se pudieron cargar los datos</p>
-      <p className="mt-1 text-sm text-peligro-700">{mensaje}</p>
+      <p className="font-semibold text-peligro-600">No se pudieron cargar los datos</p>
+      <p className="mt-1 text-sm text-peligro-600">{mensaje}</p>
       <button
         type="button"
         onClick={alReintentar}
@@ -84,8 +89,8 @@ export function EstadoVacio({
 }): JSX.Element {
   return (
     <div className="rounded-ficha border border-dashed border-masa-300 bg-masa-50 px-4 py-10 text-center">
-      <p className="font-semibold text-masa-700">{titulo}</p>
-      <p className="mx-auto mt-1 max-w-xl text-sm text-masa-600">{detalle}</p>
+      <p className="font-semibold text-masa-800">{titulo}</p>
+      <p className="mx-auto mt-1 max-w-xl text-sm text-masa-700">{detalle}</p>
       {comando !== undefined && (
         <code className="mt-3 inline-block rounded-pastilla bg-masa-800 px-3 py-1.5 font-mono text-xs text-masa-50">
           {comando}
@@ -109,18 +114,18 @@ export function TarjetaIndicador({
   readonly tono?: TonoPastilla;
 }): JSX.Element {
   const acento: Readonly<Record<TonoPastilla, string>> = {
-    neutro: 'text-masa-800',
+    neutro: 'text-masa-900',
     positivo: 'text-menta-700',
     alerta: 'text-alerta-700',
-    peligro: 'text-peligro-700',
-    marca: 'text-dulce-700',
+    peligro: 'text-peligro-600',
+    info: 'text-info-700',
   };
 
   return (
     <div className="rounded-ficha border border-masa-200 bg-white px-4 py-3 shadow-ficha">
-      <p className="text-micro font-semibold uppercase tracking-wide text-masa-500">{rotulo}</p>
+      <p className="text-micro font-semibold uppercase tracking-wide text-masa-700">{rotulo}</p>
       <p className={`mt-1 font-mono text-2xl tabular-nums ${acento[tono]}`}>{valor}</p>
-      {detalle !== undefined && <p className="mt-0.5 text-xs text-masa-600">{detalle}</p>}
+      {detalle !== undefined && <p className="mt-0.5 text-xs text-masa-700">{detalle}</p>}
     </div>
   );
 }
@@ -139,7 +144,7 @@ export function Seccion({
   return (
     <section className="space-y-2">
       <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-600">{titulo}</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">{titulo}</h2>
         {acciones}
       </div>
       {children}

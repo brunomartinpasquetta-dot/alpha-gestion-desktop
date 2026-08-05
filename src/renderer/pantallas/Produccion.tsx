@@ -59,27 +59,27 @@ export function PantallaRecetas(): JSX.Element {
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-masa-500">
+                      <span className="font-mono text-xs text-masa-700">
                         {receta.articuloProducidoCodigo}
                       </span>
-                      <span className="font-medium text-masa-800">
+                      <span className="font-medium text-masa-900">
                         {receta.articuloProducidoNombre}
                       </span>
                       <Pastilla
                         texto={ETIQUETA_TIPO_ARTICULO[receta.articuloProducidoTipo]}
-                        tono="marca"
+                        tono="info"
                       />
                       {!receta.activa && <Pastilla texto="Inactiva" tono="peligro" />}
                     </div>
-                    <p className="mt-0.5 text-xs text-masa-600">
+                    <p className="mt-0.5 text-xs text-masa-700">
                       {formatearTexto(receta.notas)}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-mono tabular-nums text-masa-800">
+                    <p className="font-mono tabular-nums text-masa-900">
                       Rinde {formatearCantidadConUnidad(receta.rindeCantidad, receta.rindeUnidadAbreviatura)}
                     </p>
-                    <p className="text-micro text-masa-500">
+                    <p className="text-micro text-masa-700">
                       {receta.items.length} insumo(s) · {abierta ? 'ocultar' : 'ver detalle'}
                     </p>
                   </div>
@@ -89,7 +89,7 @@ export function PantallaRecetas(): JSX.Element {
                   <div className="border-t border-masa-200 bg-masa-50 px-4 py-3">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-micro uppercase tracking-wide text-masa-500">
+                        <tr className="text-micro uppercase tracking-wide text-masa-700">
                           <th scope="col" className="pb-1 text-left">Insumo</th>
                           <th scope="col" className="pb-1 text-left">Tipo</th>
                           <th scope="col" className="pb-1 text-right">Cantidad</th>
@@ -99,17 +99,17 @@ export function PantallaRecetas(): JSX.Element {
                       <tbody>
                         {receta.items.map((item) => (
                           <tr key={item.id} className="border-t border-masa-200">
-                            <td className="py-1.5 text-masa-800">
-                              <span className="font-mono text-xs text-masa-500">{item.insumoCodigo}</span>{' '}
+                            <td className="py-1.5 text-masa-900">
+                              <span className="font-mono text-xs text-masa-700">{item.insumoCodigo}</span>{' '}
                               {item.insumoNombre}
                             </td>
-                            <td className="py-1.5 text-masa-600">
+                            <td className="py-1.5 text-masa-700">
                               {ETIQUETA_TIPO_ARTICULO[item.insumoTipo]}
                             </td>
-                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-800">
+                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
                               {formatearCantidadConUnidad(item.cantidad, item.unidadAbreviatura)}
                             </td>
-                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-600">
+                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-700">
                               {formatearPorcentaje(item.mermaEsperadaPct)}
                             </td>
                           </tr>
@@ -134,7 +134,7 @@ function tonoDeOrden(estado: OrdenProduccionVista['estado']): TonoPastilla {
     case 'finalizada':
       return 'positivo';
     case 'en_proceso':
-      return 'marca';
+      return 'info';
     case 'planificada':
       return 'neutro';
     case 'cancelada':
@@ -151,7 +151,7 @@ const COLUMNAS_ORDENES: readonly Columna<OrdenProduccionVista>[] = [
     titulo: 'Producto',
     celda: (o) => (
       <>
-        <span className="font-mono text-xs text-masa-500">{o.articuloProducidoCodigo}</span>{' '}
+        <span className="font-mono text-xs text-masa-700">{o.articuloProducidoCodigo}</span>{' '}
         {o.articuloProducidoNombre}
       </>
     ),
@@ -173,7 +173,7 @@ const COLUMNAS_ORDENES: readonly Columna<OrdenProduccionVista>[] = [
   {
     clave: 'pedido',
     titulo: 'Pedido',
-    celda: (o) => (o.pedidoId === null ? '—' : <Pastilla texto={`#${o.pedidoId}`} tono="marca" />),
+    celda: (o) => (o.pedidoId === null ? '—' : <Pastilla texto={`#${o.pedidoId}`} tono="info" />),
   },
   { clave: 'fecha', titulo: 'Planificada', celda: (o) => formatearFecha(o.fechaPlanificada), numerica: true },
   {

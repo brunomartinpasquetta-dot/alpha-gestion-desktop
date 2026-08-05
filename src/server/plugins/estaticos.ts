@@ -6,10 +6,9 @@
  * cadena de ruteo, asi que las rutas declaradas (/health, /api/...) siempre
  * ganan porque find-my-way prioriza las rutas estaticas sobre los wildcards.
  *
- * NOTA PARA EL FUTURO: sobre este mismo handler se va a montar la ruta
- * `/pedidos` para el celular (la PWA de toma de pedidos). Cuando llegue ese
- * momento, alcanza con agregar su carpeta compilada y un fallback propio a
- * `pedidos/index.html`, reutilizando la resolucion segura de rutas de abajo.
+ * Dos aplicaciones salen de la misma carpeta compilada:
+ *   - `/` y el fallback SPA -> index.html (escritorio, ventanas de modulo)
+ *   - `/pedidos`            -> pedidos.html (la PWA del celular)
  */
 
 import fs from 'node:fs';
@@ -103,6 +102,7 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
   }
 
   const rutaIndex = path.join(carpetaBase, 'index.html');
+  const rutaPedidos = path.join(carpetaBase, 'pedidos.html');
   app.log.info({ carpeta: carpetaBase }, 'Sirviendo el renderer compilado desde disco.');
 
   app.get('/*', (request: FastifyRequest, reply: FastifyReply) => {
@@ -124,6 +124,12 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
     // Un /api inexistente es un 404 de API, no la pantalla de la SPA.
     if (esRutaDeApi(pedida)) return reply.callNotFound();
 
+    // La PWA del celular: /pedidos y cualquier subruta sirven su propio shell.
+    if (pedida === '/pedidos' || pedida.startsWith('/pedidos/')) {
+      if (esArchivoExistente(rutaPedidos)) return enviarArchivo(reply, rutaPedidos);
+      return reply.callNotFound();
+    }
+
     // Fallback SPA: el ruteo del renderer resuelve la pantalla del lado del cliente.
     if (esArchivoExistente(rutaIndex)) return enviarArchivo(reply, rutaIndex);
 
@@ -133,9 +139,11 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
 
 /** Envia el archivo por stream: nunca cargamos el bundle entero en memoria. */
 function enviarArchivo(reply: FastifyReply, rutaArchivo: string): FastifyReply {
-  const esIndex = path.basename(rutaArchivo) === 'index.html';
+  const nombre = path.basename(rutaArchivo);
+  const esIndex = nombre === 'index.html' || nombre === 'pedidos.html' || nombre === 'pedidos-sw.js';
   reply.header('Content-Type', tipoContenidoDe(rutaArchivo));
-  // El index nunca se cachea: es el que trae los nombres con hash del resto.
+  // Los shells y el service worker nunca se cachean: son los que traen los
+  // nombres con hash del resto y la logica de actualizacion.
   reply.header('Cache-Control', esIndex ? 'no-cache' : 'public, max-age=3600');
   return reply.send(fs.createReadStream(rutaArchivo));
 }

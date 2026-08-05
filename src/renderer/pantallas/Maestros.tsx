@@ -25,7 +25,7 @@ const COLUMNAS_CLIENTES: readonly Columna<ClienteVista>[] = [
     celda: (c) => (
       <Pastilla
         texto={ETIQUETA_TIPO_CLIENTE[c.tipo]}
-        tono={c.tipo === 'mostrador' ? 'neutro' : 'marca'}
+        tono={c.tipo === 'mostrador' ? 'neutro' : 'info'}
       />
     ),
   },
@@ -37,7 +37,7 @@ const COLUMNAS_CLIENTES: readonly Columna<ClienteVista>[] = [
     titulo: 'Saldo CC',
     numerica: true,
     celda: (c) => (
-      <span className={c.saldoCc > 0 ? 'text-alerta-700' : 'text-masa-700'}>
+      <span className={c.saldoCc > 0 ? 'text-alerta-700' : 'text-masa-800'}>
         {formatearMonedaConSigno(c.saldoCc)}
       </span>
     ),
@@ -78,7 +78,7 @@ const COLUMNAS_PROVEEDORES: readonly Columna<ProveedorVista>[] = [
     titulo: 'Saldo CC',
     numerica: true,
     celda: (p) => (
-      <span className={p.saldoCc < 0 ? 'text-peligro-700' : 'text-masa-700'}>
+      <span className={p.saldoCc < 0 ? 'text-peligro-600' : 'text-masa-800'}>
         {formatearMonedaConSigno(p.saldoCc)}
       </span>
     ),
@@ -124,7 +124,7 @@ export function PantallaPrecios(): JSX.Element {
           {listas.map((lista: ListaPrecioVista) => (
             <section key={lista.id} className="space-y-2">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-600">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
                   {lista.nombre}
                 </h2>
                 {lista.activa ? (
@@ -132,11 +132,11 @@ export function PantallaPrecios(): JSX.Element {
                 ) : (
                   <Pastilla texto="Inactiva" />
                 )}
-                <span className="text-xs text-masa-500">{lista.precios.length} articulo(s)</span>
+                <span className="text-xs text-masa-700">{lista.precios.length} articulo(s)</span>
               </div>
 
               {lista.precios.length === 0 ? (
-                <p className="rounded-ficha border border-dashed border-masa-300 bg-masa-50 px-4 py-6 text-center text-sm text-masa-600">
+                <p className="rounded-ficha border border-dashed border-masa-300 bg-masa-50 px-4 py-6 text-center text-sm text-masa-700">
                   Esta lista todavia no tiene precios cargados.
                 </p>
               ) : (

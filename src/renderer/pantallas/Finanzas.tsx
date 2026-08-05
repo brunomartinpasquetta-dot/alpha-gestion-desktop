@@ -43,7 +43,7 @@ const COLUMNAS_CAJAS: readonly Columna<CajaVista>[] = [
   {
     clave: 'egresos',
     titulo: 'Egresos',
-    celda: (c) => <span className="text-peligro-700">{formatearMoneda(c.totalEgresos)}</span>,
+    celda: (c) => <span className="text-peligro-600">{formatearMoneda(c.totalEgresos)}</span>,
     numerica: true,
   },
   {
@@ -60,7 +60,7 @@ const COLUMNAS_CAJAS: readonly Columna<CajaVista>[] = [
       c.diferencia === null ? (
         '—'
       ) : (
-        <span className={c.diferencia < 0 ? 'text-peligro-700' : 'text-menta-700'}>
+        <span className={c.diferencia < 0 ? 'text-peligro-600' : 'text-menta-700'}>
           {formatearMonedaConSigno(c.diferencia)}
         </span>
       ),
@@ -71,7 +71,7 @@ const COLUMNAS_CAJAS: readonly Columna<CajaVista>[] = [
     celda: (c) => (
       <Pastilla
         texto={c.estado === 'abierta' ? 'Abierta' : 'Cerrada'}
-        tono={c.estado === 'abierta' ? 'marca' : 'neutro'}
+        tono={c.estado === 'abierta' ? 'info' : 'neutro'}
       />
     ),
   },
@@ -95,7 +95,7 @@ const COLUMNAS_MOVIMIENTOS_CAJA: readonly Columna<CajaMovimientoVista>[] = [
     titulo: 'Monto',
     numerica: true,
     celda: (m) => (
-      <span className={m.tipo === 'ingreso' ? 'text-menta-700' : 'text-peligro-700'}>
+      <span className={m.tipo === 'ingreso' ? 'text-menta-700' : 'text-peligro-600'}>
         {formatearMonedaConSigno(m.tipo === 'ingreso' ? m.monto : -m.monto)}
       </span>
     ),
@@ -135,7 +135,7 @@ export function PantallaCaja(): JSX.Element {
       >
         {(filas) => (
           <>
-            <p className="text-xs text-masa-600">Selecciona una caja para ver sus movimientos.</p>
+            <p className="text-xs text-masa-700">Selecciona una caja para ver sus movimientos.</p>
             <Tabla
               columnas={COLUMNAS_CAJAS}
               filas={filas}
@@ -149,7 +149,7 @@ export function PantallaCaja(): JSX.Element {
 
       {cajaSeleccionada !== null && (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-600">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
             Movimientos de la caja #{cajaSeleccionada}
           </h2>
           <MovimientosDeCaja cajaId={cajaSeleccionada} />
@@ -168,7 +168,7 @@ const COLUMNAS_CC: readonly Columna<ResumenCuentaCorriente>[] = [
     celda: (c) => (
       <Pastilla
         texto={c.entidadTipo === 'cliente' ? 'Cliente' : 'Proveedor'}
-        tono={c.entidadTipo === 'cliente' ? 'marca' : 'neutro'}
+        tono={c.entidadTipo === 'cliente' ? 'info' : 'neutro'}
       />
     ),
   },
@@ -180,7 +180,7 @@ const COLUMNAS_CC: readonly Columna<ResumenCuentaCorriente>[] = [
     titulo: 'Saldo',
     numerica: true,
     celda: (c) => (
-      <span className={c.saldo < 0 ? 'text-peligro-700' : 'text-menta-700'}>
+      <span className={c.saldo < 0 ? 'text-peligro-600' : 'text-menta-700'}>
         {formatearMonedaConSigno(c.saldo)}
       </span>
     ),
@@ -219,7 +219,7 @@ export function PantallaCuentasCorrientes(): JSX.Element {
     >
       {(filas) => (
         <>
-          <p className="mb-2 text-xs text-masa-600">
+          <p className="mb-2 text-xs text-masa-700">
             Saldo = debe − haber. Positivo significa que la entidad nos debe; negativo, que le
             debemos.
           </p>

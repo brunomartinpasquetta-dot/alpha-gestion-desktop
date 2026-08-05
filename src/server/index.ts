@@ -10,4 +10,4 @@ export { registrarRutas } from './rutas';
 export { registrarManejadorErrores } from './plugins/manejador-errores';
 export type { CuerpoError, DetalleValidacion } from './plugins/manejador-errores';
 export { registrarEstaticos } from './plugins/estaticos';
-export type { RespuestaSalud, SaludDb } from './rutas/salud.rutas';
+export type { RespuestaSalud } from '../compartido/contratos';

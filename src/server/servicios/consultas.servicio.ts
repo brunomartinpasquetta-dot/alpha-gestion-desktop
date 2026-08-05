@@ -12,6 +12,9 @@
  */
 
 import type {
+  Estadisticas,
+  ResumenCajaGeneral,
+  UsuarioVista,
   CajaMovimientoVista,
   CajaVista,
   ClienteVista,
@@ -30,6 +33,7 @@ import type {
 import { existe as existeArticulo } from '../repositorios/articulos.repositorio';
 import * as repoCaja from '../repositorios/lectura/caja.repositorio';
 import * as repoCompras from '../repositorios/lectura/compras.repositorio';
+import * as repoGestion from '../repositorios/lectura/gestion.repositorio';
 import * as repoCc from '../repositorios/lectura/cuentas-corrientes.repositorio';
 import * as repoPedidos from '../repositorios/lectura/pedidos.repositorio';
 import * as repoProduccion from '../repositorios/lectura/produccion.repositorio';
@@ -209,6 +213,41 @@ export const consultasServicio = {
       LIMITE_MOVIMIENTOS_MAXIMO,
     );
     return repoStock.listarMovimientosConAcumulado(articuloId, limiteEfectivo);
+  },
+
+  /* ------------------------------ Caja general --------------------------- */
+
+  /**
+   * Tesoreria consolidada. El saldo acumulado es aperturas + ingresos - egresos:
+   * lo que deberia haber pasado por caja desde que existe el sistema.
+   */
+  obtenerCajaGeneral(): ResumenCajaGeneral {
+    const fila = repoGestion.resumirCajaGeneral();
+    return {
+      ...fila,
+      saldoAcumulado: fila.totalAperturas + fila.totalIngresos - fila.totalEgresos,
+    };
+  },
+
+  /* ------------------------------- Estadisticas -------------------------- */
+
+  obtenerEstadisticas(): Estadisticas {
+    const valorizacion = repoGestion.valorizarInventario();
+    return {
+      ventasPorMes: repoGestion.ventasPorMes(6),
+      comprasPorMes: repoGestion.comprasPorMes(6),
+      masVendidos: repoGestion.articulosMasVendidos(10),
+      valorizacion: {
+        ...valorizacion,
+        total: valorizacion.insumos + valorizacion.productos,
+      },
+    };
+  },
+
+  /* --------------------------------- Usuarios ---------------------------- */
+
+  listarUsuarios(): UsuarioVista[] {
+    return repoGestion.listarUsuarios();
   },
 
   /* -------------------------------- Resumen ------------------------------ */

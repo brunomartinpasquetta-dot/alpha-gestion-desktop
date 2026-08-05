@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
@@ -50,6 +52,14 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     target: 'es2022',
+    rollupOptions: {
+      input: {
+        // Ventana de escritorio (principal + modulos embebidos).
+        principal: path.resolve(__dirname, 'src/renderer/index.html'),
+        // PWA del celular: la sirve Fastify en /pedidos.
+        pedidos: path.resolve(__dirname, 'src/renderer/pedidos.html'),
+      },
+    },
   },
   server: {
     host: HOST_SERVIDOR_DEFAULT,

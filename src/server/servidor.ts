@@ -131,7 +131,10 @@ export async function iniciarServidor(opciones: OpcionesServidor = {}): Promise<
 
     try {
       await app.listen({ port: puerto, host });
-      const url = `http://${host}:${puerto}`;
+      // La ventana de Electron necesita una URL navegable: 0.0.0.0 es una
+      // direccion de ESCUCHA, no de destino. Para cargar, loopback.
+      const hostNavegable = host === '0.0.0.0' ? '127.0.0.1' : host;
+      const url = `http://${hostNavegable}:${puerto}`;
       app.log.info({ url, puerto, host }, 'Servidor del ERP escuchando');
 
       return {

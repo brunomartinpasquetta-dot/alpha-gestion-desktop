@@ -8,6 +8,7 @@ import type { FastifyInstance } from 'fastify';
 import { registrarRutasArticulos } from './articulos.rutas';
 import { registrarRutasCuentasCorrientes } from './cuentas-corrientes.rutas';
 import { registrarRutasModulos } from './modulos.rutas';
+import { registrarRutasPedidos } from './pedidos.rutas';
 import { registrarRutasSalud } from './salud.rutas';
 
 export function registrarRutas(app: FastifyInstance): void {
@@ -15,6 +16,7 @@ export function registrarRutas(app: FastifyInstance): void {
   registrarRutasArticulos(app);
   registrarRutasCuentasCorrientes(app);
   registrarRutasModulos(app);
+  registrarRutasPedidos(app);
 }
 
 export {

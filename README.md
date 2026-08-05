@@ -178,9 +178,10 @@ nativa de imágenes.
 | Variable | Default | Para qué |
 |---|---|---|
 | `ALFAJORES_PUERTO` | `4600` | Puerto del servidor Fastify embebido |
-| `ALFAJORES_HOST` | `127.0.0.1` | Host de escucha |
+| `ALFAJORES_HOST` | `0.0.0.0` | Host de escucha (LAN habilitada para la PWA del celular) |
 | `ALFAJORES_DB_PATH` | userData | Fuerza la ruta del archivo SQLite |
 | `ALFAJORES_LOG_LEVEL` | `info` / `warn` | Nivel de log de pino |
+| `ALFAJORES_PIN_PEDIDOS` | — | PIN que exige la carga de pedidos desde el celular. **Configurarlo antes de exponer el túnel** |
 | `ALFAJORES_SEED_DEMO` | — | `1` para sembrar el set completo de demostración |
 | `ALFAJORES_SEED_MOVIMIENTOS` | — | `1` para sembrar solo movimientos de stock de ejemplo |
 

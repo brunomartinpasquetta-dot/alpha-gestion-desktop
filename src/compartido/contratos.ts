@@ -64,6 +64,12 @@ export interface RespuestaSalud {
   version: string;
   entorno: 'desarrollo' | 'produccion';
   db: { ok: boolean; rutaDb: string; tablas: number; error?: string };
+  /**
+   * URL de la PWA de pedidos en la red local (http://<ip>:<puerto>/pedidos),
+   * o null si el servidor solo escucha en loopback. Es la direccion que se
+   * abre en el celular.
+   */
+  urlPedidos?: string | null;
 }
 
 /* ------------------------------- Articulos -------------------------------- */
@@ -395,4 +401,110 @@ export const ETIQUETA_TIPO_CLIENTE: Readonly<Record<TipoCliente, string>> = {
   mostrador: 'Mostrador',
   mayorista: 'Mayorista',
   distribuidor: 'Distribuidor',
+};
+
+/* ------------------------------ Caja general ------------------------------ */
+
+/** Tesoreria consolidada: todas las cajas juntas, no una sola jornada. */
+export interface ResumenCajaGeneral {
+  totalCajas: number;
+  cajasAbiertas: number;
+  cajasCerradas: number;
+  /** Suma de los montos de apertura de todas las cajas (centavos). */
+  totalAperturas: number;
+  totalIngresos: number;
+  totalEgresos: number;
+  /** aperturas + ingresos - egresos. */
+  saldoAcumulado: number;
+  /** Suma de las diferencias de arqueo de las cajas cerradas. Negativo = faltante. */
+  diferenciaAcumulada: number;
+}
+
+/* ------------------------------- Estadisticas ----------------------------- */
+
+export interface PeriodoEstadistica {
+  /** Mes en formato AAAA-MM. */
+  mes: string;
+  cantidad: number;
+  /** Centavos. */
+  total: number;
+}
+
+export interface ArticuloVendido {
+  articuloId: number;
+  codigo: string;
+  nombre: string;
+  cantidad: number;
+  /** Centavos. */
+  total: number;
+}
+
+export interface Estadisticas {
+  ventasPorMes: PeriodoEstadistica[];
+  comprasPorMes: PeriodoEstadistica[];
+  masVendidos: ArticuloVendido[];
+  /**
+   * Valorizacion del inventario: stock x costo actual, en centavos.
+   * El stock negativo se piza en cero: valorizar en negativo daria un activo
+   * negativo, que no significa nada contablemente.
+   */
+  valorizacion: { insumos: number; productos: number; total: number };
+}
+
+/* --------------------------------- Usuarios -------------------------------- */
+
+export type RolUsuario = 'admin' | 'empleado';
+
+export interface UsuarioVista {
+  id: number;
+  username: string;
+  rol: RolUsuario;
+  activo: boolean;
+}
+
+export const ETIQUETA_ROL: Readonly<Record<RolUsuario, string>> = {
+  admin: 'Administrador',
+  empleado: 'Empleado',
+};
+
+/* ------------------------- Escritura de pedidos --------------------------- */
+
+/** Item de un pedido nuevo, tal como lo envia el celular o el mostrador. */
+export interface EntradaItemPedido {
+  articuloId: number;
+  cantidad: number;
+  notas?: string | null;
+}
+
+/** Cuerpo de POST /api/pedidos. Lo comparten la PWA del celular y el escritorio. */
+export interface EntradaNuevoPedido {
+  clienteId?: number | null;
+  origen: OrigenPedido;
+  fechaEntregaEstimada?: string | null;
+  cargadoPor?: string | null;
+  notas?: string | null;
+  items: EntradaItemPedido[];
+}
+
+/**
+ * Maquina de estados del pedido: desde cada estado, a cuales se puede pasar.
+ * Cancelable mientras no se haya entregado; la entrega es terminal.
+ */
+export const TRANSICIONES_PEDIDO: Readonly<Record<EstadoPedido, readonly EstadoPedido[]>> = {
+  pendiente: ['confirmado', 'cancelado'],
+  confirmado: ['en_produccion', 'cancelado'],
+  en_produccion: ['listo', 'cancelado'],
+  listo: ['entregado'],
+  entregado: [],
+  cancelado: [],
+};
+
+/** Accion visible en la interfaz para cada transicion. */
+export const ETIQUETA_TRANSICION: Readonly<Record<EstadoPedido, string>> = {
+  pendiente: 'Marcar pendiente',
+  confirmado: 'Confirmar',
+  en_produccion: 'Pasar a produccion',
+  listo: 'Marcar listo',
+  entregado: 'Entregar',
+  cancelado: 'Cancelar',
 };

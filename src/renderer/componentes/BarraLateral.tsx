@@ -25,13 +25,13 @@ export function BarraLateral({ moduloActivo, alNavegar, salud, errorSalud }: Pro
     >
       <div className="flex h-barra items-center gap-2 border-b border-masa-200 px-4">
         <span className="h-6 w-6 rounded-pastilla bg-dulce-500" aria-hidden="true" />
-        <span className="font-semibold tracking-tight text-masa-800">ALPHA GESTIÓN</span>
+        <span className="font-semibold tracking-tight text-masa-900">ALPHA GESTIÓN</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
         {GRUPOS_NAVEGACION.map((grupo) => (
           <div key={grupo.titulo} className="mb-4 last:mb-0">
-            <p className="px-2 pb-1 text-micro font-semibold uppercase tracking-wide text-masa-500">
+            <p className="px-2 pb-1 text-micro font-semibold uppercase tracking-wide text-masa-700">
               {grupo.titulo}
             </p>
             <ul className="space-y-0.5">
@@ -52,7 +52,7 @@ export function BarraLateral({ moduloActivo, alNavegar, salud, errorSalud }: Pro
                         'block rounded-pastilla px-2 py-1.5 text-sm outline-none transition-colors',
                         activo
                           ? 'bg-dulce-500 font-medium text-white'
-                          : 'text-masa-700 hover:bg-masa-100 focus-visible:bg-masa-100',
+                          : 'text-masa-800 hover:bg-masa-100 focus-visible:bg-masa-100',
                         'focus-visible:ring-2 focus-visible:ring-dulce-400',
                       ].join(' ')}
                     >
@@ -72,16 +72,16 @@ export function BarraLateral({ moduloActivo, alNavegar, salud, errorSalud }: Pro
             aria-hidden="true"
             className={`h-2 w-2 rounded-full ${conectado ? 'bg-menta-500' : 'bg-peligro-500'}`}
           />
-          <span className="text-masa-700">
+          <span className="text-masa-800">
             {conectado ? 'Servidor conectado' : 'Servidor sin respuesta'}
           </span>
         </div>
         {salud !== null && (
-          <p className="mt-1 font-mono text-micro text-masa-500">
+          <p className="mt-1 font-mono text-micro text-masa-700">
             v{salud.version} · {salud.entorno} · {salud.db.tablas} tablas
           </p>
         )}
-        {errorSalud !== null && <p className="mt-1 text-micro text-peligro-700">{errorSalud}</p>}
+        {errorSalud !== null && <p className="mt-1 text-micro text-peligro-600">{errorSalud}</p>}
       </div>
     </nav>
   );

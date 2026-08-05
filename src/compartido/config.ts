@@ -26,11 +26,11 @@ export const NOMBRE_ARCHIVO_DB = 'alfajores.db';
 export const PUERTO_SERVIDOR_DEFAULT = 4600;
 
 /**
- * Host de escucha. Por ahora solo localhost.
- * Cuando se sume la PWA /pedidos para el celular, esto pasa a '0.0.0.0'
- * (o se expone via tunel) sin tocar el resto del servidor.
+ * Host de escucha. 0.0.0.0 para que el celular llegue por la LAN a la PWA de
+ * pedidos (y mas adelante, para que el tunel de Cloudflare conecte localmente).
+ * Antes de exponer a internet: configurar ALFAJORES_PIN_PEDIDOS.
  */
-export const HOST_SERVIDOR_DEFAULT = '127.0.0.1';
+export const HOST_SERVIDOR_DEFAULT = '0.0.0.0';
 
 /** Puerto del dev server de Vite (renderer en modo desarrollo). */
 export const PUERTO_VITE_DEV = 5173;
@@ -45,4 +45,4 @@ export const REPO_GITHUB = {
 } as const;
 
 /** Version del producto. */
-export const VERSION_APP = '0.1.0';
+export const VERSION_APP = '0.2.0';

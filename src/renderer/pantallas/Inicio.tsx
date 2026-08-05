@@ -62,7 +62,7 @@ export function PantallaInicio(): JSX.Element {
           <TarjetaIndicador
             rotulo="Ordenes en proceso"
             valor={formatearEntero(produccion.enProceso)}
-            tono={produccion.enProceso > 0 ? 'marca' : 'neutro'}
+            tono={produccion.enProceso > 0 ? 'info' : 'neutro'}
           />
         </div>
       </Seccion>
@@ -84,7 +84,7 @@ export function PantallaInicio(): JSX.Element {
             rotulo="Caja"
             valor={caja.abierta ? formatearMoneda(caja.saldoEstimado) : 'Cerrada'}
             detalle={caja.abierta ? `Caja #${caja.cajaId ?? '?'} abierta` : 'No hay caja abierta'}
-            tono={caja.abierta ? 'marca' : 'neutro'}
+            tono={caja.abierta ? 'info' : 'neutro'}
           />
           <TarjetaIndicador
             rotulo="Nos deben / debemos"

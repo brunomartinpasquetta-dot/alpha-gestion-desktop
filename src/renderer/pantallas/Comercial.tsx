@@ -7,21 +7,26 @@
 
 import { useState } from 'react';
 
+
 import {
   ETIQUETA_ESTADO_COMPRA,
   ETIQUETA_ESTADO_PEDIDO,
   ETIQUETA_ESTADO_VENTA,
   ETIQUETA_FORMA_PAGO,
   ETIQUETA_ORIGEN_PEDIDO,
+  ETIQUETA_TRANSICION,
+  TRANSICIONES_PEDIDO,
   type CompraVista,
+  type EstadoPedido,
   type PedidoVista,
   type VentaVista,
 } from '../../compartido/contratos';
 import { Pastilla, type TonoPastilla } from '../componentes/comunes';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
+import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { obtenerCompras, obtenerPedidos, obtenerVentas } from '../servicios/cliente';
+import { cambiarEstadoPedido, obtenerCompras, obtenerPedidos, obtenerVentas } from '../servicios/cliente';
 import {
   formatearCantidadConUnidad,
   formatearFecha,
@@ -38,7 +43,7 @@ function tonoDePedido(estado: PedidoVista['estado']): TonoPastilla {
       return 'alerta';
     case 'confirmado':
     case 'en_produccion':
-      return 'marca';
+      return 'info';
     case 'listo':
     case 'entregado':
       return 'positivo';
@@ -49,9 +54,65 @@ function tonoDePedido(estado: PedidoVista['estado']): TonoPastilla {
   }
 }
 
+/**
+ * Botonera de transiciones de un pedido, derivada de la maquina de estados
+ * compartida con el servidor: si mañana cambia una transicion, cambia en un
+ * solo lugar.
+ */
+function AccionesPedido({
+  pedido,
+  alCambiar,
+}: {
+  readonly pedido: PedidoVista;
+  readonly alCambiar: (estado: EstadoPedido) => void;
+}): JSX.Element | null {
+  const destinos = TRANSICIONES_PEDIDO[pedido.estado];
+  if (destinos.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-masa-200 bg-white px-4 py-2.5">
+      {destinos.map((destino) => {
+        const cancelar = destino === 'cancelado';
+        return (
+          <button
+            key={destino}
+            type="button"
+            onClick={(evento) => {
+              evento.stopPropagation();
+              if (cancelar && !window.confirm(`¿Cancelar el pedido #${pedido.id}?`)) return;
+              alCambiar(destino);
+            }}
+            className={[
+              'rounded-pastilla px-3 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2',
+              cancelar
+                ? 'border border-peligro-300 bg-white text-peligro-600 hover:bg-peligro-50 focus-visible:ring-peligro-400'
+                : 'bg-dulce-600 text-white hover:bg-dulce-700 focus-visible:ring-dulce-400',
+            ].join(' ')}
+          >
+            {ETIQUETA_TRANSICION[destino]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PantallaPedidos(): JSX.Element {
   const estado = usarRecurso(() => obtenerPedidos(), []);
   const [expandido, setExpandido] = useState<number | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  // Tiempo real: un pedido cargado desde el celular aparece solo, sin refrescar.
+  usarEventos('pedidos:cambio', estado.recargar);
+
+  const aplicarTransicion = (pedidoId: number, destino: EstadoPedido): void => {
+    setErrorAccion(null);
+    cambiarEstadoPedido(pedidoId, destino)
+      .then(estado.recargar)
+      .catch((causa: unknown) =>
+        setErrorAccion(causa instanceof Error ? causa.message : String(causa)),
+      );
+  };
 
   return (
     <Vista
@@ -63,6 +124,11 @@ export function PantallaPedidos(): JSX.Element {
     >
       {(pedidos) => (
         <div className="space-y-2">
+          {errorAccion !== null && (
+            <p role="alert" className="rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
+              {errorAccion}
+            </p>
+          )}
           {pedidos.map((pedido) => {
             const abierto = expandido === pedido.id;
             const desdeCelular = pedido.origen === 'celular';
@@ -83,8 +149,8 @@ export function PantallaPedidos(): JSX.Element {
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-masa-500">#{pedido.id}</span>
-                      <span className="font-medium text-masa-800">
+                      <span className="font-mono text-xs text-masa-700">#{pedido.id}</span>
+                      <span className="font-medium text-masa-900">
                         {pedido.clienteNombre ?? 'Mostrador'}
                       </span>
                       <Pastilla
@@ -93,10 +159,10 @@ export function PantallaPedidos(): JSX.Element {
                       />
                       <Pastilla
                         texto={ETIQUETA_ORIGEN_PEDIDO[pedido.origen]}
-                        tono={desdeCelular ? 'marca' : 'neutro'}
+                        tono={desdeCelular ? 'info' : 'neutro'}
                       />
                     </div>
-                    <p className="mt-0.5 text-xs text-masa-600">
+                    <p className="mt-0.5 text-xs text-masa-700">
                       Pedido {formatearFecha(pedido.fechaPedido)}
                       {pedido.fechaEntregaEstimada !== null &&
                         ` · entrega estimada ${formatearFecha(pedido.fechaEntregaEstimada)}`}
@@ -104,18 +170,23 @@ export function PantallaPedidos(): JSX.Element {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-mono tabular-nums text-masa-800">
+                    <p className="font-mono tabular-nums text-masa-900">
                       {pluralizar(pedido.items.length, 'articulo', 'articulos')}
                     </p>
-                    <p className="text-micro text-masa-500">{abierto ? 'ocultar' : 'ver detalle'}</p>
+                    <p className="text-micro text-masa-700">{abierto ? 'ocultar' : 'ver detalle'}</p>
                   </div>
                 </button>
+
+                <AccionesPedido
+                  pedido={pedido}
+                  alCambiar={(destino) => aplicarTransicion(pedido.id, destino)}
+                />
 
                 {abierto && (
                   <div className="border-t border-masa-200 bg-masa-50 px-4 py-3">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-micro uppercase tracking-wide text-masa-500">
+                        <tr className="text-micro uppercase tracking-wide text-masa-700">
                           <th scope="col" className="pb-1 text-left">Articulo</th>
                           <th scope="col" className="pb-1 text-right">Cantidad</th>
                           <th scope="col" className="pb-1 text-left">Notas</th>
@@ -124,20 +195,20 @@ export function PantallaPedidos(): JSX.Element {
                       <tbody>
                         {pedido.items.map((item) => (
                           <tr key={item.id} className="border-t border-masa-200">
-                            <td className="py-1.5 text-masa-800">
-                              <span className="font-mono text-xs text-masa-500">{item.codigo}</span>{' '}
+                            <td className="py-1.5 text-masa-900">
+                              <span className="font-mono text-xs text-masa-700">{item.codigo}</span>{' '}
                               {item.nombre}
                             </td>
-                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-800">
+                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
                               {formatearCantidadConUnidad(item.cantidad, item.unidadAbreviatura)}
                             </td>
-                            <td className="py-1.5 text-masa-600">{formatearTexto(item.notas)}</td>
+                            <td className="py-1.5 text-masa-700">{formatearTexto(item.notas)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                     {pedido.notas !== null && (
-                      <p className="mt-2 text-xs text-masa-600">Nota: {pedido.notas}</p>
+                      <p className="mt-2 text-xs text-masa-700">Nota: {pedido.notas}</p>
                     )}
                   </div>
                 )}
@@ -165,7 +236,7 @@ const COLUMNAS_VENTAS: readonly Columna<VentaVista>[] = [
     clave: 'cliente',
     titulo: 'Cliente',
     celda: (v) =>
-      v.clienteNombre ?? <span className="text-masa-500">Mostrador (sin identificar)</span>,
+      v.clienteNombre ?? <span className="text-masa-700">Mostrador (sin identificar)</span>,
   },
   { clave: 'items', titulo: 'Items', celda: (v) => v.cantidadItems, numerica: true },
   { clave: 'pago', titulo: 'Forma de pago', celda: (v) => ETIQUETA_FORMA_PAGO[v.formaPago] },
@@ -232,7 +303,7 @@ export function PantallaCompras(): JSX.Element {
     >
       {(filas) => (
         <>
-          <p className="mb-2 text-xs text-masa-600">
+          <p className="mb-2 text-xs text-masa-700">
             Solo las compras <strong>recibidas</strong> generan movimiento de stock: una compra
             pendiente todavia no ingreso a la fabrica.
           </p>

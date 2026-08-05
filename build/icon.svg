@@ -18,13 +18,13 @@
   -->
   <defs>
     <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#c9812f"/>
-      <stop offset="1" stop-color="#7d4a1c"/>
+      <stop offset="0" stop-color="#cfa04c"/>
+      <stop offset="1" stop-color="#3a2208"/>
     </linearGradient>
 
     <linearGradient id="glifo" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fdfaf4"/>
-      <stop offset="1" stop-color="#ecdfc8"/>
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ffffff"/>
     </linearGradient>
   </defs>
 
@@ -38,7 +38,7 @@
   -->
   <text x="512" y="474"
         text-anchor="middle" dominant-baseline="central"
-        font-family="Helvetica Neue, Helvetica, Arial, Liberation Sans, sans-serif"
+        font-family="Palatino, Palatino Linotype, Times New Roman, Georgia, serif"
         font-size="700" font-weight="500"
         fill="url(#glifo)">&#945;</text>
 </svg>

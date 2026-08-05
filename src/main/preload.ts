@@ -6,16 +6,12 @@
  * sandbox (platform, versions, env). NO se puede hacer require de archivos del
  * proyecto (por eso no se importa nada de src/compartido) ni de `fs`.
  *
- * Todo lo que se expone acá es informacion inerte: strings de solo lectura.
- * No se filtra `ipcRenderer` crudo al mundo del renderer bajo ningun concepto.
- *
- * A futuro, cuando se sumen los modulos que necesitan hablar con el proceso main
- * (impresion termica de comandas/remitos y auto-updater), los canales IPC tipados
- * se cuelgan de este mismo objeto: cada canal se declara uno por uno, con su
- * firma explicita y validando los argumentos, nunca exponiendo `invoke` generico.
+ * Regla que no se rompe: NUNCA se expone `ipcRenderer` crudo al renderer. Cada
+ * canal se declara uno por uno, con su firma explicita, y los argumentos se
+ * normalizan aca antes de cruzar el puente.
  */
 
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
 /**
  * Fallback de version por si el proceso main no llego a publicar la variable de
@@ -24,24 +20,83 @@ import { contextBridge } from 'electron';
  */
 const VERSION_FALLBACK = '0.1.0';
 
-/** Lee la version que el proceso main publica en el entorno antes de abrir la ventana. */
 function leerVersion(): string {
   const desdeEntorno = process.env?.['ALFAJORES_VERSION'];
   if (typeof desdeEntorno === 'string' && desdeEntorno.trim() !== '') return desdeEntorno.trim();
   return VERSION_FALLBACK;
 }
 
-/** API minima disponible en el renderer como `window.alfajores`. */
+/** Descriptor de una ventana de modulo abierta, tal como lo ve la barra de tareas. */
+export interface DescriptorVentana {
+  readonly id: number;
+  readonly clave: string;
+  readonly titulo: string;
+  readonly icono: string;
+  readonly minimizada: boolean;
+  readonly enfocada: boolean;
+}
+
+/** Solo se dejan pasar strings: nada de objetos arbitrarios cruzando el puente. */
+function normalizarParams(params: unknown): Record<string, string> {
+  if (typeof params !== 'object' || params === null) return {};
+  const limpio: Record<string, string> = {};
+  for (const [clave, valor] of Object.entries(params as Record<string, unknown>)) {
+    if (typeof valor === 'string') limpio[clave] = valor;
+    else if (typeof valor === 'number' && Number.isFinite(valor)) limpio[clave] = String(valor);
+  }
+  return limpio;
+}
+
+function comoEntero(valor: unknown): number {
+  return typeof valor === 'number' && Number.isInteger(valor) ? valor : -1;
+}
+
+const ventanas = {
+  abrir(clave: string, titulo: string, icono: string, params?: unknown): void {
+    ipcRenderer.send('ventanas:abrir', {
+      clave: String(clave),
+      titulo: String(titulo),
+      icono: String(icono),
+      params: normalizarParams(params),
+    });
+  },
+  cerrar(id: number): void {
+    ipcRenderer.send('ventanas:cerrar', comoEntero(id));
+  },
+  minimizar(id: number): void {
+    ipcRenderer.send('ventanas:minimizar', comoEntero(id));
+  },
+  enfocar(id: number): void {
+    ipcRenderer.send('ventanas:enfocar', comoEntero(id));
+  },
+  listar(): Promise<DescriptorVentana[]> {
+    return ipcRenderer.invoke('ventanas:listar') as Promise<DescriptorVentana[]>;
+  },
+  /** Se suscribe a los cambios. Devuelve la funcion para desuscribirse. */
+  alCambiar(callback: (lista: DescriptorVentana[]) => void): () => void {
+    const manejador = (_evento: unknown, lista: DescriptorVentana[]): void => callback(lista);
+    ipcRenderer.on('ventanas:cambio', manejador);
+    return () => {
+      ipcRenderer.removeListener('ventanas:cambio', manejador);
+    };
+  },
+  /** Cierra la ventana de modulo en la que corre este renderer. */
+  cerrarme(): void {
+    ipcRenderer.send('ventanas:cerrarme');
+  },
+} as const;
+
+/** API disponible en el renderer como `window.alfajores`. */
 export interface ApiAlfajores {
-  /** Version del producto. */
   readonly version: string;
-  /** Plataforma del sistema operativo: 'darwin' | 'win32' | 'linux' | ... */
   readonly plataforma: string;
+  readonly ventanas: typeof ventanas;
 }
 
 const api: ApiAlfajores = Object.freeze({
   version: leerVersion(),
   plataforma: process.platform,
+  ventanas,
 });
 
 contextBridge.exposeInMainWorld('alfajores', api);

@@ -1,6 +1,6 @@
 {
   "name": "alfajores-erp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Alpha Gestion \u2014 ERP de escritorio para fabrica de alfajores (Electron + Fastify + SQLite)",
   "private": true,
   "type": "commonjs",
@@ -32,6 +32,7 @@
     "drizzle-orm": "^0.45.2",
     "electron-updater": "^6.8.9",
     "fastify": "^5.11.2",
+    "lucide-react": "^1.28.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

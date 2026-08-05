@@ -49,7 +49,7 @@ const COLUMNAS: readonly Columna<MovimientoStockVista>[] = [
     titulo: 'Cantidad',
     numerica: true,
     celda: (m) => (
-      <span className={m.cantidad < 0 ? 'text-peligro-700' : 'text-menta-700'}>
+      <span className={m.cantidad < 0 ? 'text-peligro-600' : 'text-menta-700'}>
         {formatearCantidadConSigno(m.cantidad)}
       </span>
     ),
@@ -85,21 +85,21 @@ export function PanelLedger({ articuloId, titulo, subtitulo, alCerrar }: Props):
     <aside className="flex w-[46rem] max-w-[45vw] shrink-0 flex-col border-l border-masa-200 bg-masa-50">
       <div className="flex items-start justify-between gap-3 border-b border-masa-200 px-4 py-3">
         <div>
-          <h2 className="font-semibold text-masa-800">{titulo}</h2>
-          <p className="text-xs text-masa-600">{subtitulo}</p>
+          <h2 className="font-semibold text-masa-900">{titulo}</h2>
+          <p className="text-xs text-masa-700">{subtitulo}</p>
         </div>
         <button
           type="button"
           onClick={alCerrar}
           aria-label="Cerrar el detalle"
-          className="rounded-pastilla px-2 py-1 text-masa-600 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
+          className="rounded-pastilla px-2 py-1 text-masa-700 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
         >
           Cerrar
         </button>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        <p className="mb-3 text-xs text-masa-600">
+        <p className="mb-3 text-xs text-masa-700">
           El stock de este articulo es la suma de estos movimientos. No existe un campo de stock
           guardado en la base.
         </p>

@@ -21,6 +21,7 @@ import type {
   ClienteVista,
   CompraVista,
   ErrorApi,
+  Estadisticas,
   GrupoStock,
   ListaPrecioVista,
   MovimientoStockVista,
@@ -29,8 +30,10 @@ import type {
   ProveedorVista,
   RecetaVista,
   RespuestaSalud,
+  ResumenCajaGeneral,
   ResumenCuentaCorriente,
   ResumenGeneral,
+  UsuarioVista,
   SaldoStock,
   VentaVista,
 } from '../../compartido/contratos';
@@ -155,3 +158,23 @@ export const obtenerProveedores = (): Promise<ProveedorVista[]> =>
 
 export const obtenerListasPrecio = (): Promise<ListaPrecioVista[]> =>
   pedirLista<ListaPrecioVista>('/api/listas-precio');
+
+export const obtenerCajaGeneral = (): Promise<ResumenCajaGeneral> =>
+  pedirItem<ResumenCajaGeneral>('/api/caja/general');
+
+export const obtenerEstadisticas = (): Promise<Estadisticas> =>
+  pedirItem<Estadisticas>('/api/estadisticas');
+
+export const obtenerUsuarios = (): Promise<UsuarioVista[]> => pedirLista<UsuarioVista>('/api/usuarios');
+
+/** Aplica una transicion de estado a un pedido. Lanza con el mensaje del servidor si es invalida. */
+export async function cambiarEstadoPedido(pedidoId: number, estado: string): Promise<void> {
+  const ruta = `/api/pedidos/${pedidoId}/estado`;
+  const respuesta = await fetch(ruta, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ estado }),
+  });
+  const cuerpo = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+}

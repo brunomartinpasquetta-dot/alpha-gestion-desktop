@@ -12,13 +12,23 @@
 
 import path from 'node:path';
 
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 
 import { NOMBRE_APP, NOMBRE_PRODUCTO, VERSION_APP } from '../compartido/config';
 import { leerConfig } from '../server/config';
 import { aplicarMigraciones } from '../server/db/migraciones';
 import { iniciarServidor, type ServidorEnMarcha } from '../server/servidor';
 import { iniciarActualizador } from './actualizador';
+import {
+  abrirVentana,
+  cerrarTodas,
+  cerrarVentana,
+  configurarGestorVentanas,
+  enfocarVentana,
+  listarVentanas,
+  minimizarVentana,
+  type SolicitudApertura,
+} from './gestor-ventanas';
 import { registrarCicloVida } from './ciclo-vida';
 import { crearVentanaPrincipal } from './ventana';
 
@@ -173,6 +183,43 @@ async function prepararServidor(): Promise<ServidorEnMarcha | null> {
 }
 
 /** Secuencia completa de arranque. */
+/**
+ * Canales IPC de ventanas. Se registran una sola vez. Los argumentos ya vienen
+ * normalizados desde el preload, pero igual se validan: el proceso main no
+ * confia en lo que llega del renderer.
+ */
+function registrarCanalesDeVentanas(): void {
+  ipcMain.on('ventanas:abrir', (_evento, solicitud: unknown) => {
+    if (typeof solicitud !== 'object' || solicitud === null) return;
+    const { clave, titulo, icono, params } = solicitud as Partial<SolicitudApertura>;
+    if (typeof clave !== 'string' || clave === '') return;
+    abrirVentana({
+      clave,
+      titulo: typeof titulo === 'string' && titulo !== '' ? titulo : clave,
+      icono: typeof icono === 'string' ? icono : 'ventana',
+      params: typeof params === 'object' && params !== null ? params : undefined,
+    });
+  });
+
+  ipcMain.on('ventanas:cerrar', (_evento, id: unknown) => {
+    if (typeof id === 'number') cerrarVentana(id);
+  });
+  ipcMain.on('ventanas:minimizar', (_evento, id: unknown) => {
+    if (typeof id === 'number') minimizarVentana(id);
+  });
+  ipcMain.on('ventanas:enfocar', (_evento, id: unknown) => {
+    if (typeof id === 'number') enfocarVentana(id);
+  });
+
+  // La ventana de modulo se cierra a si misma: el id sale del emisor, no de un
+  // argumento, asi una ventana no puede cerrar a otra.
+  ipcMain.on('ventanas:cerrarme', (evento) => {
+    BrowserWindow.fromWebContents(evento.sender)?.close();
+  });
+
+  ipcMain.handle('ventanas:listar', () => listarVentanas());
+}
+
 async function arrancar(): Promise<void> {
   await app.whenReady();
 
@@ -181,6 +228,14 @@ async function arrancar(): Promise<void> {
   const servidor = await prepararServidor();
   if (!servidor) return;
   servidorActual = servidor;
+
+  // El gestor necesita la URL base para armar las rutas #/embedded de cada modulo.
+  configurarGestorVentanas({
+    urlBase: esDesarrollo && urlVite !== '' ? urlVite : servidor.url,
+    esDesarrollo,
+    obtenerPrincipal: () => ventanaPrincipal,
+  });
+  registrarCanalesDeVentanas();
 
   crearVentana();
 
@@ -208,6 +263,10 @@ if (!obtuvoBloqueo) {
     ventanaPrincipal.show();
     ventanaPrincipal.focus();
   });
+
+  // Al salir, las ventanas de modulo se destruyen primero: si quedan vivas,
+  // 'window-all-closed' no se dispara nunca y la app queda colgada.
+  app.on('before-quit', cerrarTodas);
 
   registrarCicloVida(() => servidorActual, crearVentana);
 
