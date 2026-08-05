@@ -56,3 +56,56 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: npm run publicar:mac
+
+  # electron-builder publica en borrador y NUNCA adjunta a la release de otro
+  # job: cada plataforma termina creando SU release para el mismo tag, y las
+  # URLs por tag (/releases/download/<tag>/...) resuelven solo una de las dos.
+  # En v0.3.0 el tag quedo en manos de la release de macOS y el updater de
+  # Windows (latest.yml) daba 404. Este job unifica: mueve todos los assets a
+  # una sola release por tag y borra las duplicadas. Corre para TODOS los tags,
+  # asi tambien limpia lo historico.
+  consolidar-releases:
+    runs-on: ubuntu-latest
+    needs: publicar-macos
+    steps:
+      - name: Unificar releases duplicadas por tag
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          duplicados=$(gh api "repos/$REPO/releases" --paginate --jq '.[].tag_name' | sort | uniq -d)
+          if [ -z "$duplicados" ]; then
+            echo "Sin releases duplicadas."
+            exit 0
+          fi
+          for tag in $duplicados; do
+            echo "== consolidando $tag =="
+            ids=$(gh api "repos/$REPO/releases" --paginate \
+              --jq "[.[] | select(.tag_name==\"$tag\")] | sort_by(.id) | .[].id")
+            principal=$(echo "$ids" | head -1)
+            for id in $(echo "$ids" | tail -n +2); do
+              gh api "repos/$REPO/releases/$id/assets" --jq '.[] | "\(.id)\t\(.name)"' \
+              | while IFS=$'\t' read -r aid nombre; do
+                ya=$(gh api "repos/$REPO/releases/$principal/assets" \
+                  --jq "[.[] | select(.name==\"$nombre\")] | length")
+                if [ "$ya" != "0" ]; then
+                  echo "   $nombre ya existe en la principal, se omite"
+                  continue
+                fi
+                curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/octet-stream" \
+                  -o "/tmp/$nombre" \
+                  "https://api.github.com/repos/$REPO/releases/assets/$aid"
+                curl -fsS -o /dev/null \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Content-Type: application/octet-stream" \
+                  --data-binary "@/tmp/$nombre" \
+                  "https://uploads.github.com/repos/$REPO/releases/$principal/assets?name=$nombre"
+                rm -f "/tmp/$nombre"
+                echo "   $nombre -> release $principal"
+              done
+              gh api -X DELETE "repos/$REPO/releases/$id"
+              echo "   release duplicada $id eliminada"
+            done
+          done
