@@ -11,50 +11,48 @@ on:
 permissions:
   contents: write # crear el release y subir los artefactos con el GITHUB_TOKEN integrado
 
+# Los dos sistemas publican SECUENCIALMENTE a proposito. En v0.2.0 corrieron en
+# paralelo y cada electron-builder creo SU PROPIA release para el mismo tag
+# (carrera al verificar si existia): los assets quedaron repartidos en dos
+# releases y las URLs por tag resolvian solo una. Con Windows primero y macOS
+# despues, el segundo encuentra la release ya creada y adjunta ahi.
 jobs:
-  publicar:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-
+  publicar-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      # `npm ci` dispara el postinstall (electron-rebuild), que deja los modulos
-      # nativos compilados para la plataforma del runner. Por eso el build de
-      # Windows corre EN Windows y el de macOS en macOS: cross-compilar nativos
-      # no es una opcion.
+      # `npm ci` dispara el postinstall (electron-rebuild): los nativos quedan
+      # compilados para la plataforma del runner. Cross-compilar no es opcion.
       - run: npm ci
-
-      - name: Publicar (macOS)
-        if: matrix.os == 'macos-latest'
-        env:
-          # PAT si existe; si no, el GITHUB_TOKEN integrado. Sin token,
-          # electron-builder aborta con "GitHub Personal Access Token is not set".
-          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          EP_PRE_RELEASE: ${{ contains(github.ref_name, '-beta') }}
-          # Si los secrets de firma no estan cargados, electron-builder publica
-          # sin firmar y el auto-update de macOS queda inactivo (ver
-          # src/main/actualizador.ts).
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: npm run publicar:mac
-
       - name: Publicar (Windows)
-        if: matrix.os == 'windows-latest'
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           EP_PRE_RELEASE: ${{ contains(github.ref_name, '-beta') }}
           # OJO: NO definir CSC_LINK aca. Si el secret no existe llega como
-          # string vacio, y electron-builder lo interpreta como ruta de
-          # certificado y falla al no poder resolverla. Sin definir, saltea la
-          # firma y publica un .exe sin firmar (SmartScreen pedira confirmacion
-          # la primera vez).
+          # string vacio y electron-builder lo trata como ruta de certificado.
+          # Sin definir, saltea la firma (SmartScreen pide confirmar una vez).
         run: npm run publicar:win
+
+  publicar-macos:
+    runs-on: macos-latest
+    needs: publicar-windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Publicar (macOS)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
+          EP_PRE_RELEASE: ${{ contains(github.ref_name, '-beta') }}
+          # Sin estos secrets, publica sin firmar y el auto-update de macOS
+          # queda inactivo (ver src/main/actualizador.ts).
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npm run publicar:mac
