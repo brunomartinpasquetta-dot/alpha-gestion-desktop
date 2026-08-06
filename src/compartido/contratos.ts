@@ -716,6 +716,22 @@ export const NOMBRES_COMPROBANTE: Record<TipoComprobante, string> = {
   factura_a: 'Factura A',
 };
 
+/**
+ * Condicion del RECEPTOR frente al IVA, obligatoria en el comprobante desde la
+ * RG 5616. Los codigos son los de la tabla FEParamGetCondicionIvaReceptor.
+ * Una Factura A solo puede ir a un Responsable Inscripto, asi que en ese caso
+ * no se pregunta: se manda 1.
+ */
+export const CONDICIONES_IVA_RECEPTOR = [
+  { codigo: 5, etiqueta: 'Consumidor Final' },
+  { codigo: 6, etiqueta: 'Monotributo' },
+  { codigo: 4, etiqueta: 'Exento' },
+  { codigo: 1, etiqueta: 'Responsable Inscripto' },
+] as const;
+
+export const CODIGO_RECEPTOR_RI = 1;
+export const CODIGO_RECEPTOR_CONSUMIDOR_FINAL = 5;
+
 /** Cuerpo de POST /api/ventas. La venta nace ENTREGADA: registra un hecho. */
 export interface EntradaNuevaVenta {
   clienteId?: number | null;
@@ -725,6 +741,8 @@ export interface EntradaNuevaVenta {
   notas?: string | null;
   /** Por defecto 'remito': comportamiento historico, sin ARCA de por medio. */
   comprobante?: TipoComprobante;
+  /** Condicion del receptor frente al IVA. Solo se usa en Factura B. */
+  condicionIvaReceptor?: number;
   items: EntradaItemVenta[];
 }
 

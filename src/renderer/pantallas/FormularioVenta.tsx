@@ -16,6 +16,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
+import {
+  CODIGO_RECEPTOR_CONSUMIDOR_FINAL,
+  CONDICIONES_IVA_RECEPTOR,
+} from '../../compartido/contratos';
 import type {
   ArticuloConStock,
   ClienteVista,
@@ -64,6 +68,9 @@ export function FormularioVenta({
   const [formaPago, setFormaPago] = useState<FormaPago>('contado');
   const [pedidoId, setPedidoId] = useState<number | ''>('');
   const [comprobante, setComprobante] = useState<TipoComprobante>('remito');
+  const [condicionIvaReceptor, setCondicionIvaReceptor] = useState<number>(
+    CODIGO_RECEPTOR_CONSUMIDOR_FINAL,
+  );
   const [seleccion, setSeleccion] = useState<Seleccion>({});
   const [preciosEditados, setPreciosEditados] = useState<PreciosEditados>({});
   const [notas, setNotas] = useState('');
@@ -186,6 +193,7 @@ export function FormularioVenta({
       pedidoId: pedidoId === '' ? null : pedidoId,
       notas: notas.trim() || null,
       comprobante,
+      condicionIvaReceptor,
       items,
     };
     crearVenta(entrada)
@@ -341,6 +349,31 @@ export function FormularioVenta({
                   </p>
                 )}
               </div>
+
+              {/* ARCA exige la condicion del receptor desde la RG 5616. En la
+                  Factura A no se pregunta: solo la recibe un Responsable Inscripto. */}
+              {comprobante === 'factura_b' && (
+                <div>
+                  <label htmlFor="v-cond-iva" className={rotulo}>
+                    Condicion del cliente frente al IVA
+                  </label>
+                  <select
+                    id="v-cond-iva"
+                    value={condicionIvaReceptor}
+                    onChange={(e) => setCondicionIvaReceptor(Number(e.target.value))}
+                    className={campo}
+                  >
+                    {CONDICIONES_IVA_RECEPTOR.map((c) => (
+                      <option key={c.codigo} value={c.codigo}>
+                        {c.etiqueta}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-masa-700">
+                    ARCA la exige en el comprobante. Si el cliente no aclara nada, va Consumidor Final.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <p className={rotulo}>Productos · cantidades en cajas</p>

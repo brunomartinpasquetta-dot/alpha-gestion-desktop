@@ -9,11 +9,14 @@
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
 
-import type {
-  ConfiguracionFiscalVista,
-  EntradaConfiguracionFiscal,
-  ResultadoPruebaArca,
-  TipoComprobante,
+import {
+  CODIGO_RECEPTOR_CONSUMIDOR_FINAL,
+  CODIGO_RECEPTOR_RI,
+  CONDICIONES_IVA_RECEPTOR,
+  type ConfiguracionFiscalVista,
+  type EntradaConfiguracionFiscal,
+  type ResultadoPruebaArca,
+  type TipoComprobante,
 } from '../../compartido/contratos';
 import { obtenerDb, obtenerRutaDb } from '../db/conexion';
 import { configuracionFiscal, type ConfiguracionFiscal } from '../db/schema';
@@ -170,7 +173,7 @@ export const fiscalServicio = {
   async emitirComprobante(datos: {
     tipo: Exclude<TipoComprobante, 'remito'>;
     totalCentavos: number;
-    receptor: { nombre: string; cuit: string | null };
+    receptor: { nombre: string; cuit: string | null; condicionIva?: number };
   }): Promise<DatosComprobanteAprobado> {
     const config = obtenerFila();
     if (!config.habilitada || !config.rutaCertificado || !config.rutaClave) {
@@ -191,6 +194,17 @@ export const fiscalServicio = {
     // Factura B: con CUIT se informa; sin CUIT va como consumidor final (99/0).
     const docTipo = cuitReceptor.length === 11 ? 80 : 99;
     const docNumero = cuitReceptor.length === 11 ? cuitReceptor : '0';
+
+    // Condicion del receptor frente al IVA (RG 5616). En la Factura A no se
+    // pregunta: solo un Responsable Inscripto puede recibirla.
+    const condicionesValidas = CONDICIONES_IVA_RECEPTOR.map((c) => c.codigo) as readonly number[];
+    const condicionIvaReceptor =
+      datos.tipo === 'factura_a'
+        ? CODIGO_RECEPTOR_RI
+        : datos.receptor.condicionIva !== undefined &&
+            condicionesValidas.includes(datos.receptor.condicionIva)
+          ? datos.receptor.condicionIva
+          : CODIGO_RECEPTOR_CONSUMIDOR_FINAL;
 
     // Precios de venta son FINALES (IVA incluido): neto = total / 1.21.
     const netoCentavos = Math.round(datos.totalCentavos / 1.21);
@@ -223,6 +237,7 @@ export const fiscalServicio = {
         neto,
         iva,
         total,
+        condicionIvaReceptor,
         detallesIva: [{ id: ALICUOTA_21, base: neto, importe: iva }],
       });
     } catch (error) {

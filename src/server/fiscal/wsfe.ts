@@ -30,6 +30,8 @@ export interface PedidoCae {
   neto: number;
   iva: number;
   total: number;
+  /** Codigo de la tabla FEParamGetCondicionIvaReceptor (RG 5616). */
+  condicionIvaReceptor: number;
   detallesIva: DetalleIva[];
 }
 
@@ -216,6 +218,9 @@ export class ClienteWsfe {
       `<ar:ImpIVA>${f2(pedido.iva)}</ar:ImpIVA>`,
       '<ar:MonId>PES</ar:MonId>',
       '<ar:MonCotiz>1</ar:MonCotiz>',
+      // El orden de los elementos lo fija el XSD de ARCA: este campo va despues
+      // de MonCotiz y antes de Iva, o el comprobante se rechaza por esquema.
+      `<ar:CondicionIVAReceptorId>${pedido.condicionIvaReceptor}</ar:CondicionIVAReceptorId>`,
       xmlIva,
       '</ar:FECAEDetRequest>',
       '</ar:FeDetReq>',

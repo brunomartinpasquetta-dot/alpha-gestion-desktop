@@ -86,6 +86,7 @@ const esquemaNuevaVenta = z.object({
   pedidoId: z.number().int().positive().nullable().optional(),
   notas: z.string().max(500).nullable().optional(),
   comprobante: z.enum(TIPOS_COMPROBANTE).optional(),
+  condicionIvaReceptor: z.number().int().positive().max(20).optional(),
   items: z
     .array(
       z.object({
