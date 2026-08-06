@@ -308,6 +308,58 @@ export function PantallaContabilidad(): JSX.Element {
  * (como en StockFlow). Esta pantalla solo define con que datos y con que
  * certificado se le habla a ARCA, y permite probar la conexion antes de operar.
  */
+/**
+ * Campo de ruta de archivo con selector del sistema. Escribir la ruta a mano es
+ * la principal fuente de errores al configurar ARCA —sobre todo en Windows, con
+ * sus barras invertidas— y el sintoma es un rechazo que no explica nada.
+ */
+function CampoArchivo({
+  id,
+  rotulo,
+  valor,
+  extensiones,
+  alCambiar,
+}: {
+  readonly id: string;
+  readonly rotulo: string;
+  readonly valor: string;
+  readonly extensiones: readonly string[];
+  readonly alCambiar: (valor: string) => void;
+}): JSX.Element {
+  const puedeBuscar = typeof window.alfajores?.archivos?.elegir === 'function';
+  const buscar = (): void => {
+    void window.alfajores?.archivos.elegir(rotulo, extensiones).then((ruta) => {
+      if (ruta !== null && ruta !== undefined) alCambiar(ruta);
+    });
+  };
+
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
+        {rotulo}
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={id}
+          value={valor}
+          onChange={(e) => alCambiar(e.target.value)}
+          placeholder={extensiones.map((e) => `archivo.${e}`).join(' / ')}
+          className="h-10 min-w-0 flex-1 rounded-ficha border border-masa-300 bg-white px-3 font-mono text-xs text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400"
+        />
+        {puedeBuscar && (
+          <button
+            type="button"
+            onClick={buscar}
+            className="shrink-0 rounded-ficha border border-masa-300 px-3 text-sm font-medium text-masa-800 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
+          >
+            Buscar...
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PantallaFacturacion(): JSX.Element {
   const [config, setConfig] = useState<EntradaConfiguracionFiscal | null>(null);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
@@ -489,28 +541,24 @@ export function PantallaFacturacion(): JSX.Element {
           </div>
         </div>
 
+        <CampoArchivo
+          id="f-cert"
+          rotulo="Certificado ARCA (.crt / .pem)"
+          valor={config.rutaCertificado ?? ''}
+          extensiones={['crt', 'pem', 'cer']}
+          alCambiar={(v) => editar('rutaCertificado', v)}
+        />
         <div>
-          <label htmlFor="f-cert" className={rotulo}>Certificado ARCA (.crt / .pem)</label>
-          <input
-            id="f-cert"
-            value={config.rutaCertificado ?? ''}
-            onChange={(e) => editar('rutaCertificado', e.target.value)}
-            placeholder="/Users/.../certificado.crt"
-            className={`${campo} font-mono text-xs`}
-          />
-        </div>
-        <div>
-          <label htmlFor="f-key" className={rotulo}>Clave privada (.key)</label>
-          <input
+          <CampoArchivo
             id="f-key"
-            value={config.rutaClave ?? ''}
-            onChange={(e) => editar('rutaClave', e.target.value)}
-            placeholder="/Users/.../clave.key"
-            className={`${campo} font-mono text-xs`}
+            rotulo="Clave privada (.key)"
+            valor={config.rutaClave ?? ''}
+            extensiones={['key', 'pem']}
+            alCambiar={(v) => editar('rutaClave', v)}
           />
           <p className="mt-1 text-xs text-masa-700">
-            Rutas absolutas al certificado del tramite de ARCA y a la clave con la que se genero.
-            No se copian: se leen del disco al firmar.
+            Son los dos archivos del tramite de ARCA. No se copian a ningun lado: se leen del disco
+            cada vez que se firma.
           </p>
         </div>
 

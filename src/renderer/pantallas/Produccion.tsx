@@ -18,13 +18,19 @@ import {
   type RecetaVista,
 } from '../../compartido/contratos';
 import { Pastilla, type TonoPastilla } from '../componentes/comunes';
-import { Aviso, BotonPrimario } from '../componentes/Formulario';
+import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { cambiarEstadoOrden, obtenerOrdenesProduccion, obtenerRecetas } from '../servicios/cliente';
+import {
+  cambiarActivaReceta,
+  cambiarEstadoOrden,
+  obtenerOrdenesProduccion,
+  obtenerRecetas,
+} from '../servicios/cliente';
 import { FormularioNuevaOrden } from './FormulariosOperacion';
+import { FormularioReceta } from './FormulariosProduccion';
 import {
   formatearCantidad,
   formatearCantidadConUnidad,
@@ -39,13 +45,44 @@ import {
 export function PantallaRecetas(): JSX.Element {
   const estado = usarRecurso(() => obtenerRecetas(), []);
   const [expandida, setExpandida] = useState<number | null>(null);
+  const [enEdicion, setEnEdicion] = useState<RecetaVista | null | undefined>(undefined);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+
+  const cambiarActiva = (receta: RecetaVista): void => {
+    const alta = !receta.activa;
+    setAviso(null);
+    cambiarActivaReceta(receta.id, alta)
+      .then(() => {
+        estado.recargar();
+        setAviso({
+          tono: 'ok',
+          texto: `Receta de ${receta.articuloProducidoNombre} ${alta ? 'activada' : 'desactivada'}.`,
+        });
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
 
   return (
-    <Vista
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Editar una receta no cambia las tandas ya producidas: cada orden guarda su propia copia.
+        </p>
+        <BotonPrimario onClick={() => setEnEdicion(null)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nueva receta
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
       estado={estado}
       que="las recetas"
       tituloVacio="Sin recetas"
-      detalleVacio="No hay formulas de produccion cargadas. Corre el seed para cargar las recetas base."
+      detalleVacio="Carga la primera formula con el boton Nueva receta."
       comandoVacio="npm run db:seed"
     >
       {(recetas) => (
@@ -91,6 +128,16 @@ export function PantallaRecetas(): JSX.Element {
                   </div>
                 </button>
 
+                <div className="flex gap-1 border-t border-masa-100 px-4 py-2">
+                  <BotonFila onClick={() => setEnEdicion(receta)}>Editar receta</BotonFila>
+                  <BotonFila
+                    onClick={() => cambiarActiva(receta)}
+                    tono={receta.activa ? 'peligro' : 'neutro'}
+                  >
+                    {receta.activa ? 'Desactivar' : 'Activar'}
+                  </BotonFila>
+                </div>
+
                 {abierta && (
                   <div className="border-t border-masa-200 bg-masa-50 px-4 py-3">
                     <table className="w-full text-sm">
@@ -129,7 +176,20 @@ export function PantallaRecetas(): JSX.Element {
           })}
         </div>
       )}
-    </Vista>
+      </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioReceta
+          receta={enEdicion}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso({ tono: 'ok', texto: mensaje });
+          }}
+        />
+      )}
+    </div>
   );
 }
 

@@ -86,17 +86,32 @@ const ventanas = {
   },
 } as const;
 
+/**
+ * Abre el selector de archivo del sistema. `extensiones` sin punto ('crt', 'key').
+ * Devuelve la ruta absoluta elegida, o null si el usuario cancelo.
+ */
+const archivos = {
+  elegir(titulo: string, extensiones: readonly string[]): Promise<string | null> {
+    return ipcRenderer.invoke('archivo:elegir', {
+      titulo: String(titulo),
+      extensiones: extensiones.map((e) => String(e)),
+    }) as Promise<string | null>;
+  },
+} as const;
+
 /** API disponible en el renderer como `window.alfajores`. */
 export interface ApiAlfajores {
   readonly version: string;
   readonly plataforma: string;
   readonly ventanas: typeof ventanas;
+  readonly archivos: typeof archivos;
 }
 
 const api: ApiAlfajores = Object.freeze({
   version: leerVersion(),
   plataforma: process.platform,
   ventanas,
+  archivos,
 });
 
 contextBridge.exposeInMainWorld('alfajores', api);

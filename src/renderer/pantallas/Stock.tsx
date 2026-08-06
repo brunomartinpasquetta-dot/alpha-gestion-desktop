@@ -27,6 +27,7 @@ import {
   obtenerUnidades,
 } from '../servicios/cliente';
 import { FormularioArticulo } from './FormulariosMaestros';
+import { FormularioAjusteStock } from './FormulariosProduccion';
 import { formatearCajas, formatearCantidad, formatearMoneda } from '../utiles/formato';
 
 export interface PropsConSeleccion {
@@ -167,6 +168,8 @@ export function PantallaArticulos({
 }: PropsConSeleccion): JSX.Element {
   const estado = usarRecurso(() => obtenerArticulos(), []);
   const [enEdicion, setEnEdicion] = useState<ArticuloConStock | null | undefined>(undefined);
+  // `undefined` = cerrado; `null` = elegir el articulo dentro del formulario.
+  const [ajustando, setAjustando] = useState<ArticuloConStock | null | undefined>(undefined);
   const [unidades, setUnidades] = useState<UnidadMedidaVista[]>([]);
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
 
@@ -198,6 +201,7 @@ export function PantallaArticulos({
       celda: (a) => (
         <div className="flex gap-1">
           <BotonFila onClick={() => setEnEdicion(a)}>Editar</BotonFila>
+          <BotonFila onClick={() => setAjustando(a)}>Ajustar</BotonFila>
           <BotonFila onClick={() => cambiarActivo(a)} tono={a.activo ? 'peligro' : 'neutro'}>
             {a.activo ? 'Dar de baja' : 'Reactivar'}
           </BotonFila>
@@ -212,10 +216,19 @@ export function PantallaArticulos({
         <p className="text-sm text-masa-800">
           Hace clic en una fila para ver su ledger de movimientos.
         </p>
-        <BotonPrimario onClick={() => setEnEdicion(null)}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Nuevo articulo
-        </BotonPrimario>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => setAjustando(null)}
+            className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
+          >
+            Ajustar stock
+          </button>
+          <BotonPrimario onClick={() => setEnEdicion(null)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nuevo articulo
+          </BotonPrimario>
+        </div>
       </div>
 
       {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
@@ -246,6 +259,18 @@ export function PantallaArticulos({
           alCerrar={() => setEnEdicion(undefined)}
           alGuardar={(mensaje) => {
             setEnEdicion(undefined);
+            estado.recargar();
+            setAviso({ tono: 'ok', texto: mensaje });
+          }}
+        />
+      )}
+
+      {ajustando !== undefined && (
+        <FormularioAjusteStock
+          articulo={ajustando}
+          alCerrar={() => setAjustando(undefined)}
+          alGuardar={(mensaje) => {
+            setAjustando(undefined);
             estado.recargar();
             setAviso({ tono: 'ok', texto: mensaje });
           }}

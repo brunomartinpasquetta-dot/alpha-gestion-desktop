@@ -25,10 +25,16 @@ export interface ApiVentanas {
   cerrarme(): void;
 }
 
+export interface ApiArchivos {
+  /** Abre el selector del sistema. `extensiones` sin punto. null = cancelo. */
+  elegir(titulo: string, extensiones: readonly string[]): Promise<string | null>;
+}
+
 export interface ApiAlfajores {
   readonly version: string;
   readonly plataforma: string;
   readonly ventanas: ApiVentanas;
+  readonly archivos: ApiArchivos;
 }
 
 declare global {

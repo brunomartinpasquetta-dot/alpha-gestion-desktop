@@ -944,3 +944,47 @@ export interface EntradaNuevaOrden {
   pedidoId?: number | null;
   notas?: string | null;
 }
+
+/* ====================== AJUSTES, RECETAS Y PRECIOS ======================= */
+
+export interface EntradaAjusteStock {
+  articuloId: number;
+  /** Delta CON SIGNO en unidad base: positivo suma, negativo resta. */
+  cantidad: number;
+  /** Obligatorio: un ajuste sin explicacion es un agujero contable. */
+  motivo: string;
+  /** true = mercaderia descartada (se asienta como merma, no como ajuste). */
+  esMerma?: boolean;
+}
+
+export interface ResultadoAjuste {
+  articuloNombre: string;
+  saldoPrevio: number;
+  saldoNuevo: number;
+  advertencias: string[];
+}
+
+export interface EntradaItemReceta {
+  articuloInsumoId: number;
+  cantidad: number;
+  mermaEsperadaPct?: number;
+}
+
+export interface EntradaReceta {
+  articuloProducidoId: number;
+  /** Cuanto sale de una tanda, en la unidad base del producido. */
+  rindeCantidad: number;
+  notas?: string | null;
+  items: EntradaItemReceta[];
+}
+
+export interface EntradaListaPrecio {
+  nombre: string;
+}
+
+export interface EntradaPrecio {
+  listaPrecioId: number;
+  articuloId: number;
+  /** Centavos por unidad base. */
+  precio: number;
+}

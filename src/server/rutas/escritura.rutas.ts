@@ -19,6 +19,7 @@ import {
 } from '../db/schema';
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
+import { ajustesServicio } from '../servicios/ajustes.servicio';
 import { comprasServicio } from '../servicios/compras.servicio';
 import { maestrosServicio } from '../servicios/maestros.servicio';
 import { produccionServicio } from '../servicios/produccion.servicio';
@@ -104,6 +105,37 @@ const esquemaCobroPago = z.object({
   monto: z.number().int().positive(),
   medio: z.enum(['efectivo', 'cheque', 'transferencia']),
   notas: textoOpcional(300),
+});
+
+const esquemaAjuste = z.object({
+  articuloId: z.number().int().positive(),
+  cantidad: z.number().refine((n) => n !== 0, 'El ajuste no puede ser cero').gte(-1_000_000).lte(1_000_000),
+  motivo: z.string().min(3).max(300),
+  esMerma: z.boolean().optional(),
+});
+
+const esquemaReceta = z.object({
+  articuloProducidoId: z.number().int().positive(),
+  rindeCantidad: z.number().gt(0).max(1_000_000),
+  notas: textoOpcional(500),
+  items: z
+    .array(
+      z.object({
+        articuloInsumoId: z.number().int().positive(),
+        cantidad: z.number().gt(0).max(1_000_000),
+        mermaEsperadaPct: z.number().min(0).max(100).optional(),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+const esquemaListaPrecio = z.object({ nombre: z.string().min(2).max(80) });
+
+const esquemaPrecio = z.object({
+  listaPrecioId: z.number().int().positive(),
+  articuloId: z.number().int().positive(),
+  precio: z.number().int().min(0),
 });
 
 const esquemaNuevaOrden = z.object({
@@ -206,6 +238,44 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
   app.post('/api/cuentas-corrientes/movimientos', (request: FastifyRequest, reply: FastifyReply) => {
     const entrada = validarOFallar(esquemaCobroPago, request.body, 'El cobro o pago enviado no es valido.');
     return reply.status(201).send({ datos: tesoreriaServicio.registrarCobroPago(entrada) });
+  });
+
+  /* ---------------------------- Ajustes de stock --------------------------- */
+
+  app.post('/api/stock/ajustes', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaAjuste, request.body, 'El ajuste enviado no es valido.');
+    return reply.status(201).send({ datos: ajustesServicio.ajustarStock(entrada) });
+  });
+
+  /* --------------------------------- Recetas ------------------------------- */
+
+  app.post('/api/recetas', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaReceta, request.body, 'La receta enviada no es valida.');
+    return reply.status(201).send({ datos: ajustesServicio.guardarReceta(null, entrada) });
+  });
+
+  app.put('/api/recetas/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la receta no es valido.');
+    const entrada = validarOFallar(esquemaReceta, request.body, 'La receta enviada no es valida.');
+    return reply.status(200).send({ datos: ajustesServicio.guardarReceta(id, entrada) });
+  });
+
+  app.patch('/api/recetas/:id/activa', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la receta no es valido.');
+    const { activo } = validarOFallar(esquemaActivo, request.body, 'El estado enviado no es valido.');
+    return reply.status(200).send({ datos: ajustesServicio.cambiarActivaReceta(id, activo) });
+  });
+
+  /* ----------------------------- Listas de precio -------------------------- */
+
+  app.post('/api/listas-precio', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaListaPrecio, request.body, 'La lista enviada no es valida.');
+    return reply.status(201).send({ datos: ajustesServicio.crearListaPrecio(entrada) });
+  });
+
+  app.post('/api/listas-precio/precios', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaPrecio, request.body, 'El precio enviado no es valido.');
+    return reply.status(201).send({ datos: ajustesServicio.fijarPrecio(entrada) });
   });
 
   /* ------------------------------- Produccion ------------------------------ */

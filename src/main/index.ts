@@ -218,6 +218,36 @@ function registrarCanalesDeVentanas(): void {
   });
 
   ipcMain.handle('ventanas:listar', () => listarVentanas());
+
+  /**
+   * Selector de archivo nativo. Existe por el certificado de ARCA: escribir a
+   * mano `C:\\Users\\...\\certificado.crt` es una fuente de errores que despues
+   * aparecen como un rechazo incomprensible de ARCA. Devuelve la ruta elegida o
+   * null si el usuario cancelo.
+   */
+  ipcMain.handle('archivo:elegir', async (evento, solicitud: unknown) => {
+    const { titulo, extensiones } = (solicitud ?? {}) as {
+      titulo?: unknown;
+      extensiones?: unknown;
+    };
+    const ventana = BrowserWindow.fromWebContents(evento.sender);
+    const filtros =
+      Array.isArray(extensiones) && extensiones.every((e) => typeof e === 'string')
+        ? [{ name: 'Archivos permitidos', extensions: extensiones as string[] }]
+        : [];
+
+    const opciones = {
+      title: typeof titulo === 'string' ? titulo : 'Elegir archivo',
+      properties: ['openFile' as const],
+      filters: [...filtros, { name: 'Todos los archivos', extensions: ['*'] }],
+    };
+    const resultado =
+      ventana === null
+        ? await dialog.showOpenDialog(opciones)
+        : await dialog.showOpenDialog(ventana, opciones);
+
+    return resultado.canceled ? null : (resultado.filePaths[0] ?? null);
+  });
 }
 
 async function arrancar(): Promise<void> {

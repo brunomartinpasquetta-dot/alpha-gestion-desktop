@@ -1,6 +1,6 @@
 # Estado del proyecto — Alpha Gestión
 
-**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.7.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
+**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.8.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
 
 Este documento dice qué está terminado, qué falta y en qué orden conviene hacerlo
 para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
@@ -9,10 +9,10 @@ para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
 
 ## 1. Resumen en una línea
 
-El sistema **ya opera**: se puede vender, comprar, producir, cobrar, pagar y
-facturar electrónicamente. Lo que falta para presentarlo es **cerrar tres huecos
-funcionales** (recetas, ajustes de stock, listas de precio), **imprimir los
-comprobantes** y **probarlo en Windows**, que es donde va a correr.
+El sistema **ya opera completo**: se puede vender, comprar, producir, cobrar,
+pagar, ajustar stock, cargar recetas y precios, y facturar electrónicamente.
+Quedan **dos cosas** para presentarlo: **imprimir los comprobantes** y
+**probarlo en Windows**, que es donde va a correr.
 
 ---
 
@@ -51,29 +51,28 @@ comprobantes** y **probarlo en Windows**, que es donde va a correr.
 
 **B1 · Probar el sistema corriendo en Windows.**
 El cliente usa Windows y el sistema nunca se ejecutó ahí: se compila en CI pero
-el runtime no se ejercitó. Riesgo concreto: rutas de archivos, el `openssl` que
-usa la firma de ARCA (en Windows puede no estar en el PATH), y los permisos de
-red. **Es el mayor riesgo abierto del proyecto.**
+el runtime no se ejercitó. **Sigue siendo el mayor riesgo abierto**, aunque en
+v0.8.0 se le quitó el diente más peligroso (la dependencia de `openssl`). Lo que
+queda por verificar es de menor calibre: permisos de red y comportamiento del
+instalador. Una revisión del código no encontró rutas POSIX ni procesos externos.
 
 **B2 · Imprimir comprobantes.**
 Hoy la venta se registra y obtiene el CAE, pero no hay forma de entregarle al
 cliente un papel. Falta el remito/factura imprimible con el QR de ARCA. Sin esto
 la fábrica no puede operar de verdad.
 
-**B3 · Ajuste manual de stock.**
-No hay forma de corregir un stock sin inventar una compra o una venta. Es
-imprescindible: roturas, mermas, recuentos, y la carga inicial del stock real
-cuando el cliente arranque.
+~~**B3 · Ajuste manual de stock.**~~ ✅ **HECHO en v0.8.0.** Con dos modos:
+cargar lo que se contó (el sistema calcula la diferencia) o sumar/restar. El
+motivo es obligatorio y se asienta como movimiento, nunca se edita el saldo.
 
-**B4 · ABM de recetas.**
-Las recetas son el corazón de la producción y hoy solo se leen: vienen del seed.
-El cliente no puede cargar sus propias fórmulas, así que no puede producir nada
-suyo.
+~~**B4 · ABM de recetas.**~~ ✅ **HECHO en v0.8.0.** Alta, edición y
+activación. Editar una receta no altera las tandas ya producidas.
 
 ### 🟡 IMPORTANTES antes de que opere en serio
 
-**I1 · ABM de listas de precio.** Se ven pero no se editan. Sin esto no puede
-actualizar precios, que en Argentina es semanal.
+~~**I1 · ABM de listas de precio.**~~ ✅ **HECHO en v0.8.0.** Crear listas y
+fijar precios. Un precio nuevo no pisa al anterior: rige desde hoy y el
+historial se conserva.
 
 **I2 · Carga inicial de datos del cliente.** Hoy la base tiene datos de
 demostración. Hace falta una forma de arrancar limpio y cargar sus artículos,
@@ -117,7 +116,7 @@ pedido mal cargado desde el celular.
 | # | Problema | Impacto | Plan |
 |---|---|---|---|
 | R1 | **Nunca se ejecutó en Windows** | Alto | Probar antes de presentar (B1) |
-| R2 | **`openssl` externo para firmar ARCA** | Alto en Windows | Verificar que exista o empaquetarlo |
+| ~~R2~~ | ~~`openssl` externo para firmar ARCA~~ | — | ✅ **RESUELTO en v0.8.0**: la firma la hace node-forge, que viaja dentro de la app. Verificado contra ARCA real |
 | R3 | **Sin autenticación** | Medio | Decidir con el cliente (I3) |
 | R4 | **El túnel de Cloudflare llegaría como "local"** y saltearía el PIN | Alto si se expone a internet | Endurecer antes de montar el túnel. Documentado en `guardia-pin.ts` |
 | R5 | **App de Mac sin firmar** | Bajo | Auto-actualización desactivada en Mac; en Windows funciona |
@@ -131,35 +130,37 @@ pedido mal cargado desde el celular.
 - **Releases duplicados** en GitHub por electron-builder.
 - **Cola offline duplicaba pedidos** al reintentar.
 
-### Estado del release v0.7.0
+### Estado del release
 
-⚠️ El tag está pusheado pero **GitHub Actions tiene una caída general** desde el
-6/8, así que el instalador de Windows de esta versión todavía no se generó. Hay
-un vigilante que lo publica en cuanto se recupere. **El Mac ya tiene v0.7.0.**
+⚠️ **GitHub Actions tiene una caída general** desde el 6/8, así que los
+instaladores de Windows de v0.7.0 y v0.8.0 todavía no se generaron. Hay un
+vigilante que los publica en cuanto se recupere. **El Mac ya tiene v0.8.0.**
 
 ---
 
 ## 6. Camino sugerido hasta la versión presentable
 
-### v0.8.0 — "Se puede operar de verdad"
-1. Ajuste manual de stock (B3)
-2. ABM de recetas (B4)
-3. ABM de listas de precio (I1)
+### ~~v0.8.0 — "Se puede operar de verdad"~~ ✅ ENTREGADA
+1. ~~Ajuste manual de stock (B3)~~ ✅
+2. ~~ABM de recetas (B4)~~ ✅
+3. ~~ABM de listas de precio (I1)~~ ✅
+4. ~~Firma de ARCA sin openssl externo (R2)~~ ✅
+5. ~~Selector de archivo nativo para el certificado~~ ✅
 
 ### v0.9.0 — "Se puede entregar el papel"
-4. Impresión de remito y factura con QR de ARCA (B2)
-5. Modo "base limpia" para arrancar con datos del cliente (I2)
+6. Impresión de remito y factura con QR de ARCA (B2)
+7. Modo "base limpia" para arrancar con datos del cliente (I2)
 
 ### v1.0.0 — "Presentable"
-6. **Probar todo corriendo en Windows** (B1, R2)
-7. Decisión sobre login (I3)
-8. Prueba de facturación real con el certificado del cliente
-9. Repaso E2E completo sobre datos reales
+8. **Probar todo corriendo en Windows** (B1)
+9. Decisión sobre login (I3)
+10. Prueba de facturación real con el certificado del cliente
+11. Repaso E2E completo sobre datos reales
 
-**Estimación gruesa:** los puntos 1 a 5 son trabajo acotado y conocido. El punto
-6 es el que puede traer sorpresas, porque es la primera vez que el sistema toca
-Windows. Conviene hacerlo **antes** de lo que dice la lista, en paralelo, para no
-descubrir un problema grande al final.
+**Estimación gruesa:** los puntos 6 y 7 son trabajo acotado y conocido. El punto
+8 (Windows) es el que puede traer sorpresas, pero mucho menos que antes: se le
+sacó la dependencia de `openssl`, que era lo único que podía romper la
+facturación entera. Conviene igual hacerlo en paralelo, no al final.
 
 ---
 

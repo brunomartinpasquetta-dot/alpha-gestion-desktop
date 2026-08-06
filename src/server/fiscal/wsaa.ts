@@ -1,20 +1,20 @@
 /**
- * WSAA — autenticacion contra ARCA (portado del motor probado de StockFlow).
+ * WSAA — autenticacion contra ARCA.
  *
- * Flujo: TRA (XML) -> firma CMS/PKCS#7 con el openssl del sistema -> LoginCms
- * (SOAP) -> TA con token+sign validos 12 horas. El TA se CACHEA en disco:
- * ARCA rechaza pedir uno nuevo mientras el anterior siga vigente ("El CEE ya
- * posee un TA valido"); sin cache, el segundo login del dia falla.
+ * Flujo: TRA (XML) -> firma CMS/PKCS#7 -> LoginCms (SOAP) -> TA con token+sign
+ * validos 12 horas. El TA se CACHEA en disco: ARCA rechaza pedir uno nuevo
+ * mientras el anterior siga vigente ("El CEE ya posee un TA valido"); sin cache,
+ * el segundo login del dia falla.
+ *
+ * La firma la hace `firma.ts` con node-forge, no el openssl del sistema: ver el
+ * comentario de ese modulo para el porque (resumen: Windows no trae openssl).
  */
 
-import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
 
+import { firmarTraCms, leerMaterialFirma } from './firma';
 import { postearSoap } from './transporte';
-
-const execFileP = promisify(execFile);
 
 export interface TicketAcceso {
   token: string;
@@ -130,35 +130,10 @@ export class ClienteWsaa {
     }
   }
 
-  /**
-   * Firma el TRA en CMS/PKCS#7 (DER, base64) con el openssl del sistema:
-   *   openssl cms -sign -in tra.xml -signer cert -inkey clave -nodetach -outform DER
-   * Asi no se arrastra una dependencia de criptografia pesada.
-   */
-  async firmarTra(tra: string): Promise<string> {
-    mkdirSync(this.opciones.carpetaCache, { recursive: true });
-    const rutaTra = path.join(this.opciones.carpetaCache, `tra-${Date.now()}.xml`);
-    writeFileSync(rutaTra, tra, 'utf8');
-    try {
-      const { stdout } = await execFileP(
-        'openssl',
-        ['cms', '-sign', '-in', rutaTra, '-signer', this.opciones.rutaCertificado, '-inkey', this.opciones.rutaClave, '-nodetach', '-outform', 'DER'],
-        { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 },
-      );
-      return Buffer.from(stdout).toString('base64');
-    } catch (error) {
-      const detalle = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        'No se pudo firmar con el certificado. Revisa que el certificado y la clave se correspondan ' +
-          `y que el certificado no este vencido. Detalle: ${detalle}`,
-      );
-    } finally {
-      try {
-        unlinkSync(rutaTra);
-      } catch {
-        // El temporal ya no esta: no importa.
-      }
-    }
+  /** Firma el TRA en CMS/PKCS#7 (DER, base64). Sincrona: no hay proceso externo. */
+  firmarTra(tra: string): string {
+    const material = leerMaterialFirma(this.opciones.rutaCertificado, this.opciones.rutaClave);
+    return firmarTraCms(tra, material);
   }
 
   /** TA valido: el cacheado si sigue vigente, o uno nuevo contra ARCA. */
@@ -175,7 +150,7 @@ export class ClienteWsaa {
     }
 
     const tra = armarTra('wsfe');
-    const cms = await this.firmarTra(tra);
+    const cms = this.firmarTra(tra);
     const soap = armarSoapLogin(cms);
 
     const { estado, cuerpo: texto } = await postearSoap(this.opciones.urlWsaa, '', soap);

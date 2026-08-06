@@ -24,6 +24,11 @@ import type {
   EntradaNuevaCompra,
   EntradaNuevaOrden,
   EntradaProveedor,
+  EntradaAjusteStock,
+  EntradaListaPrecio,
+  EntradaPrecio,
+  EntradaReceta,
+  ResultadoAjuste,
   ResultadoCobroPago,
   ResultadoCompra,
   UnidadMedidaVista,
@@ -363,3 +368,23 @@ export const registrarCobroPago = (entrada: EntradaCobroPago): Promise<Resultado
 
 export const crearOrdenProduccion = (entrada: EntradaNuevaOrden): Promise<{ id: number }> =>
   enviar<{ id: number }>('/api/produccion/ordenes', 'POST', entrada);
+
+/* ------------------- Ajustes de stock, recetas y precios ------------------ */
+
+export const ajustarStock = (entrada: EntradaAjusteStock): Promise<ResultadoAjuste> =>
+  enviar<ResultadoAjuste>('/api/stock/ajustes', 'POST', entrada);
+
+export const crearReceta = (entrada: EntradaReceta): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/recetas', 'POST', entrada);
+
+export const actualizarReceta = (id: number, entrada: EntradaReceta): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/recetas/${id}`, 'PUT', entrada);
+
+export const cambiarActivaReceta = (id: number, activo: boolean): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/recetas/${id}/activa`, 'PATCH', { activo });
+
+export const crearListaPrecio = (entrada: EntradaListaPrecio): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/listas-precio', 'POST', entrada);
+
+export const fijarPrecio = (entrada: EntradaPrecio): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/listas-precio/precios', 'POST', entrada);

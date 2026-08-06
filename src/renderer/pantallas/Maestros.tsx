@@ -27,6 +27,7 @@ import {
   obtenerProveedores,
 } from '../servicios/cliente';
 import { FormularioCliente, FormularioProveedor } from './FormulariosMaestros';
+import { FormularioNuevaLista, FormularioPrecio } from './FormulariosProduccion';
 import { formatearFecha, formatearMoneda, formatearMonedaConSigno, formatearTexto } from '../utiles/formato';
 
 /* -------------------------------- Clientes --------------------------------- */
@@ -241,9 +242,39 @@ export function PantallaProveedores(): JSX.Element {
 
 export function PantallaPrecios(): JSX.Element {
   const estado = usarRecurso(() => obtenerListasPrecio(), []);
+  const [modal, setModal] = useState<'lista' | 'precio' | null>(null);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+
+  const cerrarConExito = (mensaje: string): void => {
+    setModal(null);
+    estado.recargar();
+    setAviso({ tono: 'ok', texto: mensaje });
+  };
 
   return (
-    <Vista
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Un precio nuevo no pisa al anterior: rige desde hoy y el historial queda.
+        </p>
+        <div className="flex shrink-0 gap-2">
+          <BotonPrimario onClick={() => setModal('precio')}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Fijar precio
+          </BotonPrimario>
+          <button
+            type="button"
+            onClick={() => setModal('lista')}
+            className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
+          >
+            Nueva lista
+          </button>
+        </div>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
       estado={estado}
       que="las listas de precio"
       tituloVacio="Sin listas de precio"
@@ -300,6 +331,14 @@ export function PantallaPrecios(): JSX.Element {
           ))}
         </div>
       )}
-    </Vista>
+      </Vista>
+
+      {modal === 'lista' && (
+        <FormularioNuevaLista alCerrar={() => setModal(null)} alGuardar={cerrarConExito} />
+      )}
+      {modal === 'precio' && (
+        <FormularioPrecio alCerrar={() => setModal(null)} alGuardar={cerrarConExito} />
+      )}
+    </div>
   );
 }
