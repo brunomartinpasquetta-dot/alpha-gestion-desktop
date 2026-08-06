@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 
 
 import {
@@ -26,7 +27,14 @@ import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { cambiarEstadoPedido, obtenerCompras, obtenerPedidos, obtenerVentas } from '../servicios/cliente';
+import {
+  anularVenta,
+  cambiarEstadoPedido,
+  obtenerCompras,
+  obtenerPedidos,
+  obtenerVentas,
+} from '../servicios/cliente';
+import { FormularioVenta } from './FormularioVenta';
 import {
   formatearCajas,
   formatearCantidadConUnidad,
@@ -258,17 +266,105 @@ const COLUMNAS_VENTAS: readonly Columna<VentaVista>[] = [
 
 export function PantallaVentas(): JSX.Element {
   const estado = usarRecurso(() => obtenerVentas(), []);
+  const [modalVenta, setModalVenta] = useState(false);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
+
+  usarEventos('ventas:cambio', estado.recargar);
+
+  const anular = (venta: VentaVista): void => {
+    if (!window.confirm(`¿Anular la venta #${venta.id}? Se revierte el stock y el cobro.`)) return;
+    setAviso(null);
+    anularVenta(venta.id)
+      .then((resultado) => {
+        estado.recargar();
+        setAviso(
+          resultado.advertencias.length > 0
+            ? { tono: 'alerta', texto: resultado.advertencias.join(' ') }
+            : { tono: 'ok', texto: `Venta #${venta.id} anulada y revertida.` },
+        );
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
+
+  const columnas: readonly Columna<VentaVista>[] = [
+    ...COLUMNAS_VENTAS,
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      celda: (v) =>
+        v.estado === 'entregada' ? (
+          <button
+            type="button"
+            onClick={() => anular(v)}
+            className="rounded-pastilla border border-peligro-300 px-2 py-0.5 text-xs font-medium text-peligro-600 outline-none hover:bg-peligro-50 focus-visible:ring-2 focus-visible:ring-peligro-400"
+          >
+            Anular
+          </button>
+        ) : (
+          <span className="text-masa-700">—</span>
+        ),
+    },
+  ];
 
   return (
-    <Vista
-      estado={estado}
-      que="las ventas"
-      tituloVacio="Sin ventas registradas"
-      detalleVacio="Todavia no se emitio ningun comprobante. Carga los datos de demostracion para ver el modulo con ventas de contado y de cuenta corriente."
-      comandoVacio={COMANDO_SEED_DEMO}
-    >
-      {(filas) => <Tabla columnas={COLUMNAS_VENTAS} filas={filas} claveDeFila={(v) => v.id} />}
-    </Vista>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          La venta descuenta stock y cobra (caja o cuenta corriente) en un solo paso.
+        </p>
+        <button
+          type="button"
+          onClick={() => setModalVenta(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-ficha bg-dulce-600 px-4 py-2 text-sm font-medium text-white outline-none hover:bg-dulce-700 focus-visible:ring-2 focus-visible:ring-dulce-400"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nueva venta
+        </button>
+      </div>
+
+      {aviso !== null && (
+        <p
+          role={aviso.tono === 'mal' ? 'alert' : 'status'}
+          className={[
+            'rounded-ficha border px-3 py-2 text-sm',
+            aviso.tono === 'ok' && 'border-menta-200 bg-menta-50 text-menta-700',
+            aviso.tono === 'alerta' && 'border-alerta-200 bg-alerta-50 text-alerta-700',
+            aviso.tono === 'mal' && 'border-peligro-200 bg-peligro-50 text-peligro-600',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          {aviso.texto}
+        </p>
+      )}
+
+      <Vista
+        estado={estado}
+        que="las ventas"
+        tituloVacio="Sin ventas registradas"
+        detalleVacio="Registra la primera con el boton Nueva venta."
+        comandoVacio={COMANDO_SEED_DEMO}
+      >
+        {(filas) => <Tabla columnas={columnas} filas={filas} claveDeFila={(v) => v.id} />}
+      </Vista>
+
+      {modalVenta && (
+        <FormularioVenta
+          alCerrar={() => setModalVenta(false)}
+          alConfirmar={(resultado) => {
+            setModalVenta(false);
+            estado.recargar();
+            setAviso(
+              resultado.advertencias.length > 0
+                ? { tono: 'alerta', texto: `Venta #${resultado.venta.id} registrada. ${resultado.advertencias.join(' ')}` }
+                : { tono: 'ok', texto: `Venta #${resultado.venta.id} registrada por ${'$'} ${(resultado.venta.total / 100).toLocaleString('es-AR')}.` },
+            );
+          }}
+        />
+      )}
+    </div>
   );
 }
 

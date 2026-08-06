@@ -15,6 +15,7 @@ import { z } from 'zod';
 import {
   ESTADOS_CHEQUE,
   ESTADOS_ORDEN_PRODUCCION,
+  FORMAS_PAGO,
   FORMATOS_CHEQUE,
   TIPOS_CHEQUE,
   TIPOS_ENTIDAD_CC,
@@ -22,6 +23,7 @@ import {
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { chequesServicio } from '../servicios/cheques.servicio';
+import { ventasServicio } from '../servicios/ventas.servicio';
 import { produccionServicio } from '../servicios/produccion.servicio';
 import { trazabilidadServicio } from '../servicios/trazabilidad.servicio';
 
@@ -59,6 +61,23 @@ const esquemaNuevoCheque = z.object({
 
 const esquemaCambioCheque = z.object({
   estado: z.enum(ESTADOS_CHEQUE),
+});
+
+const esquemaNuevaVenta = z.object({
+  clienteId: z.number().int().positive().nullable().optional(),
+  formaPago: z.enum(FORMAS_PAGO),
+  pedidoId: z.number().int().positive().nullable().optional(),
+  notas: z.string().max(500).nullable().optional(),
+  items: z
+    .array(
+      z.object({
+        articuloId: z.number().int().positive(),
+        cantidad: z.number().min(0.01).max(1_000_000),
+        precioUnitario: z.number().int().min(0),
+      }),
+    )
+    .min(1)
+    .max(100),
 });
 
 export function registrarRutasOperaciones(app: FastifyInstance): void {
@@ -105,6 +124,20 @@ export function registrarRutasOperaciones(app: FastifyInstance): void {
     );
     const datos = chequesServicio.crear(entrada);
     return reply.status(201).send({ datos });
+  });
+
+  /* --------------------------------- Ventas ------------------------------- */
+
+  app.post('/api/ventas', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaNuevaVenta, request.body, 'La venta enviada no es valida.');
+    const datos = ventasServicio.crearVenta(entrada);
+    return reply.status(201).send({ datos });
+  });
+
+  app.patch('/api/ventas/:id/anular', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la venta no es valido.');
+    const datos = ventasServicio.anularVenta(id);
+    return reply.status(200).send({ datos });
   });
 
   app.patch('/api/cheques/:id/estado', (request: FastifyRequest, reply: FastifyReply) => {

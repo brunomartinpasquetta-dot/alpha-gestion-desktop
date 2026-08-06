@@ -689,3 +689,30 @@ export const ETIQUETA_ESTADO_CHEQUE: Readonly<Record<EstadoCheque, string>> = {
   entregado: 'Entregado',
   anulado: 'Anulado',
 };
+
+/* ---------------------------- Escritura de ventas -------------------------- */
+
+export interface EntradaItemVenta {
+  articuloId: number;
+  /** En unidad base. La UI captura cajas y multiplica, igual que en pedidos. */
+  cantidad: number;
+  /** Centavos por unidad base. Sugerido desde la lista del cliente, editable. */
+  precioUnitario: number;
+}
+
+/** Cuerpo de POST /api/ventas. La venta nace ENTREGADA: registra un hecho. */
+export interface EntradaNuevaVenta {
+  clienteId?: number | null;
+  formaPago: FormaPago;
+  /** Si la venta sale de un pedido listo, se lo marca entregado en el mismo acto. */
+  pedidoId?: number | null;
+  notas?: string | null;
+  items: EntradaItemVenta[];
+}
+
+/** Respuesta de la creacion o anulacion de una venta. */
+export interface ResultadoVenta {
+  venta: VentaVista;
+  /** Avisos que no bloquean: stock que quedo negativo, caja sin abrir, etc. */
+  advertencias: string[];
+}

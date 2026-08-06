@@ -18,6 +18,8 @@ import type {
   ArticuloConStock,
   ChequeVista,
   EntradaNuevoCheque,
+  EntradaNuevaVenta,
+  ResultadoVenta,
   ResumenCartera,
   TrazabilidadLote,
   CajaMovimientoVista,
@@ -229,4 +231,23 @@ export async function cambiarEstadoCheque(chequeId: number, estado: string): Pro
   });
   const cuerpo = await leerJson(respuesta, ruta);
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+}
+
+export async function crearVenta(entrada: EntradaNuevaVenta): Promise<ResultadoVenta> {
+  const respuesta = await fetch('/api/ventas', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(entrada),
+  });
+  const cuerpo = await leerJson(respuesta, '/api/ventas');
+  if (!respuesta.ok) throw errorDesdeRespuesta('/api/ventas', respuesta, cuerpo);
+  return (cuerpo as { datos: ResultadoVenta }).datos;
+}
+
+export async function anularVenta(ventaId: number): Promise<ResultadoVenta> {
+  const ruta = `/api/ventas/${ventaId}/anular`;
+  const respuesta = await fetch(ruta, { method: 'PATCH' });
+  const cuerpo = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+  return (cuerpo as { datos: ResultadoVenta }).datos;
 }

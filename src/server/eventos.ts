@@ -13,7 +13,7 @@
 
 import type { ServerResponse } from 'node:http';
 
-export type TipoEvento = 'pedidos:cambio' | 'ordenes:cambio' | 'cheques:cambio';
+export type TipoEvento = 'pedidos:cambio' | 'ordenes:cambio' | 'cheques:cambio' | 'ventas:cambio';
 
 const clientes = new Set<ServerResponse>();
 

@@ -10,7 +10,7 @@
 
 import { useEffect, useRef } from 'react';
 
-export type TipoEventoSse = 'pedidos:cambio' | 'ordenes:cambio' | 'cheques:cambio';
+export type TipoEventoSse = 'pedidos:cambio' | 'ordenes:cambio' | 'cheques:cambio' | 'ventas:cambio';
 
 export function usarEventos(tipo: TipoEventoSse, alRecibir: () => void): void {
   // El callback vive en una ref para no reconectar el stream en cada render.
