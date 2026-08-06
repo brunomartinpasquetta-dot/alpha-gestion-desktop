@@ -28,7 +28,7 @@ export type TipoMovimientoStock =
 export type TipoDocumentoStock = 'compra' | 'venta' | 'orden_produccion' | 'ajuste';
 export type EstadoOrdenProduccion = 'planificada' | 'en_proceso' | 'finalizada' | 'cancelada';
 export type FormaPago = 'contado' | 'cuenta_corriente';
-export type EstadoCompra = 'pendiente' | 'recibida';
+export type EstadoCompra = 'pendiente' | 'recibida' | 'anulada';
 export type EstadoVenta = 'pendiente' | 'entregada' | 'anulada';
 export type OrigenPedido = 'celular' | 'mostrador' | 'sistema';
 export type EstadoPedido =
@@ -255,6 +255,7 @@ export interface CajaVista {
   usuario: string | null;
   totalIngresos: number;
   totalEgresos: number;
+  cantidadMovimientos?: number;
 }
 
 export interface CajaMovimientoVista {
@@ -395,6 +396,7 @@ export const ETIQUETA_ORIGEN_PEDIDO: Readonly<Record<OrigenPedido, string>> = {
 export const ETIQUETA_ESTADO_COMPRA: Readonly<Record<EstadoCompra, string>> = {
   pendiente: 'Pendiente',
   recibida: 'Recibida',
+  anulada: 'Anulada',
 };
 
 export const ETIQUETA_ESTADO_VENTA: Readonly<Record<EstadoVenta, string>> = {
@@ -807,4 +809,138 @@ export interface ComprobanteVista {
   total: number;
   observaciones: string | null;
   urlQr: string | null;
+}
+
+/**
+ * Eventos del stream SSE. Viven en el contrato porque los emite el servidor y
+ * los escucha el renderer: si cada lado declara su propia lista, agregar un
+ * evento compila de un lado y falla del otro.
+ */
+export type TipoEventoSse =
+  | 'pedidos:cambio'
+  | 'ordenes:cambio'
+  | 'cheques:cambio'
+  | 'ventas:cambio'
+  | 'compras:cambio'
+  | 'caja:cambio'
+  | 'cc:cambio'
+  | 'maestros:cambio';
+
+export interface UnidadMedidaVista {
+  id: number;
+  nombre: string;
+  abreviatura: string;
+}
+
+/* ========================= ESCRITURA DE MAESTROS ========================== */
+
+export interface EntradaCliente {
+  nombre: string;
+  cuit?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+  direccion?: string | null;
+  tipo: TipoCliente;
+  listaPrecioId?: number | null;
+  notas?: string | null;
+}
+
+export interface EntradaProveedor {
+  nombre: string;
+  cuit?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+  direccion?: string | null;
+  notas?: string | null;
+}
+
+export interface EntradaArticulo {
+  codigo: string;
+  nombre: string;
+  tipo: TipoArticulo;
+  unidadBaseId: number;
+  stockMin?: number | null;
+  /** Solo tiene sentido en producto_terminado; en el resto se ignora. */
+  unidadesPorCaja?: number | null;
+  /** Centavos por unidad base. */
+  costoActual?: number | null;
+}
+
+/* ============================ COMPRAS (escritura) ========================= */
+
+export interface EntradaItemCompra {
+  articuloId: number;
+  /** Como se compra: 2 bolsas, 10 cajas. */
+  cantidadCompra: number;
+  unidadCompraId: number;
+  /** Convierte a unidad base: bolsa de 25 kg -> 25000 si la base es el gramo. */
+  factorConversion: number;
+  /** Centavos por UNIDAD BASE. */
+  costoUnitario: number;
+}
+
+export interface EntradaNuevaCompra {
+  proveedorId: number;
+  formaPago: FormaPago;
+  notas?: string | null;
+  items: EntradaItemCompra[];
+}
+
+export interface ResultadoCompra {
+  compra: CompraVista;
+  advertencias: string[];
+}
+
+/* =========================== TESORERIA (escritura) ======================== */
+
+export interface EntradaAperturaCaja {
+  /** Centavos con los que arranca el dia. */
+  montoApertura: number;
+  usuario?: string | null;
+}
+
+export interface EntradaCierreCaja {
+  /** Lo que el operador conto de verdad, en centavos. */
+  montoCierreReal: number;
+}
+
+export interface EntradaMovimientoCaja {
+  tipo: TipoMovimientoCaja;
+  concepto: string;
+  monto: number;
+  usuario?: string | null;
+  notas?: string | null;
+}
+
+export type MedioCobroPago = 'efectivo' | 'cheque' | 'transferencia';
+
+export const ETIQUETA_MEDIO_COBRO: Record<MedioCobroPago, string> = {
+  efectivo: 'Efectivo',
+  cheque: 'Cheque',
+  transferencia: 'Transferencia',
+};
+
+/** Cobro a un cliente o pago a un proveedor. */
+export interface EntradaCobroPago {
+  entidadTipo: TipoEntidadCc;
+  entidadId: number;
+  monto: number;
+  medio: MedioCobroPago;
+  notas?: string | null;
+}
+
+export interface ResultadoCobroPago {
+  entidadNombre: string;
+  monto: number;
+  advertencias: string[];
+}
+
+/* ========================= PRODUCCION (escritura) ======================== */
+
+export interface EntradaNuevaOrden {
+  recetaId: number;
+  /** Media tanda = 0.5, doble = 2. La cantidad sale del rinde por este factor. */
+  factorEscala: number;
+  pedidoId?: number | null;
+  notas?: string | null;
 }

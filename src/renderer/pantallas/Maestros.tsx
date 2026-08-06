@@ -1,6 +1,12 @@
 /**
  * Pantallas de maestros: clientes, proveedores y listas de precio.
+ *
+ * Clientes y proveedores tienen ABM completo. "Eliminar" es dar de baja: el
+ * ledger los referencia y borrarlos dejaria ventas y compras sin titular.
  */
+
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import {
   ETIQUETA_TIPO_CLIENTE,
@@ -9,10 +15,18 @@ import {
   type ProveedorVista,
 } from '../../compartido/contratos';
 import { Pastilla } from '../componentes/comunes';
+import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { obtenerClientes, obtenerListasPrecio, obtenerProveedores } from '../servicios/cliente';
+import {
+  cambiarActivoCliente,
+  cambiarActivoProveedor,
+  obtenerClientes,
+  obtenerListasPrecio,
+  obtenerProveedores,
+} from '../servicios/cliente';
+import { FormularioCliente, FormularioProveedor } from './FormulariosMaestros';
 import { formatearFecha, formatearMoneda, formatearMonedaConSigno, formatearTexto } from '../utiles/formato';
 
 /* -------------------------------- Clientes --------------------------------- */
@@ -51,17 +65,76 @@ const COLUMNAS_CLIENTES: readonly Columna<ClienteVista>[] = [
 
 export function PantallaClientes(): JSX.Element {
   const estado = usarRecurso(() => obtenerClientes(), []);
+  // `undefined` = modal cerrado; `null` = alta; una entidad = edicion.
+  const [enEdicion, setEnEdicion] = useState<ClienteVista | null | undefined>(undefined);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+
+  const cambiarActivo = (cliente: ClienteVista): void => {
+    const alta = !cliente.activo;
+    if (!alta && !window.confirm(`¿Dar de baja a ${cliente.nombre}? Deja de aparecer en los formularios.`)) return;
+    setAviso(null);
+    cambiarActivoCliente(cliente.id, alta)
+      .then(() => {
+        estado.recargar();
+        setAviso({ tono: 'ok', texto: `${cliente.nombre} ${alta ? 'reactivado' : 'dado de baja'}.` });
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
+
+  const columnas: readonly Columna<ClienteVista>[] = [
+    ...COLUMNAS_CLIENTES,
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      celda: (c) => (
+        <div className="flex gap-1">
+          <BotonFila onClick={() => setEnEdicion(c)}>Editar</BotonFila>
+          <BotonFila onClick={() => cambiarActivo(c)} tono={c.activo ? 'peligro' : 'neutro'}>
+            {c.activo ? 'Dar de baja' : 'Reactivar'}
+          </BotonFila>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <Vista
-      estado={estado}
-      que="los clientes"
-      tituloVacio="Sin clientes"
-      detalleVacio="No hay clientes cargados. Corre el seed para cargar el catalogo base."
-      comandoVacio="npm run db:seed"
-    >
-      {(filas) => <Tabla columnas={COLUMNAS_CLIENTES} filas={filas} claveDeFila={(c) => c.id} />}
-    </Vista>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          El CUIT es lo que habilita a emitirle Factura A; la lista define el precio sugerido.
+        </p>
+        <BotonPrimario onClick={() => setEnEdicion(null)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuevo cliente
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
+        estado={estado}
+        que="los clientes"
+        tituloVacio="Sin clientes"
+        detalleVacio="Cargá el primero con el boton Nuevo cliente."
+        comandoVacio="npm run db:seed"
+      >
+        {(filas) => <Tabla columnas={columnas} filas={filas} claveDeFila={(c) => c.id} />}
+      </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioCliente
+          cliente={enEdicion}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso({ tono: 'ok', texto: mensaje });
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -92,17 +165,75 @@ const COLUMNAS_PROVEEDORES: readonly Columna<ProveedorVista>[] = [
 
 export function PantallaProveedores(): JSX.Element {
   const estado = usarRecurso(() => obtenerProveedores(), []);
+  const [enEdicion, setEnEdicion] = useState<ProveedorVista | null | undefined>(undefined);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+
+  const cambiarActivo = (proveedor: ProveedorVista): void => {
+    const alta = !proveedor.activo;
+    if (!alta && !window.confirm(`¿Dar de baja a ${proveedor.nombre}?`)) return;
+    setAviso(null);
+    cambiarActivoProveedor(proveedor.id, alta)
+      .then(() => {
+        estado.recargar();
+        setAviso({ tono: 'ok', texto: `${proveedor.nombre} ${alta ? 'reactivado' : 'dado de baja'}.` });
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
+
+  const columnas: readonly Columna<ProveedorVista>[] = [
+    ...COLUMNAS_PROVEEDORES,
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      celda: (p) => (
+        <div className="flex gap-1">
+          <BotonFila onClick={() => setEnEdicion(p)}>Editar</BotonFila>
+          <BotonFila onClick={() => cambiarActivo(p)} tono={p.activo ? 'peligro' : 'neutro'}>
+            {p.activo ? 'Dar de baja' : 'Reactivar'}
+          </BotonFila>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <Vista
-      estado={estado}
-      que="los proveedores"
-      tituloVacio="Sin proveedores"
-      detalleVacio="No hay proveedores cargados. Corre el seed para cargar el catalogo base."
-      comandoVacio="npm run db:seed"
-    >
-      {(filas) => <Tabla columnas={COLUMNAS_PROVEEDORES} filas={filas} claveDeFila={(p) => p.id} />}
-    </Vista>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Saldo en rojo significa que le debemos al proveedor.
+        </p>
+        <BotonPrimario onClick={() => setEnEdicion(null)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuevo proveedor
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
+        estado={estado}
+        que="los proveedores"
+        tituloVacio="Sin proveedores"
+        detalleVacio="Cargá el primero con el boton Nuevo proveedor."
+        comandoVacio="npm run db:seed"
+      >
+        {(filas) => <Tabla columnas={columnas} filas={filas} claveDeFila={(p) => p.id} />}
+      </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioProveedor
+          proveedor={enEdicion}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso({ tono: 'ok', texto: mensaje });
+          }}
+        />
+      )}
+    </div>
   );
 }
 

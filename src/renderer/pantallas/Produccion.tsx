@@ -7,6 +7,7 @@
  */
 
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import {
   ETIQUETA_ESTADO_ORDEN,
@@ -17,11 +18,13 @@ import {
   type RecetaVista,
 } from '../../compartido/contratos';
 import { Pastilla, type TonoPastilla } from '../componentes/comunes';
+import { Aviso, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import { cambiarEstadoOrden, obtenerOrdenesProduccion, obtenerRecetas } from '../servicios/cliente';
+import { FormularioNuevaOrden } from './FormulariosOperacion';
 import {
   formatearCantidad,
   formatearCantidadConUnidad,
@@ -238,6 +241,8 @@ function armarColumnasOrdenes(
 export function PantallaOrdenes(): JSX.Element {
   const estado = usarRecurso(() => obtenerOrdenesProduccion(), []);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [modalOrden, setModalOrden] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   usarEventos('ordenes:cambio', estado.recargar);
 
@@ -271,23 +276,49 @@ export function PantallaOrdenes(): JSX.Element {
   const columnas = armarColumnasOrdenes(aplicarTransicion);
 
   return (
-    <Vista
-      estado={estado}
-      que="las ordenes de produccion"
-      tituloVacio="Sin ordenes de produccion"
-      detalleVacio="Todavia no se planifico ninguna tanda. Carga los datos de demostracion para ver el modulo con ordenes en distintos estados."
-      comandoVacio={COMANDO_SEED_DEMO}
-    >
-      {(filas) => (
-        <>
-          {errorAccion !== null && (
-            <p role="alert" className="mb-2 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
-              {errorAccion}
-            </p>
-          )}
-          <Tabla columnas={columnas} filas={filas} claveDeFila={(o) => o.id} />
-        </>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Al ejecutar una orden se le asigna el numero de lote; al finalizarla se descuentan los
+          insumos y entra el producto.
+        </p>
+        <BotonPrimario onClick={() => setModalOrden(true)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Planificar orden
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono="ok" texto={aviso} />}
+
+      <Vista
+        estado={estado}
+        que="las ordenes de produccion"
+        tituloVacio="Sin ordenes de produccion"
+        detalleVacio="Planifica la primera tanda con el boton Planificar orden."
+        comandoVacio={COMANDO_SEED_DEMO}
+      >
+        {(filas) => (
+          <>
+            {errorAccion !== null && (
+              <p role="alert" className="mb-2 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
+                {errorAccion}
+              </p>
+            )}
+            <Tabla columnas={columnas} filas={filas} claveDeFila={(o) => o.id} />
+          </>
+        )}
+      </Vista>
+
+      {modalOrden && (
+        <FormularioNuevaOrden
+          alCerrar={() => setModalOrden(false)}
+          alGuardar={(mensaje) => {
+            setModalOrden(false);
+            estado.recargar();
+            setAviso(mensaje);
+          }}
+        />
       )}
-    </Vista>
+    </div>
   );
 }

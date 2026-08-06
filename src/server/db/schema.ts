@@ -451,6 +451,13 @@ export const compras = sqliteTable(
     total: integer('total').notNull().default(0),
     formaPago: text('forma_pago', { enum: FORMAS_PAGO }).notNull().default('contado'),
     estado: text('estado', { enum: ESTADOS_COMPRA }).notNull().default('pendiente'),
+    /**
+     * Anulacion. Va en su propia columna y no como estado porque el CHECK de
+     * `estado` no admite valores nuevos sin recrear la tabla, y recrearla con
+     * compra_items colgando por clave foranea es mas riesgoso que este flag.
+     * La vista deriva el estado que ve el usuario.
+     */
+    anulada: integer('anulada', { mode: 'boolean' }).notNull().default(false),
     notas: text('notas'),
   },
   (tabla) => [

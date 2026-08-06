@@ -16,6 +16,17 @@
 
 import type {
   ArticuloConStock,
+  EntradaArticulo,
+  EntradaCierreCaja,
+  EntradaCliente,
+  EntradaCobroPago,
+  EntradaMovimientoCaja,
+  EntradaNuevaCompra,
+  EntradaNuevaOrden,
+  EntradaProveedor,
+  ResultadoCobroPago,
+  ResultadoCompra,
+  UnidadMedidaVista,
   ChequeVista,
   ConfiguracionFiscalVista,
   EntradaConfiguracionFiscal,
@@ -176,6 +187,9 @@ export const obtenerEstadisticas = (): Promise<Estadisticas> =>
 
 export const obtenerUsuarios = (): Promise<UsuarioVista[]> => pedirLista<UsuarioVista>('/api/usuarios');
 
+export const obtenerUnidades = (): Promise<UnidadMedidaVista[]> =>
+  pedirLista<UnidadMedidaVista>('/api/unidades');
+
 /** Aplica una transicion de estado a un pedido. Lanza con el mensaje del servidor si es invalida. */
 export async function cambiarEstadoPedido(pedidoId: number, estado: string): Promise<void> {
   const ruta = `/api/pedidos/${pedidoId}/estado`;
@@ -279,3 +293,73 @@ export async function anularVenta(ventaId: number): Promise<ResultadoVenta> {
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
   return (cuerpo as { datos: ResultadoVenta }).datos;
 }
+
+/* ======================= ESCRITURA: maestros y operacion ================== */
+
+/** Envia un cuerpo JSON y devuelve `datos`, traduciendo el error del servidor. */
+async function enviar<T>(ruta: string, metodo: 'POST' | 'PUT' | 'PATCH', cuerpo?: unknown): Promise<T> {
+  const respuesta = await fetch(ruta, {
+    method: metodo,
+    headers: { 'content-type': 'application/json' },
+    body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+  });
+  const datos = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, datos);
+  return (datos as { datos: T }).datos;
+}
+
+/* -------------------------------- Maestros -------------------------------- */
+
+export const crearCliente = (entrada: EntradaCliente): Promise<ClienteVista> =>
+  enviar<ClienteVista>('/api/clientes', 'POST', entrada);
+
+export const actualizarCliente = (id: number, entrada: EntradaCliente): Promise<ClienteVista> =>
+  enviar<ClienteVista>(`/api/clientes/${id}`, 'PUT', entrada);
+
+export const cambiarActivoCliente = (id: number, activo: boolean): Promise<ClienteVista> =>
+  enviar<ClienteVista>(`/api/clientes/${id}/activo`, 'PATCH', { activo });
+
+export const crearProveedor = (entrada: EntradaProveedor): Promise<ProveedorVista> =>
+  enviar<ProveedorVista>('/api/proveedores', 'POST', entrada);
+
+export const actualizarProveedor = (id: number, entrada: EntradaProveedor): Promise<ProveedorVista> =>
+  enviar<ProveedorVista>(`/api/proveedores/${id}`, 'PUT', entrada);
+
+export const cambiarActivoProveedor = (id: number, activo: boolean): Promise<ProveedorVista> =>
+  enviar<ProveedorVista>(`/api/proveedores/${id}/activo`, 'PATCH', { activo });
+
+export const crearArticulo = (entrada: EntradaArticulo): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/articulos', 'POST', entrada);
+
+export const actualizarArticulo = (id: number, entrada: EntradaArticulo): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/articulos/${id}`, 'PUT', entrada);
+
+export const cambiarActivoArticulo = (id: number, activo: boolean): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/articulos/${id}/activo`, 'PATCH', { activo });
+
+/* --------------------------------- Compras -------------------------------- */
+
+export const crearCompra = (entrada: EntradaNuevaCompra): Promise<ResultadoCompra> =>
+  enviar<ResultadoCompra>('/api/compras', 'POST', entrada);
+
+export const anularCompra = (id: number): Promise<ResultadoCompra> =>
+  enviar<ResultadoCompra>(`/api/compras/${id}/anular`, 'PATCH');
+
+/* -------------------------------- Tesoreria ------------------------------- */
+
+export const abrirCaja = (montoApertura: number, usuario?: string | null): Promise<CajaVista> =>
+  enviar<CajaVista>('/api/caja/abrir', 'POST', { montoApertura, usuario: usuario ?? null });
+
+export const cerrarCaja = (id: number, entrada: EntradaCierreCaja): Promise<CajaVista> =>
+  enviar<CajaVista>(`/api/caja/${id}/cerrar`, 'PATCH', entrada);
+
+export const registrarMovimientoCaja = (entrada: EntradaMovimientoCaja): Promise<CajaVista> =>
+  enviar<CajaVista>('/api/caja/movimientos', 'POST', entrada);
+
+export const registrarCobroPago = (entrada: EntradaCobroPago): Promise<ResultadoCobroPago> =>
+  enviar<ResultadoCobroPago>('/api/cuentas-corrientes/movimientos', 'POST', entrada);
+
+/* ------------------------------- Produccion ------------------------------- */
+
+export const crearOrdenProduccion = (entrada: EntradaNuevaOrden): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/produccion/ordenes', 'POST', entrada);

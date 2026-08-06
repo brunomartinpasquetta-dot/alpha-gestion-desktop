@@ -8,7 +8,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-import { TIPOS_ARTICULO } from '../db/schema';
+import { asc } from 'drizzle-orm';
+
+import { obtenerDb } from '../db/conexion';
+import { TIPOS_ARTICULO, unidadesMedida } from '../db/schema';
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { stockServicio } from '../servicios/stock.servicio';
@@ -66,6 +69,21 @@ export function registrarRutasArticulos(app: FastifyInstance): void {
 
     // Si el articulo no existe, el servicio lanza ErrorNoEncontrado -> 404.
     const datos = stockServicio.detalleStock(id);
+    return reply.status(200).send({ datos });
+  });
+
+  // Las unidades son un catalogo fijo y chico: el formulario de articulos las
+  // necesita para elegir en que se mide el stock.
+  app.get('/api/unidades', (_request: FastifyRequest, reply: FastifyReply) => {
+    const datos = obtenerDb()
+      .select({
+        id: unidadesMedida.id,
+        nombre: unidadesMedida.nombre,
+        abreviatura: unidadesMedida.abreviatura,
+      })
+      .from(unidadesMedida)
+      .orderBy(asc(unidadesMedida.nombre))
+      .all();
     return reply.status(200).send({ datos });
   });
 }

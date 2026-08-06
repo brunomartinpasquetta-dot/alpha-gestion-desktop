@@ -10,7 +10,10 @@
 
 import { useEffect, useRef } from 'react';
 
-export type TipoEventoSse = 'pedidos:cambio' | 'ordenes:cambio' | 'cheques:cambio' | 'ventas:cambio';
+// El catalogo de eventos lo define el contrato compartido: ver contratos.ts.
+export type { TipoEventoSse } from '../../compartido/contratos';
+
+import type { TipoEventoSse } from '../../compartido/contratos';
 
 export function usarEventos(tipo: TipoEventoSse, alRecibir: () => void): void {
   // El callback vive en una ref para no reconectar el stream en cada render.

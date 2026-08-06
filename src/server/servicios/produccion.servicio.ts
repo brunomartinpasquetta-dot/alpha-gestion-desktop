@@ -16,14 +16,16 @@
 
 import { eq, like, sql } from 'drizzle-orm';
 
-import { TRANSICIONES_ORDEN } from '../../compartido/contratos';
+import { TRANSICIONES_ORDEN, type EntradaNuevaOrden } from '../../compartido/contratos';
 import { obtenerDb } from '../db/conexion';
 import {
   articulos,
   movimientosStock,
   ordenesProduccion,
+  pedidos,
   produccionConsumos,
   recetaItems,
+  recetas,
   type EstadoOrdenProduccion,
 } from '../db/schema';
 import { ejecutarSeguro, ErrorNoEncontrado, ErrorReglaNegocio, ErrorValidacion } from '../dominio/errores';
@@ -54,6 +56,63 @@ export interface ResultadoCambioOrden {
 }
 
 export const produccionServicio = {
+  /**
+   * Planifica una tanda. La cantidad no se escribe a mano: sale del rinde de la
+   * receta por el factor de escala, para que orden y receta no puedan discrepar
+   * (media tanda = 0.5, doble = 2). El lote todavia no existe: nace al ejecutar.
+   */
+  crearOrden(entrada: EntradaNuevaOrden): { id: number } {
+    if (!Number.isFinite(entrada.factorEscala) || entrada.factorEscala <= 0) {
+      throw new ErrorValidacion('El factor de escala tiene que ser mayor a cero.');
+    }
+    const resultado = ejecutarSeguro('planificar una orden de produccion', () =>
+      obtenerDb().transaction((tx) => {
+        const receta = tx
+          .select({
+            id: recetas.id,
+            articuloProducidoId: recetas.articuloProducidoId,
+            rindeCantidad: recetas.rindeCantidad,
+            activa: recetas.activa,
+          })
+          .from(recetas)
+          .where(eq(recetas.id, entrada.recetaId))
+          .get();
+        if (!receta) throw new ErrorNoEncontrado('receta', entrada.recetaId);
+        if (!receta.activa) {
+          throw new ErrorReglaNegocio('La receta esta inactiva: no se puede planificar produccion con ella.');
+        }
+
+        if (entrada.pedidoId != null) {
+          const pedido = tx
+            .select({ id: pedidos.id })
+            .from(pedidos)
+            .where(eq(pedidos.id, entrada.pedidoId))
+            .get();
+          if (!pedido) throw new ErrorNoEncontrado('pedido', entrada.pedidoId);
+        }
+
+        const orden = tx
+          .insert(ordenesProduccion)
+          .values({
+            recetaId: receta.id,
+            articuloProducidoId: receta.articuloProducidoId,
+            cantidadPlanificada: redondearCantidad(receta.rindeCantidad * entrada.factorEscala),
+            factorEscala: entrada.factorEscala,
+            estado: 'planificada',
+            pedidoId: entrada.pedidoId ?? null,
+            fechaPlanificada: new Date().toISOString(),
+            notas: entrada.notas?.trim() || null,
+          })
+          .returning({ id: ordenesProduccion.id })
+          .all()[0];
+        if (!orden) throw new ErrorValidacion('La base no devolvio la orden insertada.');
+        return { id: orden.id };
+      }),
+    );
+    emitir('ordenes:cambio');
+    return resultado;
+  },
+
   /**
    * Aplica una transicion de la maquina de estados de la orden. Los efectos
    * (lote, movimientos) van en la MISMA transaccion que el cambio de estado:

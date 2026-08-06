@@ -1,0 +1,1 @@
+ALTER TABLE `compras` ADD `anulada` integer DEFAULT false NOT NULL;

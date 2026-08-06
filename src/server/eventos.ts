@@ -13,7 +13,9 @@
 
 import type { ServerResponse } from 'node:http';
 
-export type TipoEvento = 'pedidos:cambio' | 'ordenes:cambio' | 'cheques:cambio' | 'ventas:cambio';
+import type { TipoEventoSse } from '../compartido/contratos';
+
+export type TipoEvento = TipoEventoSse;
 
 const clientes = new Set<ServerResponse>();
 

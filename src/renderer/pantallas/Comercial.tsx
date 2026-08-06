@@ -23,11 +23,13 @@ import {
   type VentaVista,
 } from '../../compartido/contratos';
 import { Pastilla, type TonoPastilla } from '../componentes/comunes';
+import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import {
+  anularCompra,
   anularVenta,
   cambiarEstadoPedido,
   obtenerCompras,
@@ -35,6 +37,7 @@ import {
   obtenerVentas,
 } from '../servicios/cliente';
 import { FormularioVenta } from './FormularioVenta';
+import { FormularioCompra } from './FormulariosOperacion';
 import {
   formatearCajas,
   formatearCantidadConUnidad,
@@ -403,24 +406,82 @@ const COLUMNAS_COMPRAS: readonly Columna<CompraVista>[] = [
 
 export function PantallaCompras(): JSX.Element {
   const estado = usarRecurso(() => obtenerCompras(), []);
+  const [modalCompra, setModalCompra] = useState(false);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
+
+  usarEventos('compras:cambio', estado.recargar);
+
+  const anular = (compra: CompraVista): void => {
+    if (!window.confirm(`¿Anular la compra #${compra.id}? Sale del stock y se revierte el pago.`)) return;
+    setAviso(null);
+    anularCompra(compra.id)
+      .then((r) => {
+        estado.recargar();
+        setAviso(
+          r.advertencias.length > 0
+            ? { tono: 'alerta', texto: r.advertencias.join(' ') }
+            : { tono: 'ok', texto: `Compra #${compra.id} anulada y revertida.` },
+        );
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
+
+  const columnas: readonly Columna<CompraVista>[] = [
+    ...COLUMNAS_COMPRAS,
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      celda: (c) =>
+        c.estado === 'recibida' ? (
+          <BotonFila onClick={() => anular(c)} tono="peligro">
+            Anular
+          </BotonFila>
+        ) : (
+          <span className="text-masa-700">—</span>
+        ),
+    },
+  ];
 
   return (
-    <Vista
-      estado={estado}
-      que="las compras"
-      tituloVacio="Sin compras registradas"
-      detalleVacio="No hay compras a proveedores. Carga los datos de demostracion para ver el modulo, incluida una compra pendiente que todavia no impacta el stock."
-      comandoVacio={COMANDO_SEED_DEMO}
-    >
-      {(filas) => (
-        <>
-          <p className="mb-2 text-xs text-masa-700">
-            Solo las compras <strong>recibidas</strong> generan movimiento de stock: una compra
-            pendiente todavia no ingreso a la fabrica.
-          </p>
-          <Tabla columnas={COLUMNAS_COMPRAS} filas={filas} claveDeFila={(c) => c.id} />
-        </>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          La compra ingresa el stock y genera la deuda o el pago en un solo paso.
+        </p>
+        <BotonPrimario onClick={() => setModalCompra(true)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nueva compra
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
+        estado={estado}
+        que="las compras"
+        tituloVacio="Sin compras registradas"
+        detalleVacio="Registra la primera con el boton Nueva compra."
+        comandoVacio={COMANDO_SEED_DEMO}
+      >
+        {(filas) => <Tabla columnas={columnas} filas={filas} claveDeFila={(c) => c.id} />}
+      </Vista>
+
+      {modalCompra && (
+        <FormularioCompra
+          alCerrar={() => setModalCompra(false)}
+          alGuardar={(mensaje, advertencias) => {
+            setModalCompra(false);
+            estado.recargar();
+            setAviso(
+              advertencias.length > 0
+                ? { tono: 'alerta', texto: `${mensaje} ${advertencias.join(' ')}` }
+                : { tono: 'ok', texto: mensaje },
+            );
+          }}
+        />
       )}
-    </Vista>
+    </div>
   );
 }

@@ -9,14 +9,11 @@
 
 import { desc, eq, sql } from 'drizzle-orm';
 
+// El estado que se PUBLICA suma 'anulada', que no existe en la columna de la
+// tabla: sale del contrato compartido, no del enum del schema.
+import type { EstadoCompra } from '../../../compartido/contratos';
 import { obtenerDb } from '../../db/conexion';
-import {
-  compraItems,
-  compras,
-  proveedores,
-  type EstadoCompra,
-  type FormaPago,
-} from '../../db/schema';
+import { compraItems, compras, proveedores, type FormaPago } from '../../db/schema';
 import { ejecutarSeguro } from '../../dominio/errores';
 
 /** Compra con el proveedor resuelto y el recuento de items. Importes en centavos. */
@@ -43,7 +40,7 @@ export function listarCompras(): FilaCompra[] {
         proveedorNombre: proveedores.nombre,
         total: compras.total,
         formaPago: compras.formaPago,
-        estado: compras.estado,
+        estado: sql<'pendiente' | 'recibida' | 'anulada'>`CASE WHEN ${compras.anulada} THEN 'anulada' ELSE ${compras.estado} END`,
         cantidadItems: sql<number>`COUNT(${compraItems.id})`.mapWith(Number),
         notas: compras.notas,
       })

@@ -7,13 +7,22 @@
  */
 
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import type { CajaMovimientoVista, CajaVista, ResumenCuentaCorriente } from '../../compartido/contratos';
 import { Pastilla } from '../componentes/comunes';
+import { Aviso, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
+import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import { obtenerCajas, obtenerCuentasCorrientes, obtenerMovimientosCaja } from '../servicios/cliente';
+import {
+  FormularioAperturaCaja,
+  FormularioCierreCaja,
+  FormularioCobroPago,
+  FormularioMovimientoCaja,
+} from './FormulariosOperacion';
 import {
   formatearFecha,
   formatearFechaHora,
@@ -123,9 +132,53 @@ function MovimientosDeCaja({ cajaId }: { readonly cajaId: number }): JSX.Element
 export function PantallaCaja(): JSX.Element {
   const estado = usarRecurso(() => obtenerCajas(), []);
   const [cajaSeleccionada, setCajaSeleccionada] = useState<number | null>(null);
+  const [modal, setModal] = useState<'abrir' | 'movimiento' | 'cerrar' | null>(null);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
+
+  usarEventos('caja:cambio', estado.recargar);
+
+  const abierta = estado.datos?.find((c) => c.estado === 'abierta');
+  // Teorico de la caja abierta: apertura mas lo que entro, menos lo que salio.
+  const teorico =
+    abierta === undefined ? 0 : abierta.montoApertura + abierta.totalIngresos - abierta.totalEgresos;
+
+  const cerrar = (mensaje: string): void => {
+    setModal(null);
+    estado.recargar();
+    setAviso({ tono: 'ok', texto: mensaje });
+  };
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          {abierta === undefined
+            ? 'No hay caja abierta: las ventas de contado no van a entrar a ninguna caja.'
+            : `Caja #${abierta.id} abierta · saldo teorico ${formatearMoneda(teorico)}`}
+        </p>
+        <div className="flex shrink-0 gap-2">
+          {abierta === undefined ? (
+            <BotonPrimario onClick={() => setModal('abrir')}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Abrir caja
+            </BotonPrimario>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setModal('movimiento')}
+                className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
+              >
+                Movimiento
+              </button>
+              <BotonPrimario onClick={() => setModal('cerrar')}>Cerrar caja</BotonPrimario>
+            </>
+          )}
+        </div>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
       <Vista
         estado={estado}
         que="las cajas"
@@ -154,6 +207,21 @@ export function PantallaCaja(): JSX.Element {
           </h2>
           <MovimientosDeCaja cajaId={cajaSeleccionada} />
         </section>
+      )}
+
+      {modal === 'abrir' && (
+        <FormularioAperturaCaja alCerrar={() => setModal(null)} alGuardar={cerrar} />
+      )}
+      {modal === 'movimiento' && (
+        <FormularioMovimientoCaja alCerrar={() => setModal(null)} alGuardar={cerrar} />
+      )}
+      {modal === 'cerrar' && abierta !== undefined && (
+        <FormularioCierreCaja
+          cajaId={abierta.id}
+          saldoTeorico={teorico}
+          alCerrar={() => setModal(null)}
+          alGuardar={cerrar}
+        />
       )}
     </div>
   );
@@ -208,28 +276,65 @@ const COLUMNAS_CC: readonly Columna<ResumenCuentaCorriente>[] = [
 
 export function PantallaCuentasCorrientes(): JSX.Element {
   const estado = usarRecurso(() => obtenerCuentasCorrientes(), []);
+  const [modal, setModal] = useState<'cliente' | 'proveedor' | null>(null);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
+
+  usarEventos('cc:cambio', estado.recargar);
 
   return (
-    <Vista
-      estado={estado}
-      que="las cuentas corrientes"
-      tituloVacio="Sin movimientos de cuenta corriente"
-      detalleVacio="Nadie tiene saldo pendiente. Carga los datos de demostracion para ver saldos de clientes y proveedores."
-      comandoVacio={COMANDO_SEED_DEMO}
-    >
-      {(filas) => (
-        <>
-          <p className="mb-2 text-xs text-masa-700">
-            Saldo = debe − haber. Positivo significa que la entidad nos debe; negativo, que le
-            debemos.
-          </p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Saldo = debe − haber. Positivo: nos deben. Negativo: debemos.
+        </p>
+        <div className="flex shrink-0 gap-2">
+          <BotonPrimario onClick={() => setModal('cliente')}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Registrar cobro
+          </BotonPrimario>
+          <button
+            type="button"
+            onClick={() => setModal('proveedor')}
+            className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-masa-100 focus-visible:ring-2 focus-visible:ring-dulce-400"
+          >
+            Registrar pago
+          </button>
+        </div>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
+        estado={estado}
+        que="las cuentas corrientes"
+        tituloVacio="Sin movimientos de cuenta corriente"
+        detalleVacio="Nadie tiene saldo pendiente."
+        comandoVacio={COMANDO_SEED_DEMO}
+      >
+        {(filas) => (
           <Tabla
             columnas={COLUMNAS_CC}
             filas={filas}
             claveDeFila={(c) => `${c.entidadTipo}-${c.entidadId}`}
           />
-        </>
+        )}
+      </Vista>
+
+      {modal !== null && (
+        <FormularioCobroPago
+          entidadTipo={modal}
+          alCerrar={() => setModal(null)}
+          alGuardar={(mensaje, advertencias) => {
+            setModal(null);
+            estado.recargar();
+            setAviso(
+              advertencias.length > 0
+                ? { tono: 'alerta', texto: `${mensaje} ${advertencias.join(' ')}` }
+                : { tono: 'ok', texto: mensaje },
+            );
+          }}
+        />
       )}
-    </Vista>
+    </div>
   );
 }

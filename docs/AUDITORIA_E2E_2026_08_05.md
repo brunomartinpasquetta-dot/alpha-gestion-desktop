@@ -150,6 +150,60 @@ Certificado no emitido por AC de confianza"*.
 | Regresión: producción → lote → trazabilidad | L-20260806-01, stock +120, consumos OK |
 | Regresión: máquina de estados de cheques | Transiciones válidas 200, inválida 422 |
 
+## TERCERA TANDA — v0.7.0, 6 de agosto de 2026
+
+El sistema pasa de leer a operar: todos los circuitos de escritura que faltaban.
+
+### Alcance nuevo
+
+| Circuito | Que hace |
+|---|---|
+| ABM clientes | Alta, edicion y baja logica. Bloquea la baja con saldo pendiente |
+| ABM proveedores | Igual que clientes |
+| ABM articulos | Alta, edicion, baja. Codigo unico; no deja cambiar el tipo con movimientos ni dar de baja con stock |
+| Compras | Ingresa stock, genera deuda o egreso de caja, actualiza el costo. Anulable con asientos espejo |
+| Caja | Apertura (una sola a la vez), movimientos manuales, cierre con arqueo y diferencia |
+| Cobros y pagos | Cuenta corriente + caja si es efectivo; en cheque no toca caja |
+| Produccion | Planificar la orden; la cantidad sale del rinde por el factor de escala |
+
+### Verificaciones
+
+Todas contra una copia de la base real, y despues repetidas en la app instalada
+manejando los formularios de verdad por CDP.
+
+| Prueba | Resultado |
+|---|---|
+| Alta/edicion/baja de cliente | 201 / 200 / 200; CUIT normalizado a 11 digitos |
+| CUIT invalido | 400 |
+| Baja de cliente con saldo | 422 con el nombre y el motivo |
+| Codigo de articulo duplicado | 409 |
+| Cambiar tipo de articulo con movimientos | 422 |
+| Baja de articulo con stock | 422 |
+| Compra en cuenta corriente | Stock +50000 g exacto, CC haber, costo actualizado |
+| Anular compra | Stock y CC vuelven al valor previo; estado 'anulada' |
+| Anular dos veces | 422 |
+| Abrir segunda caja | 422 |
+| Egreso mayor al saldo de caja | 422 con el saldo disponible |
+| Cierre de caja | Teorico 54.000, contado 53.500, diferencia −500 detectada |
+| Cobro en efectivo | Deuda baja y la caja sube por el mismo importe |
+| Cobro en cheque | Deuda baja, caja intacta |
+| Cobro mayor a la deuda | Se registra y avisa del saldo a favor |
+| Pago mayor al efectivo en caja | 422 |
+| Crear orden con factor 2 | Cantidad = rinde x 2; ejecutar asigna lote |
+| Factor de escala 0 | 400 |
+| Formularios en la app instalada | Alta de cliente, compra (3 x 1000 = 3000 g) y cobro, todos OK |
+
+### Correcciones durante la verificacion
+
+- **Baja de cliente con deuda no se bloqueaba.** El servicio recalculaba el saldo
+  con su propia consulta y devolvia 0. Se elimino esa copia: ahora la vista sale
+  del repositorio de lectura, que es la unica definicion del saldo en el sistema.
+- **Catalogo de eventos SSE duplicado.** Servidor y renderer declaraban cada uno
+  su lista; agregar un evento compilaba de un lado y fallaba del otro. Se movio a
+  `contratos.ts` y ambos lo importan.
+- **`/api/unidades` quedo anidado dentro de otro handler** y respondia 404. Se
+  detecto al probar la app instalada, no en el typecheck.
+
 ## NO CUBIERTO (requiere UAT o hardware)
 
 - PWA en un teléfono físico (táctil, service worker en iOS/Android reales).

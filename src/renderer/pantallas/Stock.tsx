@@ -6,16 +6,27 @@
  * guardado en ningun lado.
  */
 
+import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
+
 import {
   ETIQUETA_TIPO_ARTICULO,
   type ArticuloConStock,
   type SaldoStock,
+  type UnidadMedidaVista,
 } from '../../compartido/contratos';
 import { Pastilla } from '../componentes/comunes';
+import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { obtenerArticulos, obtenerStock } from '../servicios/cliente';
+import {
+  cambiarActivoArticulo,
+  obtenerArticulos,
+  obtenerStock,
+  obtenerUnidades,
+} from '../servicios/cliente';
+import { FormularioArticulo } from './FormulariosMaestros';
 import { formatearCajas, formatearCantidad, formatearMoneda } from '../utiles/formato';
 
 export interface PropsConSeleccion {
@@ -155,25 +166,91 @@ export function PantallaArticulos({
   alSeleccionarArticulo,
 }: PropsConSeleccion): JSX.Element {
   const estado = usarRecurso(() => obtenerArticulos(), []);
+  const [enEdicion, setEnEdicion] = useState<ArticuloConStock | null | undefined>(undefined);
+  const [unidades, setUnidades] = useState<UnidadMedidaVista[]>([]);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+
+  useEffect(() => {
+    obtenerUnidades()
+      .then(setUnidades)
+      .catch(() => setUnidades([]));
+  }, []);
+
+  const cambiarActivo = (articulo: ArticuloConStock): void => {
+    const alta = !articulo.activo;
+    if (!alta && !window.confirm(`¿Dar de baja ${articulo.nombre}? Deja de ofrecerse al vender y comprar.`)) return;
+    setAviso(null);
+    cambiarActivoArticulo(articulo.id, alta)
+      .then(() => {
+        estado.recargar();
+        setAviso({ tono: 'ok', texto: `${articulo.nombre} ${alta ? 'reactivado' : 'dado de baja'}.` });
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
+
+  const columnas: readonly Columna<ArticuloConStock>[] = [
+    ...COLUMNAS_ARTICULOS,
+    {
+      clave: 'acciones',
+      titulo: 'Acciones',
+      celda: (a) => (
+        <div className="flex gap-1">
+          <BotonFila onClick={() => setEnEdicion(a)}>Editar</BotonFila>
+          <BotonFila onClick={() => cambiarActivo(a)} tono={a.activo ? 'peligro' : 'neutro'}>
+            {a.activo ? 'Dar de baja' : 'Reactivar'}
+          </BotonFila>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <Vista
-      estado={estado}
-      que="el maestro de articulos"
-      tituloVacio="Sin articulos"
-      detalleVacio="El maestro de articulos esta vacio. Corre el seed para cargar el catalogo base."
-      comandoVacio="npm run db:seed"
-    >
-      {(filas) => (
-        <Tabla
-          columnas={COLUMNAS_ARTICULOS}
-          filas={filas}
-          claveDeFila={(a) => a.id}
-          filaEnAlerta={(a) => a.bajoMinimo}
-          filaSeleccionada={(a) => a.id === articuloSeleccionadoId}
-          alSeleccionar={(a) => alSeleccionarArticulo({ id: a.id, nombre: a.nombre, codigo: a.codigo })}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Hace clic en una fila para ver su ledger de movimientos.
+        </p>
+        <BotonPrimario onClick={() => setEnEdicion(null)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuevo articulo
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
+      <Vista
+        estado={estado}
+        que="el maestro de articulos"
+        tituloVacio="Sin articulos"
+        detalleVacio="Cargá el primero con el boton Nuevo articulo."
+        comandoVacio="npm run db:seed"
+      >
+        {(filas) => (
+          <Tabla
+            columnas={columnas}
+            filas={filas}
+            claveDeFila={(a) => a.id}
+            filaEnAlerta={(a) => a.bajoMinimo}
+            filaSeleccionada={(a) => a.id === articuloSeleccionadoId}
+            alSeleccionar={(a) => alSeleccionarArticulo({ id: a.id, nombre: a.nombre, codigo: a.codigo })}
+          />
+        )}
+      </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioArticulo
+          articulo={enEdicion}
+          unidades={unidades}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso({ tono: 'ok', texto: mensaje });
+          }}
         />
       )}
-    </Vista>
+    </div>
   );
 }
