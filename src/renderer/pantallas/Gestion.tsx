@@ -289,3 +289,69 @@ export function PantallaContabilidad(): JSX.Element {
     </div>
   );
 }
+
+/* ------------------------- Facturacion electronica ------------------------- */
+
+/**
+ * ARCA todavia no esta integrado. La pantalla existe para que el alcance quede
+ * a la vista: el cliente es Responsable Inscripto y VA a facturar desde aca.
+ * El motor fiscal (WSAA + WSFEv1) ya esta resuelto y probado en StockFlow y se
+ * porta cuando el circuito de ventas este construido.
+ */
+export function PantallaFacturacion(): JSX.Element {
+  return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <div className="rounded-ficha border border-info-200 bg-info-50 px-5 py-4">
+        <p className="font-semibold text-info-700">En preparacion</p>
+        <p className="mt-1 text-sm text-masa-900">
+          El cliente es Responsable Inscripto: la facturacion electronica con CAE de ARCA es parte
+          del alcance confirmado. El motor fiscal (autenticacion WSAA con firma CMS y emision por
+          WSFEv1) ya esta construido y probado en produccion en otro producto de BPSG, y se porta
+          aca cuando exista el circuito de ventas.
+        </p>
+      </div>
+
+      <div className="rounded-ficha border border-masa-200 bg-white px-5 py-4 shadow-ficha">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
+          Que falta para activarla
+        </h2>
+        <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-masa-900">
+          <li>
+            <strong>Circuito de ventas.</strong> Hoy las ventas son datos de demostracion: no se
+            emiten desde la interfaz. Primero se construye emitir la venta; facturarla es el paso
+            siguiente del mismo flujo.
+          </li>
+          <li>
+            <strong>Datos fiscales en la venta.</strong> Neto, alicuota de IVA, tipo de comprobante
+            (A/B), punto de venta y numeracion. Definidos junto con el circuito.
+          </li>
+          <li>
+            <strong>Tramite del cliente.</strong> Certificado digital de ARCA (X.509) asociado al
+            CUIT de la fabrica, alta del punto de venta para factura electronica, y pruebas en
+            homologacion antes de tocar produccion.
+          </li>
+        </ol>
+      </div>
+
+      <div className="rounded-ficha border border-masa-200 bg-white px-5 py-4 shadow-ficha">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
+          Lo que ya queda resuelto desde ahora
+        </h2>
+        <ul className="mt-2 space-y-2 text-sm text-masa-900">
+          <li>
+            <strong>CUIT de clientes y proveedores</strong> ya se cargan en los maestros: son el
+            dato clave para discriminar comprobantes A y B.
+          </li>
+          <li>
+            <strong>Dinero en centavos enteros</strong> en toda la base: los importes fiscales no
+            arrastran errores de redondeo.
+          </li>
+          <li>
+            <strong>Cheques y cuentas corrientes</strong> ya registran como se cobra: la factura se
+            engancha a esos medios de pago sin rehacer nada.
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}

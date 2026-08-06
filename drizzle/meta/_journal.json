@@ -15,6 +15,13 @@
       "when": 1785965096804,
       "tag": "0001_unidades_por_caja",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785980640638,
+      "tag": "0002_lotes_y_cheques",
+      "breakpoints": true
     }
   ]
 }

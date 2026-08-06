@@ -16,13 +16,16 @@ import {
   BookText,
   Boxes,
   Building2,
+  CreditCard,
   ChefHat,
   ClipboardList,
   Cookie,
   Factory,
+  FileCheck2,
   HandCoins,
   Landmark,
   LayoutDashboard,
+  ScanSearch,
   ShoppingCart,
   Square,
   Tag,
@@ -58,6 +61,12 @@ const ICONOS: Readonly<Record<string, LucideIcon>> = {
   proveedores: Building2,
   precios: Tag,
   estadisticas: BarChart3,
+  /** Trazabilidad: buscar la historia de un lote. */
+  trazabilidad: ScanSearch,
+  /** Cartera de cheques. */
+  cheques: CreditCard,
+  /** Facturacion electronica ARCA. */
+  facturacion: FileCheck2,
   contabilidad: BookText,
   usuarios: UserCog,
 };

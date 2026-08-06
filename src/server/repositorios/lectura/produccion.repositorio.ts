@@ -30,6 +30,7 @@ export interface FilaOrdenProduccion {
   unidadAbreviatura: string;
   factorEscala: number;
   estado: EstadoOrdenProduccion;
+  numeroLote: string | null;
   pedidoId: number | null;
   rindeReal: number | null;
   fechaPlanificada: string;
@@ -53,6 +54,7 @@ export function listarOrdenes(): FilaOrdenProduccion[] {
         unidadAbreviatura: unidadesMedida.abreviatura,
         factorEscala: ordenesProduccion.factorEscala,
         estado: ordenesProduccion.estado,
+        numeroLote: ordenesProduccion.numeroLote,
         pedidoId: ordenesProduccion.pedidoId,
         rindeReal: ordenesProduccion.rindeReal,
         fechaPlanificada: ordenesProduccion.fechaPlanificada,

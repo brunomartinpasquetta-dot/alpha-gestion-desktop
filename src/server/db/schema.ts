@@ -310,6 +310,12 @@ export const ordenesProduccion = sqliteTable(
     /** Media tanda = 0.5, doble tanda = 2, etc. */
     factorEscala: real('factor_escala').notNull().default(1),
     estado: text('estado', { enum: ESTADOS_ORDEN_PRODUCCION }).notNull().default('planificada'),
+    /**
+     * Numero de lote UNICO de la tanda (ej: L-20260805-01). Se asigna cuando la
+     * orden se ejecuta (pasa a en_proceso) y es la clave de trazabilidad: de un
+     * lote se llega a la orden, sus consumos y sus movimientos de stock.
+     */
+    numeroLote: text('numero_lote'),
     /** Produccion contra pedido: permite trazar que orden cubre que pedido. */
     pedidoId: integer('pedido_id').references(() => pedidos.id, {
       onDelete: 'set null',
@@ -325,6 +331,7 @@ export const ordenesProduccion = sqliteTable(
     index('ix_ordenes_produccion_estado_fecha').on(tabla.estado, tabla.fechaPlanificada),
     index('ix_ordenes_produccion_articulo').on(tabla.articuloProducidoId),
     index('ix_ordenes_produccion_pedido').on(tabla.pedidoId),
+    uniqueIndex('ux_ordenes_produccion_numero_lote').on(tabla.numeroLote),
     check(
       'ck_ordenes_produccion_estado',
       sql`${tabla.estado} IN ('planificada','en_proceso','finalizada','cancelada')`,
@@ -643,6 +650,75 @@ export const cajaMovimientos = sqliteTable(
     check('ck_caja_movimientos_monto', sql`${tabla.monto} >= 0`),
   ],
 );
+
+/* ------------------------------------------------------------------------- */
+/* Cheques                                                                   */
+/* ------------------------------------------------------------------------- */
+
+export const TIPOS_CHEQUE = ['recibido', 'emitido'] as const;
+export type TipoCheque = (typeof TIPOS_CHEQUE)[number];
+
+export const FORMATOS_CHEQUE = ['fisico', 'echeq'] as const;
+export type FormatoCheque = (typeof FORMATOS_CHEQUE)[number];
+
+export const ESTADOS_CHEQUE = [
+  'en_cartera',
+  'depositado',
+  'acreditado',
+  'rechazado',
+  'endosado',
+  'entregado',
+  'anulado',
+] as const;
+export type EstadoCheque = (typeof ESTADOS_CHEQUE)[number];
+
+/**
+ * Cartera de cheques (el cliente opera con cheques diferidos).
+ * Recibidos: en_cartera -> depositado -> acreditado | rechazado, o endosado.
+ * Emitidos: entregado -> rechazado. `anulado` sale desde cualquier estado no final.
+ */
+export const cheques = sqliteTable(
+  'cheques',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tipo: text('tipo', { enum: TIPOS_CHEQUE }).notNull(),
+    formato: text('formato', { enum: FORMATOS_CHEQUE }).notNull().default('fisico'),
+    /** Numero del cheque fisico o identificador del ECHEQ. */
+    numero: text('numero').notNull(),
+    banco: text('banco'),
+    /** CUIT del emisor (obligatorio en ECHEQ, opcional en fisico). */
+    cuitEmisor: text('cuit_emisor'),
+    /** Quien lo emitio (recibido) o a quien se entrego (emitido). */
+    contraparte: text('contraparte').notNull(),
+    /** FK logica opcional a clientes/proveedores, como en cuentas_corrientes. */
+    entidadTipo: text('entidad_tipo', { enum: TIPOS_ENTIDAD_CC }),
+    entidadId: integer('entidad_id'),
+    /** Centavos, siempre positivo. */
+    importe: integer('importe').notNull(),
+    fechaEmision: text('fecha_emision').notNull(),
+    /** Fecha de pago/vencimiento (cheque diferido). Rige los avisos de la cartera. */
+    fechaPago: text('fecha_pago').notNull(),
+    estado: text('estado', { enum: ESTADOS_CHEQUE }).notNull(),
+    documentoTipo: text('documento_tipo'),
+    documentoId: integer('documento_id'),
+    notas: text('notas'),
+    createdAt: text('created_at').notNull().default(AHORA),
+  },
+  (tabla) => [
+    index('ix_cheques_tipo_estado').on(tabla.tipo, tabla.estado),
+    index('ix_cheques_fecha_pago').on(tabla.fechaPago),
+    check('ck_cheques_tipo', sql`${tabla.tipo} IN ('recibido','emitido')`),
+    check('ck_cheques_formato', sql`${tabla.formato} IN ('fisico','echeq')`),
+    check(
+      'ck_cheques_estado',
+      sql`${tabla.estado} IN ('en_cartera','depositado','acreditado','rechazado','endosado','entregado','anulado')`,
+    ),
+    check('ck_cheques_importe', sql`${tabla.importe} > 0`),
+  ],
+);
+
+export type Cheque = typeof cheques.$inferSelect;
+export type NuevoCheque = typeof cheques.$inferInsert;
 
 /* ------------------------------------------------------------------------- */
 /* Usuarios                                                                  */

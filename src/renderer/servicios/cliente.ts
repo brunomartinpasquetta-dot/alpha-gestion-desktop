@@ -16,6 +16,10 @@
 
 import type {
   ArticuloConStock,
+  ChequeVista,
+  EntradaNuevoCheque,
+  ResumenCartera,
+  TrazabilidadLote,
   CajaMovimientoVista,
   CajaVista,
   ClienteVista,
@@ -170,6 +174,52 @@ export const obtenerUsuarios = (): Promise<UsuarioVista[]> => pedirLista<Usuario
 /** Aplica una transicion de estado a un pedido. Lanza con el mensaje del servidor si es invalida. */
 export async function cambiarEstadoPedido(pedidoId: number, estado: string): Promise<void> {
   const ruta = `/api/pedidos/${pedidoId}/estado`;
+  const respuesta = await fetch(ruta, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ estado }),
+  });
+  const cuerpo = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+}
+
+/* ----------------------- Produccion, trazabilidad, cheques ------------------ */
+
+export async function cambiarEstadoOrden(
+  ordenId: number,
+  estado: string,
+  rindeReal?: number | null,
+): Promise<void> {
+  const ruta = `/api/produccion/ordenes/${ordenId}/estado`;
+  const respuesta = await fetch(ruta, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(rindeReal === undefined ? { estado } : { estado, rindeReal }),
+  });
+  const cuerpo = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+}
+
+export const obtenerTrazabilidad = (lote: string): Promise<TrazabilidadLote> =>
+  pedirItem<TrazabilidadLote>(`/api/trazabilidad/${encodeURIComponent(lote)}`);
+
+export const obtenerCheques = (): Promise<ChequeVista[]> => pedirLista<ChequeVista>('/api/cheques');
+
+export const obtenerResumenCartera = (): Promise<ResumenCartera> =>
+  pedirItem<ResumenCartera>('/api/cheques/resumen');
+
+export async function crearCheque(entrada: EntradaNuevoCheque): Promise<void> {
+  const respuesta = await fetch('/api/cheques', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(entrada),
+  });
+  const cuerpo = await leerJson(respuesta, '/api/cheques');
+  if (!respuesta.ok) throw errorDesdeRespuesta('/api/cheques', respuesta, cuerpo);
+}
+
+export async function cambiarEstadoCheque(chequeId: number, estado: string): Promise<void> {
+  const ruta = `/api/cheques/${chequeId}/estado`;
   const respuesta = await fetch(ruta, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },

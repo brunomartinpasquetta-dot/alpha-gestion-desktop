@@ -28,7 +28,10 @@ export type ClaveModulo =
   | 'caja-general'
   | 'estadisticas'
   | 'contabilidad'
-  | 'usuarios';
+  | 'usuarios'
+  | 'trazabilidad'
+  | 'cheques'
+  | 'facturacion';
 
 export interface DefinicionModulo {
   readonly clave: ClaveModulo;
@@ -169,6 +172,27 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     icono: 'usuarios',
     descripcion: 'Usuarios del sistema con su rol y estado.',
   },
+  trazabilidad: {
+    clave: 'trazabilidad',
+    titulo: 'Trazabilidad',
+    etiqueta: 'Trazabilidad',
+    icono: 'trazabilidad',
+    descripcion: 'Historia completa de una tanda a partir de su numero de lote.',
+  },
+  cheques: {
+    clave: 'cheques',
+    titulo: 'Cheques',
+    etiqueta: 'Cheques',
+    icono: 'cheques',
+    descripcion: 'Cartera de cheques recibidos y emitidos, con control de vencimientos.',
+  },
+  facturacion: {
+    clave: 'facturacion',
+    titulo: 'Facturacion electronica',
+    etiqueta: 'ARCA',
+    icono: 'facturacion',
+    descripcion: 'Comprobantes con CAE de ARCA. En preparacion: requiere el circuito de ventas.',
+  },
 };
 
 export function esClaveModulo(valor: string): valor is ClaveModulo {
@@ -198,17 +222,28 @@ export const MENUS: readonly MenuSuperior[] = [
     nombre: 'Stock',
     items: [{ clave: 'stock-insumos' }, { clave: 'stock-productos' }, { clave: 'articulos' }],
   },
-  { nombre: 'Produccion', items: [{ clave: 'recetas' }, { clave: 'ordenes' }] },
+  {
+    nombre: 'Produccion',
+    items: [{ clave: 'recetas' }, { clave: 'ordenes' }, { clave: 'trazabilidad' }],
+  },
   { nombre: 'Comercial', items: [{ clave: 'pedidos' }, { clave: 'ventas' }, { clave: 'compras' }] },
   {
     nombre: 'Tesoreria',
-    items: [{ clave: 'caja' }, { clave: 'caja-general' }, { clave: 'cuentas-corrientes' }],
+    items: [
+      { clave: 'caja' },
+      { clave: 'caja-general' },
+      { clave: 'cheques' },
+      { clave: 'cuentas-corrientes' },
+    ],
   },
   {
     nombre: 'Maestros',
     items: [{ clave: 'clientes' }, { clave: 'proveedores' }, { clave: 'listas-precio' }],
   },
-  { nombre: 'Consultas', items: [{ clave: 'estadisticas' }, { clave: 'contabilidad' }] },
+  {
+    nombre: 'Consultas',
+    items: [{ clave: 'estadisticas' }, { clave: 'contabilidad' }, { clave: 'facturacion' }],
+  },
 ];
 
 /* -------------------------------------------------------------------------- */

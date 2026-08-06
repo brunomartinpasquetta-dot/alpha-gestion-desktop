@@ -144,3 +144,9 @@ export function formatearCajas(unidades: number, unidadesPorCaja: number | null)
   const base = `${formatearEntero(cajas)} ${cajas === 1 ? 'caja' : 'cajas'}`;
   return resto === 0 ? base : `${base} + ${formatearEntero(resto)} u`;
 }
+
+/** Convierte pesos (con decimales) a centavos enteros, para enviar al servidor. */
+export function aCentavos(pesos: number): number {
+  if (!Number.isFinite(pesos)) return 0;
+  return Math.round(pesos * 100);
+}

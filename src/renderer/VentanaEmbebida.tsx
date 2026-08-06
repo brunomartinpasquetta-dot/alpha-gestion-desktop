@@ -16,8 +16,11 @@ import {
   PantallaCajaGeneral,
   PantallaContabilidad,
   PantallaEstadisticas,
+  PantallaFacturacion,
   PantallaUsuarios,
 } from './pantallas/Gestion';
+import { PantallaCheques } from './pantallas/Cheques';
+import { PantallaTrazabilidad } from './pantallas/Trazabilidad';
 import { PantallaClientes, PantallaPrecios, PantallaProveedores } from './pantallas/Maestros';
 import { PantallaCompras, PantallaPedidos, PantallaVentas } from './pantallas/Comercial';
 import { PantallaInicio } from './pantallas/Inicio';
@@ -114,6 +117,12 @@ function contenidoDe(clave: ClaveModulo): JSX.Element {
       return <Simple><PantallaContabilidad /></Simple>;
     case 'usuarios':
       return <Simple><PantallaUsuarios /></Simple>;
+    case 'trazabilidad':
+      return <Simple><PantallaTrazabilidad /></Simple>;
+    case 'cheques':
+      return <Simple><PantallaCheques /></Simple>;
+    case 'facturacion':
+      return <Simple><PantallaFacturacion /></Simple>;
     default:
       // Inalcanzable: la clave viene de una union cerrada. Existe para que
       // sumar un modulo sin su pantalla sea un error de compilacion.

@@ -154,6 +154,8 @@ export interface OrdenProduccionVista {
   unidadAbreviatura: string;
   factorEscala: number;
   estado: EstadoOrdenProduccion;
+  /** Numero de lote de la tanda; null hasta que la orden se ejecuta. */
+  numeroLote: string | null;
   pedidoId: number | null;
   rindeReal: number | null;
   fechaPlanificada: string;
@@ -513,4 +515,158 @@ export const ETIQUETA_TRANSICION: Readonly<Record<EstadoPedido, string>> = {
   listo: 'Marcar listo',
   entregado: 'Entregar',
   cancelado: 'Cancelar',
+};
+
+/* ------------------------ Produccion: ejecucion y lote --------------------- */
+
+/**
+ * Maquina de estados de la orden de produccion. Al pasar a `en_proceso` se
+ * asigna el numero de lote; al pasar a `finalizada` se generan los movimientos
+ * de stock (consumos negativos + ingreso del producido).
+ */
+export const TRANSICIONES_ORDEN: Readonly<
+  Record<EstadoOrdenProduccion, readonly EstadoOrdenProduccion[]>
+> = {
+  planificada: ['en_proceso', 'cancelada'],
+  en_proceso: ['finalizada', 'cancelada'],
+  finalizada: [],
+  cancelada: [],
+};
+
+export const ETIQUETA_TRANSICION_ORDEN: Readonly<Record<EstadoOrdenProduccion, string>> = {
+  planificada: 'Planificar',
+  en_proceso: 'Ejecutar',
+  finalizada: 'Finalizar',
+  cancelada: 'Cancelar',
+};
+
+/** Cuerpo de PATCH /api/produccion/ordenes/:id/estado. */
+export interface EntradaCambioEstadoOrden {
+  estado: EstadoOrdenProduccion;
+  /** Solo al finalizar: unidades reales que salieron. Si falta, se asume lo planificado. */
+  rindeReal?: number | null;
+}
+
+/* ------------------------------ Trazabilidad ------------------------------- */
+
+export interface ConsumoTrazado {
+  articuloId: number;
+  codigo: string;
+  nombre: string;
+  unidadAbreviatura: string;
+  cantidadTeorica: number;
+  cantidadReal: number | null;
+  /** real - teorica; positivo = se uso de mas (merma). null si no hay real. */
+  merma: number | null;
+}
+
+export interface MovimientoTrazado {
+  id: number;
+  fecha: string;
+  tipo: TipoMovimientoStock;
+  articuloId: number;
+  articuloNombre: string;
+  cantidad: number;
+  unidadAbreviatura: string;
+}
+
+/** Respuesta de GET /api/trazabilidad/:lote — la historia completa de una tanda. */
+export interface TrazabilidadLote {
+  numeroLote: string;
+  orden: OrdenProduccionVista;
+  consumos: ConsumoTrazado[];
+  movimientos: MovimientoTrazado[];
+  /** Stock actual del articulo producido, para cerrar el circulo. */
+  stockActualProducido: number;
+}
+
+/* --------------------------------- Cheques --------------------------------- */
+
+export type TipoCheque = 'recibido' | 'emitido';
+export type FormatoCheque = 'fisico' | 'echeq';
+export type EstadoCheque =
+  | 'en_cartera'
+  | 'depositado'
+  | 'acreditado'
+  | 'rechazado'
+  | 'endosado'
+  | 'entregado'
+  | 'anulado';
+
+export interface ChequeVista {
+  id: number;
+  tipo: TipoCheque;
+  formato: FormatoCheque;
+  numero: string;
+  banco: string | null;
+  cuitEmisor: string | null;
+  contraparte: string;
+  entidadTipo: TipoEntidadCc | null;
+  entidadId: number | null;
+  importe: number;
+  fechaEmision: string;
+  fechaPago: string;
+  estado: EstadoCheque;
+  notas: string | null;
+}
+
+export interface EntradaNuevoCheque {
+  tipo: TipoCheque;
+  formato: FormatoCheque;
+  numero: string;
+  banco?: string | null;
+  cuitEmisor?: string | null;
+  contraparte: string;
+  entidadTipo?: TipoEntidadCc | null;
+  entidadId?: number | null;
+  /** Centavos. */
+  importe: number;
+  fechaEmision: string;
+  fechaPago: string;
+  notas?: string | null;
+}
+
+/** Indicadores de la cartera: vencimientos proximos y plata en la calle. */
+export interface ResumenCartera {
+  enCartera: number;
+  importeEnCartera: number;
+  porVencer7Dias: number;
+  vencidos: number;
+}
+
+/**
+ * Transiciones por tipo. El recibido va camino al banco (o se endosa); el
+ * emitido solo puede rebotar. `anulado` corrige un alta equivocada.
+ */
+export const TRANSICIONES_CHEQUE: Readonly<
+  Record<TipoCheque, Readonly<Record<EstadoCheque, readonly EstadoCheque[]>>>
+> = {
+  recibido: {
+    en_cartera: ['depositado', 'endosado', 'anulado'],
+    depositado: ['acreditado', 'rechazado'],
+    acreditado: [],
+    rechazado: ['depositado'],
+    endosado: [],
+    entregado: [],
+    anulado: [],
+  },
+  emitido: {
+    en_cartera: [],
+    depositado: [],
+    acreditado: [],
+    rechazado: [],
+    endosado: [],
+    entregado: ['rechazado', 'anulado'],
+    anulado: [],
+  },
+};
+
+export const ETIQUETA_ESTADO_CHEQUE: Readonly<Record<EstadoCheque, string>> = {
+  en_cartera: 'En cartera',
+  depositado: 'Depositado',
+  acreditado: 'Acreditado',
+  rechazado: 'Rechazado',
+  endosado: 'Endosado',
+  entregado: 'Entregado',
+  anulado: 'Anulado',
 };

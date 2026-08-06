@@ -11,14 +11,17 @@ import { useState } from 'react';
 import {
   ETIQUETA_ESTADO_ORDEN,
   ETIQUETA_TIPO_ARTICULO,
+  TRANSICIONES_ORDEN,
+  type EstadoOrdenProduccion,
   type OrdenProduccionVista,
   type RecetaVista,
 } from '../../compartido/contratos';
 import { Pastilla, type TonoPastilla } from '../componentes/comunes';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
+import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { obtenerOrdenesProduccion, obtenerRecetas } from '../servicios/cliente';
+import { cambiarEstadoOrden, obtenerOrdenesProduccion, obtenerRecetas } from '../servicios/cliente';
 import {
   formatearCantidad,
   formatearCantidadConUnidad,
@@ -144,8 +147,29 @@ function tonoDeOrden(estado: OrdenProduccionVista['estado']): TonoPastilla {
   }
 }
 
-const COLUMNAS_ORDENES: readonly Columna<OrdenProduccionVista>[] = [
+/** Etiquetas de accion, en el lenguaje de la fabrica. */
+const ETIQUETA_ACCION_ORDEN: Readonly<Record<EstadoOrdenProduccion, string>> = {
+  planificada: 'Planificar',
+  en_proceso: 'Ejecutar (asigna lote)',
+  finalizada: 'Finalizar tanda',
+  cancelada: 'Cancelar',
+};
+
+function armarColumnasOrdenes(
+  alCambiar: (orden: OrdenProduccionVista, destino: EstadoOrdenProduccion) => void,
+): readonly Columna<OrdenProduccionVista>[] {
+  return [
   { clave: 'id', titulo: '#', celda: (o) => o.id, numerica: true, ancho: 'w-14' },
+  {
+    clave: 'lote',
+    titulo: 'Lote',
+    celda: (o) =>
+      o.numeroLote === null ? (
+        <span className="text-masa-700">—</span>
+      ) : (
+        <span className="font-mono font-semibold text-masa-900">{o.numeroLote}</span>
+      ),
+  },
   {
     clave: 'articulo',
     titulo: 'Producto',
@@ -181,10 +205,66 @@ const COLUMNAS_ORDENES: readonly Columna<OrdenProduccionVista>[] = [
     titulo: 'Estado',
     celda: (o) => <Pastilla texto={ETIQUETA_ESTADO_ORDEN[o.estado]} tono={tonoDeOrden(o.estado)} />,
   },
-];
+  {
+    clave: 'acciones',
+    titulo: 'Acciones',
+    celda: (o) => {
+      const destinos = TRANSICIONES_ORDEN[o.estado];
+      if (destinos.length === 0) return <span className="text-masa-700">—</span>;
+      return (
+        <span className="flex flex-wrap gap-1.5">
+          {destinos.map((destino) => (
+            <button
+              key={destino}
+              type="button"
+              onClick={() => alCambiar(o, destino)}
+              className={[
+                'rounded-pastilla border px-2 py-0.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2',
+                destino === 'cancelada'
+                  ? 'border-peligro-300 text-peligro-600 hover:bg-peligro-50 focus-visible:ring-peligro-400'
+                  : 'border-dulce-400 text-dulce-700 hover:bg-dulce-50 focus-visible:ring-dulce-400',
+              ].join(' ')}
+            >
+              {ETIQUETA_ACCION_ORDEN[destino]}
+            </button>
+          ))}
+        </span>
+      );
+    },
+  },
+  ];
+}
 
 export function PantallaOrdenes(): JSX.Element {
   const estado = usarRecurso(() => obtenerOrdenesProduccion(), []);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  usarEventos('ordenes:cambio', estado.recargar);
+
+  const aplicarTransicion = (orden: OrdenProduccionVista, destino: EstadoOrdenProduccion): void => {
+    if (destino === 'cancelada' && !window.confirm(`¿Cancelar la orden #${orden.id}?`)) return;
+
+    // Al finalizar se pregunta el rinde real: doce planificados a veces salen once.
+    let rindeReal: number | null | undefined;
+    if (destino === 'finalizada') {
+      const respuesta = window.prompt(
+        `Rinde real de la tanda (planificado: ${orden.cantidadPlanificada}). Vacio = lo planificado.`,
+        String(orden.cantidadPlanificada),
+      );
+      if (respuesta === null) return; // cancelo el dialogo
+      const valor = Number(respuesta.replace(',', '.'));
+      rindeReal = respuesta.trim() === '' ? null : Number.isFinite(valor) ? valor : null;
+    }
+
+    setErrorAccion(null);
+    cambiarEstadoOrden(orden.id, destino, rindeReal)
+      .then(estado.recargar)
+      .catch((causa: unknown) =>
+        setErrorAccion(causa instanceof Error ? causa.message : String(causa)),
+      );
+  };
+
+  const columnas = armarColumnasOrdenes(aplicarTransicion);
 
   return (
     <Vista
@@ -194,7 +274,16 @@ export function PantallaOrdenes(): JSX.Element {
       detalleVacio="Todavia no se planifico ninguna tanda. Carga los datos de demostracion para ver el modulo con ordenes en distintos estados."
       comandoVacio={COMANDO_SEED_DEMO}
     >
-      {(filas) => <Tabla columnas={COLUMNAS_ORDENES} filas={filas} claveDeFila={(o) => o.id} />}
+      {(filas) => (
+        <>
+          {errorAccion !== null && (
+            <p role="alert" className="mb-2 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
+              {errorAccion}
+            </p>
+          )}
+          <Tabla columnas={columnas} filas={filas} claveDeFila={(o) => o.id} />
+        </>
+      )}
     </Vista>
   );
 }
