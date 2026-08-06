@@ -492,6 +492,12 @@ export interface EntradaNuevoPedido {
   cargadoPor?: string | null;
   notas?: string | null;
   items: EntradaItemPedido[];
+  /**
+   * Clave unica del cliente para que un reintento (cola offline con respuesta
+   * perdida) no duplique el pedido: si el servidor ya la vio, devuelve el
+   * pedido existente con 200 en vez de crear otro.
+   */
+  claveIdempotencia?: string | null;
 }
 
 /**
@@ -545,6 +551,19 @@ export interface EntradaCambioEstadoOrden {
   estado: EstadoOrdenProduccion;
   /** Solo al finalizar: unidades reales que salieron. Si falta, se asume lo planificado. */
   rindeReal?: number | null;
+}
+
+/** Respuesta del cambio de estado de una orden. */
+export interface ResultadoOrden {
+  id: number;
+  estado: EstadoOrdenProduccion;
+  numeroLote: string | null;
+  /**
+   * Avisos operativos que NO bloquean (ej: un insumo quedo en stock negativo al
+   * finalizar). La tanda fisica ya ocurrio; bloquear el registro seria mentirle
+   * al ledger. Pero el usuario tiene que enterarse.
+   */
+  advertencias: string[];
 }
 
 /* ------------------------------ Trazabilidad ------------------------------- */

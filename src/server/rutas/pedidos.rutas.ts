@@ -36,11 +36,13 @@ const esquemaNuevoPedido = z.object({
     .array(
       z.object({
         articuloId: z.number().int().positive(),
-        cantidad: z.number().positive(),
+        // Topes sensatos: nadie pide una millonesima de alfajor ni un billon.
+        cantidad: z.number().min(0.01).max(1_000_000),
         notas: z.string().max(200).nullable().optional(),
       }),
     )
     .min(1),
+  claveIdempotencia: z.string().min(8).max(80).nullable().optional(),
 });
 
 const esquemaParametrosPedido = z.object({
@@ -75,8 +77,9 @@ export function registrarRutasPedidos(app: FastifyInstance): void {
       request.body,
       'El pedido enviado no es valido.',
     );
-    const pedido = pedidosServicio.crearPedido(entrada);
-    return reply.status(201).send({ datos: pedido });
+    const resultado = pedidosServicio.crearPedido(entrada);
+    // 200 si la clave de idempotencia ya se habia procesado; 201 si es nuevo.
+    return reply.status(resultado.existente ? 200 : 201).send({ datos: resultado.pedido });
   });
 
   app.patch('/api/pedidos/:id/estado', (request: FastifyRequest, reply: FastifyReply) => {

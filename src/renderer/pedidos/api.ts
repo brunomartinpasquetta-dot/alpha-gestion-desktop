@@ -93,7 +93,8 @@ export async function enviarPedido(pedido: EntradaNuevoPedido): Promise<Resultad
     body: JSON.stringify(pedido),
   });
 
-  if (respuesta.status === 201) return 'ok';
+  // 201 = creado; 200 = la clave de idempotencia ya se habia procesado (reintento).
+  if (respuesta.status === 201 || respuesta.status === 200) return 'ok';
   if (respuesta.status === 401) return 'pin-invalido';
   return 'rechazado';
 }

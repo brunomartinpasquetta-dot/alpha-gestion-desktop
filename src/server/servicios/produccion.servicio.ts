@@ -19,6 +19,7 @@ import { eq, like, sql } from 'drizzle-orm';
 import { TRANSICIONES_ORDEN } from '../../compartido/contratos';
 import { obtenerDb } from '../db/conexion';
 import {
+  articulos,
   movimientosStock,
   ordenesProduccion,
   produccionConsumos,
@@ -44,6 +45,12 @@ export interface ResultadoCambioOrden {
   id: number;
   estado: EstadoOrdenProduccion;
   numeroLote: string | null;
+  /**
+   * Avisos que NO bloquean: la tanda fisica ya ocurrio y el ledger tiene que
+   * registrarla igual, pero el operador debe enterarse (ej: un insumo quedo en
+   * stock negativo, señal de que faltan compras por cargar).
+   */
+  advertencias: string[];
 }
 
 export const produccionServicio = {
@@ -129,7 +136,7 @@ export const produccionServicio = {
             .where(eq(ordenesProduccion.id, ordenId))
             .run();
 
-          return { id: ordenId, estado: nuevoEstado, numeroLote };
+          return { id: ordenId, estado: nuevoEstado, numeroLote, advertencias: [] };
         }
 
         /* --------------------- Finalizar: impacta el ledger ----------------- */
@@ -152,10 +159,32 @@ export const produccionServicio = {
             throw new ErrorValidacion('El rinde real tiene que ser mayor a cero.');
           }
 
-          // Consumos: negativo por cada insumo, el real si se registro.
+          // Consumos: negativo por cada insumo, el real si se registro. Si el
+          // descuento deja el insumo en negativo NO se bloquea (la produccion
+          // fisica ya paso), pero se avisa: es la señal de compras sin cargar.
+          const advertencias: string[] = [];
           for (const consumo of consumos) {
             const cantidad = redondearCantidad(consumo.cantidadReal ?? consumo.cantidadTeorica);
             if (cantidad <= 0) continue; // Un consumo en cero no genera asiento.
+
+            const saldoInsumo =
+              tx
+                .select({ s: sql<number>`COALESCE(SUM(${movimientosStock.cantidad}), 0)`.mapWith(Number) })
+                .from(movimientosStock)
+                .where(eq(movimientosStock.articuloId, consumo.articuloInsumoId))
+                .get()?.s ?? 0;
+            if (saldoInsumo - cantidad < 0) {
+              const nombre =
+                tx
+                  .select({ n: articulos.nombre })
+                  .from(articulos)
+                  .where(eq(articulos.id, consumo.articuloInsumoId))
+                  .get()?.n ?? `articulo ${consumo.articuloInsumoId}`;
+              advertencias.push(
+                `${nombre} queda con stock negativo (${redondearCantidad(saldoInsumo - cantidad)}): revisa si falta cargar una compra.`,
+              );
+            }
+
             tx.insert(movimientosStock)
               .values({
                 articuloId: consumo.articuloInsumoId,
@@ -187,7 +216,7 @@ export const produccionServicio = {
             .where(eq(ordenesProduccion.id, ordenId))
             .run();
 
-          return { id: ordenId, estado: nuevoEstado, numeroLote: orden.numeroLote };
+          return { id: ordenId, estado: nuevoEstado, numeroLote: orden.numeroLote, advertencias };
         }
 
         /* ------------------------------ Cancelar ---------------------------- */
@@ -195,7 +224,7 @@ export const produccionServicio = {
           .set({ estado: nuevoEstado })
           .where(eq(ordenesProduccion.id, ordenId))
           .run();
-        return { id: ordenId, estado: nuevoEstado, numeroLote: orden.numeroLote };
+        return { id: ordenId, estado: nuevoEstado, numeroLote: orden.numeroLote, advertencias: [] };
       }),
     );
 

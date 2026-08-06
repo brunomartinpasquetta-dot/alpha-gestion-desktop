@@ -18,6 +18,7 @@ export interface ValoresNuevoPedido {
   readonly fechaEntregaEstimada: string | null;
   readonly cargadoPor: string | null;
   readonly notas: string | null;
+  readonly claveIdempotencia: string | null;
   readonly items: ReadonlyArray<{
     readonly articuloId: number;
     readonly cantidad: number;
@@ -38,6 +39,7 @@ export function insertarPedido(valores: ValoresNuevoPedido): Pedido {
           fechaEntregaEstimada: valores.fechaEntregaEstimada,
           cargadoPor: valores.cargadoPor,
           notas: valores.notas,
+          claveIdempotencia: valores.claveIdempotencia,
         })
         .returning()
         .all()[0];

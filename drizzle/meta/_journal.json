@@ -22,6 +22,13 @@
       "when": 1785980640638,
       "tag": "0002_lotes_y_cheques",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785981574598,
+      "tag": "0003_idempotencia_pedidos",
+      "breakpoints": true
     }
   ]
 }

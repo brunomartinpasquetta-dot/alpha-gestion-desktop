@@ -15,7 +15,12 @@
  * al instante.
  */
 
+import { eq } from 'drizzle-orm';
+
 import { TRANSICIONES_PEDIDO, type EntradaNuevoPedido } from '../../compartido/contratos';
+import { obtenerDb } from '../db/conexion';
+import { pedidos } from '../db/schema';
+import { ejecutarSeguro } from '../dominio/errores';
 import { existeEntidad } from '../repositorios/cuentas-corrientes.repositorio';
 import * as repo from '../repositorios/pedidos-escritura.repositorio';
 import type { EstadoPedido, Pedido } from '../db/schema';
@@ -26,9 +31,25 @@ import { redondearCantidad } from '../utiles/numeros';
 /** Limite de items por pedido: mas que esto es un error de carga, no un pedido. */
 const MAXIMO_ITEMS = 50;
 
+export interface ResultadoCrearPedido {
+  pedido: Pedido;
+  /** true si la clave de idempotencia ya se habia procesado: no se creo nada. */
+  existente: boolean;
+}
+
 export const pedidosServicio = {
   /** Crea un pedido validado y avisa a las pantallas conectadas. */
-  crearPedido(entrada: EntradaNuevoPedido): Pedido {
+  crearPedido(entrada: EntradaNuevoPedido): ResultadoCrearPedido {
+    // Idempotencia: si esta clave ya se proceso, devolver el pedido original.
+    // Es lo que evita que un reintento de la cola offline (respuesta perdida
+    // despues de persistir) duplique el pedido en la fabrica.
+    const clave = entrada.claveIdempotencia?.trim() || null;
+    if (clave !== null) {
+      const previo = ejecutarSeguro('buscar pedido por clave de idempotencia', () =>
+        obtenerDb().select().from(pedidos).where(eq(pedidos.claveIdempotencia, clave)).get(),
+      );
+      if (previo) return { pedido: previo, existente: true };
+    }
     if (entrada.items.length === 0) {
       throw new ErrorValidacion('El pedido tiene que tener al menos un articulo.');
     }
@@ -82,11 +103,12 @@ export const pedidosServicio = {
       fechaEntregaEstimada: entrada.fechaEntregaEstimada?.trim() || null,
       cargadoPor: entrada.cargadoPor?.trim() || null,
       notas: entrada.notas?.trim() || null,
+      claveIdempotencia: clave,
       items,
     });
 
     emitir('pedidos:cambio');
-    return pedido;
+    return { pedido, existente: false };
   },
 
   /** Aplica una transicion de estado valida y avisa a las pantallas. */

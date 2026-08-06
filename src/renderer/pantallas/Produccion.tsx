@@ -258,7 +258,11 @@ export function PantallaOrdenes(): JSX.Element {
 
     setErrorAccion(null);
     cambiarEstadoOrden(orden.id, destino, rindeReal)
-      .then(estado.recargar)
+      .then((advertencias) => {
+        estado.recargar();
+        // Las advertencias no bloquean, pero no pueden pasar en silencio.
+        if (advertencias.length > 0) window.alert(`Atencion:\n\n${advertencias.join('\n')}`);
+      })
       .catch((causa: unknown) =>
         setErrorAccion(causa instanceof Error ? causa.message : String(causa)),
       );

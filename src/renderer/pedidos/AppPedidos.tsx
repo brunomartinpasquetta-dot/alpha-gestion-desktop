@@ -129,6 +129,13 @@ export function AppPedidos(): JSX.Element {
       cargadoPor: nombre || null,
       notas: notas.trim() || null,
       items,
+      // La clave nace ACA, antes de saber si hay red: el mismo pedido, se envie
+      // directo o desde la cola tras un corte, siempre viaja con la misma clave.
+      // Es lo que evita que un reintento lo duplique en la fabrica.
+      claveIdempotencia:
+        typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     };
 
     const limpiar = (): void => {

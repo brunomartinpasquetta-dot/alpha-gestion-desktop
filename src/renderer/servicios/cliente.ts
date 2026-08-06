@@ -189,7 +189,7 @@ export async function cambiarEstadoOrden(
   ordenId: number,
   estado: string,
   rindeReal?: number | null,
-): Promise<void> {
+): Promise<string[]> {
   const ruta = `/api/produccion/ordenes/${ordenId}/estado`;
   const respuesta = await fetch(ruta, {
     method: 'PATCH',
@@ -198,6 +198,8 @@ export async function cambiarEstadoOrden(
   });
   const cuerpo = await leerJson(respuesta, ruta);
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+  const datos = (cuerpo as { datos?: { advertencias?: string[] } }).datos;
+  return datos?.advertencias ?? [];
 }
 
 export const obtenerTrazabilidad = (lote: string): Promise<TrazabilidadLote> =>

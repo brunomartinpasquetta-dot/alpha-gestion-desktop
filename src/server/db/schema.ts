@@ -251,9 +251,17 @@ export const pedidos = sqliteTable(
     fechaEntregaEstimada: text('fecha_entrega_estimada'),
     cargadoPor: text('cargado_por'),
     notas: text('notas'),
+    /**
+     * Clave de idempotencia que manda el cliente (la PWA usa el id local de su
+     * cola offline). Si un reintento llega con una clave ya vista, se devuelve
+     * el pedido existente en vez de duplicarlo: la cola garantiza "al menos una
+     * vez", esta clave lo convierte en "exactamente una vez".
+     */
+    claveIdempotencia: text('clave_idempotencia'),
   },
   (tabla) => [
     index('ix_pedidos_estado_fecha').on(tabla.estado, tabla.fechaPedido),
+    uniqueIndex('ux_pedidos_clave_idempotencia').on(tabla.claveIdempotencia),
     index('ix_pedidos_cliente').on(tabla.clienteId),
     check('ck_pedidos_origen', sql`${tabla.origen} IN ('celular','mostrador','sistema')`),
     check(
