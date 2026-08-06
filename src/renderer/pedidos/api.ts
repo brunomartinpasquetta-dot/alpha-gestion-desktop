@@ -57,9 +57,11 @@ function catalogoCacheado(): Catalogo | null {
  */
 export async function obtenerCatalogo(): Promise<{ catalogo: Catalogo; desdeCache: boolean }> {
   try {
+    // El PIN viaja tambien en las LECTURAS: desde la red, la API entera lo pide.
+    const cabeceras = { 'x-pin-pedidos': leerPin() };
     const [rProductos, rClientes] = await Promise.all([
-      fetch('/api/articulos?grupo=productos&soloActivos=true'),
-      fetch('/api/clientes'),
+      fetch('/api/articulos?grupo=productos&soloActivos=true', { headers: cabeceras }),
+      fetch('/api/clientes', { headers: cabeceras }),
     ]);
     if (!rProductos.ok || !rClientes.ok) throw new Error('catalogo no disponible');
 

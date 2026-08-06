@@ -9,7 +9,8 @@ export type CodigoErrorDominio =
   | 'VALIDACION'
   | 'REGLA_NEGOCIO'
   | 'CONFLICTO'
-  | 'ERROR_DATOS';
+  | 'ERROR_DATOS'
+  | 'ERROR_ARCA';
 
 export class ErrorDominio extends Error {
   readonly codigo: CodigoErrorDominio;
@@ -62,6 +63,18 @@ export class ErrorDatos extends ErrorDominio {
   }
 }
 
+/**
+ * ARCA rechazo la operacion o no esta disponible (502). Va aparte de las reglas
+ * de negocio porque el motivo es de un tercero: el mensaje viene de ARCA y hay
+ * que mostrarlo TAL CUAL al operador, que es quien puede resolverlo (certificado
+ * vencido, punto de venta sin habilitar, CUIT mal cargado).
+ */
+export class ErrorArcaDominio extends ErrorDominio {
+  constructor(mensaje: string, detalles?: unknown) {
+    super('ERROR_ARCA', mensaje, detalles);
+  }
+}
+
 /** Mapeo unico dominio -> HTTP, usado por el manejador de errores de Fastify. */
 export const ESTADO_HTTP_POR_CODIGO: Readonly<Record<CodigoErrorDominio, number>> = {
   ENTIDAD_NO_ENCONTRADA: 404,
@@ -69,6 +82,7 @@ export const ESTADO_HTTP_POR_CODIGO: Readonly<Record<CodigoErrorDominio, number>
   REGLA_NEGOCIO: 422,
   CONFLICTO: 409,
   ERROR_DATOS: 500,
+  ERROR_ARCA: 502,
 };
 
 export function esErrorDominio(error: unknown): error is ErrorDominio {

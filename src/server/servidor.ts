@@ -11,6 +11,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 
 import { leerConfig, type ConfigServidor } from './config';
 import { registrarEstaticos } from './plugins/estaticos';
+import { registrarGuardiaPin } from './plugins/guardia-pin';
 import { registrarManejadorErrores } from './plugins/manejador-errores';
 import { registrarRutas } from './rutas';
 
@@ -90,6 +91,8 @@ export function crearServidor(opciones: OpcionesServidor = {}): FastifyInstance 
 
   // Primero los manejadores de error: si algo falla al registrar rutas, ya hay red.
   registrarManejadorErrores(app);
+  // El guardia va antes que las rutas: filtra por request, no por endpoint.
+  registrarGuardiaPin(app);
   registrarRutas(app);
 
   const carpeta =

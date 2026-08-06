@@ -193,6 +193,9 @@ export interface VentaVista {
   pedidoId: number | null;
   cantidadItems: number;
   notas: string | null;
+  /** "FB 00001-00000042" si tiene factura con CAE; null = remito interno. */
+  comprobanteEtiqueta?: string | null;
+  cae?: string | null;
 }
 
 /* --------------------------------- Pedidos -------------------------------- */
@@ -700,6 +703,19 @@ export interface EntradaItemVenta {
   precioUnitario: number;
 }
 
+/**
+ * Documento que se emite CON la venta, como en StockFlow: remito interno (sin
+ * ARCA) o factura electronica con CAE. El CAE se obtiene antes de persistir.
+ */
+export const TIPOS_COMPROBANTE = ['remito', 'factura_b', 'factura_a'] as const;
+export type TipoComprobante = (typeof TIPOS_COMPROBANTE)[number];
+
+export const NOMBRES_COMPROBANTE: Record<TipoComprobante, string> = {
+  remito: 'Remito X (interno)',
+  factura_b: 'Factura B',
+  factura_a: 'Factura A',
+};
+
 /** Cuerpo de POST /api/ventas. La venta nace ENTREGADA: registra un hecho. */
 export interface EntradaNuevaVenta {
   clienteId?: number | null;
@@ -707,6 +723,8 @@ export interface EntradaNuevaVenta {
   /** Si la venta sale de un pedido listo, se lo marca entregado en el mismo acto. */
   pedidoId?: number | null;
   notas?: string | null;
+  /** Por defecto 'remito': comportamiento historico, sin ARCA de por medio. */
+  comprobante?: TipoComprobante;
   items: EntradaItemVenta[];
 }
 
@@ -715,4 +733,60 @@ export interface ResultadoVenta {
   venta: VentaVista;
   /** Avisos que no bloquean: stock que quedo negativo, caja sin abrir, etc. */
   advertencias: string[];
+}
+
+/* ------------------------------ Fiscal / ARCA ------------------------------ */
+
+export interface ConfiguracionFiscalVista {
+  entorno: 'homologacion' | 'produccion';
+  cuit: string;
+  razonSocial: string | null;
+  direccion: string | null;
+  condicionIva: 'RI' | 'MT';
+  iibb: string | null;
+  rutaCertificado: string | null;
+  rutaClave: string | null;
+  puntoVenta: number;
+  /** Solo con CUIT + certificado + clave cargados se ofrecen facturas en la venta. */
+  habilitada: boolean;
+}
+
+/** Cuerpo de PUT /api/fiscal/config. */
+export interface EntradaConfiguracionFiscal {
+  entorno: 'homologacion' | 'produccion';
+  cuit: string;
+  razonSocial?: string | null;
+  direccion?: string | null;
+  condicionIva: 'RI' | 'MT';
+  iibb?: string | null;
+  rutaCertificado?: string | null;
+  rutaClave?: string | null;
+  puntoVenta: number;
+  habilitada: boolean;
+}
+
+/** Respuesta de POST /api/fiscal/probar. */
+export interface ResultadoPruebaArca {
+  entorno: 'homologacion' | 'produccion';
+  /** Estado de los servidores de ARCA (FEDummy), o null si no respondieron. */
+  servidores: string | null;
+  /** Resultado de la autenticacion WSAA con el certificado, o null si no se probo. */
+  autenticacion: string | null;
+  /** Ultimo numero de Factura B autorizado en el punto de venta configurado. */
+  ultimoNumero: number | null;
+  errores: string[];
+}
+
+/** Comprobante fiscal aprobado, asociado 1 a 1 con su venta. */
+export interface ComprobanteVista {
+  letra: 'A' | 'B';
+  puntoVenta: number;
+  numero: number;
+  cae: string;
+  caeVencimiento: string | null;
+  neto: number;
+  iva: number;
+  total: number;
+  observaciones: string | null;
+  urlQr: string | null;
 }

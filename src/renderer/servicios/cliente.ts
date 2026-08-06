@@ -17,8 +17,11 @@
 import type {
   ArticuloConStock,
   ChequeVista,
+  ConfiguracionFiscalVista,
+  EntradaConfiguracionFiscal,
   EntradaNuevoCheque,
   EntradaNuevaVenta,
+  ResultadoPruebaArca,
   ResultadoVenta,
   ResumenCartera,
   TrazabilidadLote,
@@ -242,6 +245,31 @@ export async function crearVenta(entrada: EntradaNuevaVenta): Promise<ResultadoV
   const cuerpo = await leerJson(respuesta, '/api/ventas');
   if (!respuesta.ok) throw errorDesdeRespuesta('/api/ventas', respuesta, cuerpo);
   return (cuerpo as { datos: ResultadoVenta }).datos;
+}
+
+/* ------------------------------ Fiscal / ARCA ----------------------------- */
+
+export const obtenerConfigFiscal = (): Promise<ConfiguracionFiscalVista> =>
+  pedirItem<ConfiguracionFiscalVista>('/api/fiscal/config');
+
+export async function guardarConfigFiscal(
+  entrada: EntradaConfiguracionFiscal,
+): Promise<ConfiguracionFiscalVista> {
+  const respuesta = await fetch('/api/fiscal/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(entrada),
+  });
+  const cuerpo = await leerJson(respuesta, '/api/fiscal/config');
+  if (!respuesta.ok) throw errorDesdeRespuesta('/api/fiscal/config', respuesta, cuerpo);
+  return (cuerpo as { datos: ConfiguracionFiscalVista }).datos;
+}
+
+export async function probarConexionArca(): Promise<ResultadoPruebaArca> {
+  const respuesta = await fetch('/api/fiscal/probar', { method: 'POST' });
+  const cuerpo = await leerJson(respuesta, '/api/fiscal/probar');
+  if (!respuesta.ok) throw errorDesdeRespuesta('/api/fiscal/probar', respuesta, cuerpo);
+  return (cuerpo as { datos: ResultadoPruebaArca }).datos;
 }
 
 export async function anularVenta(ventaId: number): Promise<ResultadoVenta> {

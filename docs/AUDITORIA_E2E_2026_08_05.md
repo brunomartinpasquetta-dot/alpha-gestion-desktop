@@ -62,12 +62,23 @@ numéricos, límites, fechas incoherentes, importes no enteros → 400/404).
 
 ## DEUDA DOCUMENTADA (decisión pendiente, NO corregida)
 
-### DEUDA-01 · Lecturas de API sin autenticación en LAN
+### DEUDA-01 · Lecturas de API sin autenticación en LAN — **CERRADA en v0.6.0**
 El servidor escucha en 0.0.0.0 para que el celular llegue a la PWA. El PIN
-protege la creación de pedidos, pero los GET (stock, ventas, CC) responden a
-cualquiera en la red local. Aceptable en la LAN de la fábrica; **obligatorio
-resolver antes de exponer el túnel de Cloudflare** (guía, Fase 8: hardening).
-Camino sugerido: token de sesión para todo /api con excepción de la PWA.
+protegía la creación de pedidos, pero los GET (stock, ventas, CC) respondían a
+cualquiera en la red local.
+
+Resuelto con `src/server/plugins/guardia-pin.ts`: con PIN configurado, toda
+petición a `/api` que no venga de loopback exige el header `x-pin-pedidos`.
+Única excepción `/api/eventos`, porque EventSource no puede mandar headers y el
+stream solo transporta el NOMBRE del evento, nunca datos. Verificado desde
+192.168.18.132: GET /api/ventas y /api/clientes dan 401 sin PIN, 401 con PIN
+incorrecto, 200 con el correcto; el escritorio por loopback sigue sin pedirlo.
+
+**Pendiente para el túnel de Cloudflare:** el túnel termina en la máquina, así
+que sus peticiones llegan como loopback y este guardia las dejaría pasar. Por
+eso `POST /api/pedidos` conserva además su chequeo propio sin excepción de
+origen. Antes de exponer el túnel hay que endurecer el criterio para toda la API
+(token de sesión o cabecera del túnel), no alcanza con el origen.
 
 ### DEUDA-02 · Órdenes históricas sin lote
 Las órdenes finalizadas por el seed de demostración (previas al sistema de
@@ -88,6 +99,57 @@ que vea "—" en tandas viejas.
 | 7. Cola offline | 2 | Idempotencia del reintento, validación de clave |
 | 8. Seguridad | 4 | Path traversal, PIN, superficie LAN documentada |
 
+## SEGUNDA TANDA — v0.6.0, 6 de agosto de 2026
+
+Integración de ARCA dentro del circuito de ventas (la factura se emite EN la
+venta, como en StockFlow) más el cierre de DEUDA-01. Hallazgos nuevos:
+
+### BUG-B01 · TLS de ARCA rechazado por Node — **habría roto la facturación real**
+Los servidores de ARCA todavía negocian Diffie-Hellman con claves de 1024 bits.
+El OpenSSL que trae Node las rechaza (`dh key too small`), así que `fetch` contra
+`servicios1.afip.gov.ar` (WSFE de producción) fallaba el handshake: la
+facturación real no habría funcionado nunca. `curl` no lo mostró porque en macOS
+usa otra librería de TLS, más permisiva.
+**Corregido:** `src/server/fiscal/transporte.ts` habla con ARCA por `node:https`
+con `ciphers: 'DEFAULT:@SECLEVEL=1'`, acotado a esas conexiones. Verificado
+contra producción: `app=OK db=OK auth=OK`.
+
+### BUG-B02 · Respuesta HTML de ARCA interpretada como éxito
+Homologación devolvió una página de error de Oracle con HTTP 200 (falla del lado
+de ARCA). El parser no encontraba los tags y devolvía `app=? db=? auth=?` como si
+todo hubiera salido bien.
+**Corregido:** si la respuesta no es SOAP, se lanza `ARCA_NO_DISPONIBLE` con el
+texto del error de ARCA y la indicación de reintentar.
+
+### BUG-B03 · Rechazo de ARCA llegaba como "error interno"
+Un certificado inválido producía HTTP 500 con "Ocurrió un error interno": el
+operador no podía saber que el problema era el certificado.
+**Corregido:** `ErrorArcaDominio` (HTTP 502) transporta el mensaje textual de
+ARCA hasta la pantalla. Verificado: *"No se pudo emitir la Factura B:
+Certificado no emitido por AC de confianza"*.
+
+### Verificaciones de la integración fiscal
+
+| Prueba | Resultado |
+|---|---|
+| Migración 0004 sobre la base real (con datos) | Aplica limpia, 25 tablas |
+| Venta con remito (camino histórico) | 201, sin comprobante, efectos intactos |
+| Venta con factura y ARCA sin configurar | 422, **no se creó la venta** |
+| Factura A a cliente sin CUIT | 422 antes de llamar a ARCA |
+| Factura con certificado inválido | 502 con motivo real; venta y stock sin tocar |
+| CAE aprobado (respuesta real de ARCA) | FB 00001-00000043, neto+IVA = total exacto |
+| CAE con observaciones | Comprobante válido + advertencia (no bloquea) |
+| CAE rechazado (`Errors`) | Lanza `ARCA_RECHAZO` con código y mensaje |
+| Numeración duplicada | Rechazada por índice único |
+| Anular venta facturada | Anula y avisa que el CAE exige nota de crédito |
+| QR RG 4892 | Payload correcto, decodifica a JSON válido |
+| PIN desde LAN (192.168.18.132) | 401 sin PIN / 401 con PIN malo / 200 con PIN |
+| SSE desde LAN | 200 (exento, no transporta datos) |
+| Regresión: 20 endpoints de lectura | Todos 200 |
+| Regresión: idempotencia de pedidos | 201 luego 200, un solo pedido en base |
+| Regresión: producción → lote → trazabilidad | L-20260806-01, stock +120, consumos OK |
+| Regresión: máquina de estados de cheques | Transiciones válidas 200, inválida 422 |
+
 ## NO CUBIERTO (requiere UAT o hardware)
 
 - PWA en un teléfono físico (táctil, service worker en iOS/Android reales).
@@ -97,3 +159,8 @@ que vea "—" en tandas viejas.
   midió con decenas de miles de movimientos.
 - Concurrencia multi-proceso: better-sqlite3 es síncrono en un solo proceso;
   válido mientras no haya multi-terminal.
+- **Emisión de un CAE real contra ARCA.** Requiere el certificado del trámite del
+  cliente asociado a su CUIT y el punto de venta dado de alta. Se probó todo lo
+  que se puede probar sin él: firma CMS real (ARCA la procesó y respondió),
+  transporte contra los servidores reales, y el parseo de respuestas de ARCA
+  aprobadas, observadas y rechazadas.

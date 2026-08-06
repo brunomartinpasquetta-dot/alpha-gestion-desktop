@@ -12,7 +12,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
+import { TIPOS_COMPROBANTE } from '../../compartido/contratos';
 import {
+  CONDICIONES_IVA,
+  ENTORNOS_ARCA,
   ESTADOS_CHEQUE,
   ESTADOS_ORDEN_PRODUCCION,
   FORMAS_PAGO,
@@ -23,6 +26,7 @@ import {
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { chequesServicio } from '../servicios/cheques.servicio';
+import { fiscalServicio } from '../servicios/fiscal.servicio';
 import { ventasServicio } from '../servicios/ventas.servicio';
 import { produccionServicio } from '../servicios/produccion.servicio';
 import { trazabilidadServicio } from '../servicios/trazabilidad.servicio';
@@ -63,11 +67,25 @@ const esquemaCambioCheque = z.object({
   estado: z.enum(ESTADOS_CHEQUE),
 });
 
+const esquemaConfigFiscal = z.object({
+  entorno: z.enum(ENTORNOS_ARCA),
+  cuit: z.string().max(20),
+  razonSocial: z.string().max(160).nullable().optional(),
+  direccion: z.string().max(200).nullable().optional(),
+  condicionIva: z.enum(CONDICIONES_IVA),
+  iibb: z.string().max(40).nullable().optional(),
+  rutaCertificado: z.string().max(500).nullable().optional(),
+  rutaClave: z.string().max(500).nullable().optional(),
+  puntoVenta: z.number().int().min(1).max(99999),
+  habilitada: z.boolean(),
+});
+
 const esquemaNuevaVenta = z.object({
   clienteId: z.number().int().positive().nullable().optional(),
   formaPago: z.enum(FORMAS_PAGO),
   pedidoId: z.number().int().positive().nullable().optional(),
   notas: z.string().max(500).nullable().optional(),
+  comprobante: z.enum(TIPOS_COMPROBANTE).optional(),
   items: z
     .array(
       z.object({
@@ -128,9 +146,10 @@ export function registrarRutasOperaciones(app: FastifyInstance): void {
 
   /* --------------------------------- Ventas ------------------------------- */
 
-  app.post('/api/ventas', (request: FastifyRequest, reply: FastifyReply) => {
+  // Async: si la venta lleva factura, se espera el CAE de ARCA antes de escribir.
+  app.post('/api/ventas', async (request: FastifyRequest, reply: FastifyReply) => {
     const entrada = validarOFallar(esquemaNuevaVenta, request.body, 'La venta enviada no es valida.');
-    const datos = ventasServicio.crearVenta(entrada);
+    const datos = await ventasServicio.crearVenta(entrada);
     return reply.status(201).send({ datos });
   });
 
@@ -149,5 +168,24 @@ export function registrarRutasOperaciones(app: FastifyInstance): void {
     );
     const datos = chequesServicio.cambiarEstado(id, estado);
     return reply.status(200).send({ datos });
+  });
+
+  /* --------------------------- Facturacion / ARCA ------------------------- */
+
+  app.get('/api/fiscal/config', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: fiscalServicio.obtenerConfig() });
+  });
+
+  app.put('/api/fiscal/config', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(
+      esquemaConfigFiscal,
+      request.body,
+      'La configuracion fiscal enviada no es valida.',
+    );
+    return reply.status(200).send({ datos: fiscalServicio.guardarConfig(entrada) });
+  });
+
+  app.post('/api/fiscal/probar', async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: await fiscalServicio.probarConexion() });
   });
 }

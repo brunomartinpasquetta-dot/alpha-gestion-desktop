@@ -7,7 +7,10 @@
  *     marca entregado al confirmar la venta.
  *  3. Las cantidades se cargan EN CAJAS (los clientes compran cajas cerradas);
  *     el precio sale de la lista del cliente (o General) y es editable.
- *  4. Confirmar registra todo en una transaccion: stock, cuenta corriente o
+ *  4. Se elige el COMPROBANTE: remito interno o factura electronica. Igual que
+ *     en StockFlow, la factura se emite CON la venta: al confirmar se pide el
+ *     CAE a ARCA y recien con el CAE aprobado se registra todo.
+ *  5. Confirmar registra todo en una transaccion: stock, cuenta corriente o
  *     caja, y el pedido si corresponde.
  */
 
@@ -16,16 +19,19 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   ArticuloConStock,
   ClienteVista,
+  ConfiguracionFiscalVista,
   EntradaNuevaVenta,
   FormaPago,
   ListaPrecioVista,
   PedidoVista,
   ResultadoVenta,
+  TipoComprobante,
 } from '../../compartido/contratos';
 import {
   crearVenta,
   obtenerArticulos,
   obtenerClientes,
+  obtenerConfigFiscal,
   obtenerListasPrecio,
   obtenerPedidos,
 } from '../servicios/cliente';
@@ -41,6 +47,7 @@ interface Catalogos {
   clientes: ClienteVista[];
   listas: ListaPrecioVista[];
   pedidosListos: PedidoVista[];
+  fiscal: ConfiguracionFiscalVista;
 }
 
 export function FormularioVenta({
@@ -56,6 +63,7 @@ export function FormularioVenta({
   const [clienteId, setClienteId] = useState<number | ''>('');
   const [formaPago, setFormaPago] = useState<FormaPago>('contado');
   const [pedidoId, setPedidoId] = useState<number | ''>('');
+  const [comprobante, setComprobante] = useState<TipoComprobante>('remito');
   const [seleccion, setSeleccion] = useState<Seleccion>({});
   const [preciosEditados, setPreciosEditados] = useState<PreciosEditados>({});
   const [notas, setNotas] = useState('');
@@ -63,13 +71,20 @@ export function FormularioVenta({
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    Promise.all([obtenerArticulos(), obtenerClientes(), obtenerListasPrecio(), obtenerPedidos()])
-      .then(([articulos, clientes, listas, pedidos]) =>
+    Promise.all([
+      obtenerArticulos(),
+      obtenerClientes(),
+      obtenerListasPrecio(),
+      obtenerPedidos(),
+      obtenerConfigFiscal(),
+    ])
+      .then(([articulos, clientes, listas, pedidos, fiscal]) =>
         setCatalogos({
           productos: articulos.filter((a) => a.tipo === 'producto_terminado' && a.activo),
           clientes: clientes.filter((c) => c.activo),
           listas,
           pedidosListos: pedidos.filter((p) => p.estado === 'listo'),
+          fiscal,
         }),
       )
       .catch((causa: unknown) =>
@@ -149,8 +164,17 @@ export function FormularioVenta({
     (suma, item) => suma + Math.round(item.precioUnitario * item.cantidad),
     0,
   );
+  const clienteElegido =
+    clienteId === '' ? undefined : catalogos?.clientes.find((c) => c.id === clienteId);
+  const cuitCliente = (clienteElegido?.cuit ?? '').replace(/\D/g, '');
+  /** Factura A: ARCA la rechaza sin CUIT de 11 digitos del receptor. */
+  const faltaCuitParaA = comprobante === 'factura_a' && cuitCliente.length !== 11;
+
   const valido =
-    items.length > 0 && !(formaPago === 'cuenta_corriente' && clienteId === '') && !guardando;
+    items.length > 0 &&
+    !(formaPago === 'cuenta_corriente' && clienteId === '') &&
+    !faltaCuitParaA &&
+    !guardando;
 
   const confirmar = (): void => {
     if (!valido) return;
@@ -161,6 +185,7 @@ export function FormularioVenta({
       formaPago,
       pedidoId: pedidoId === '' ? null : pedidoId,
       notas: notas.trim() || null,
+      comprobante,
       items,
     };
     crearVenta(entrada)
@@ -263,6 +288,61 @@ export function FormularioVenta({
               </div>
 
               <div>
+                <span className={rotulo}>Comprobante</span>
+                <div className="flex gap-1 rounded-ficha border border-masa-200 bg-masa-50 p-1">
+                  {(
+                    [
+                      ['remito', 'Remito X'],
+                      ['factura_b', 'Factura B'],
+                      ['factura_a', 'Factura A'],
+                    ] as const
+                  ).map(([clave, etiqueta]) => {
+                    const bloqueado = clave !== 'remito' && !catalogos.fiscal.habilitada;
+                    return (
+                      <button
+                        key={clave}
+                        type="button"
+                        disabled={bloqueado}
+                        title={bloqueado ? 'Configura ARCA en Gestion > Facturacion' : undefined}
+                        onClick={() => setComprobante(clave)}
+                        className={[
+                          'flex-1 rounded-pastilla px-2 py-1.5 text-sm font-medium outline-none',
+                          comprobante === clave
+                            ? 'bg-dulce-600 text-white'
+                            : 'text-masa-800 hover:bg-masa-100',
+                          bloqueado ? 'cursor-not-allowed opacity-40 hover:bg-transparent' : '',
+                        ].join(' ')}
+                      >
+                        {etiqueta}
+                      </button>
+                    );
+                  })}
+                </div>
+                {!catalogos.fiscal.habilitada ? (
+                  <p className="mt-1 text-xs text-masa-700">
+                    Facturacion electronica sin configurar: por ahora solo remito interno.
+                    Cargala en Gestion &gt; Facturacion.
+                  </p>
+                ) : comprobante === 'remito' ? (
+                  <p className="mt-1 text-xs text-masa-700">
+                    Documento interno de entrega: no se informa a ARCA.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-masa-700">
+                    Al confirmar se pide el CAE a ARCA ({catalogos.fiscal.entorno}, punto de venta{' '}
+                    {String(catalogos.fiscal.puntoVenta).padStart(5, '0')}). Si ARCA rechaza, la venta
+                    no se registra.
+                  </p>
+                )}
+                {faltaCuitParaA && (
+                  <p className="mt-1 text-xs text-peligro-600">
+                    La Factura A exige un cliente con CUIT valido. Elegi otro cliente, cargale el CUIT
+                    o emiti Factura B.
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <p className={rotulo}>Productos · cantidades en cajas</p>
                 <div className="overflow-hidden rounded-ficha border border-masa-200">
                   {catalogos.productos.map((producto, indice) => {
@@ -342,9 +422,17 @@ export function FormularioVenta({
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-masa-200 bg-masa-50 px-5 py-3">
-          <p className="font-mono text-lg font-bold tabular-nums text-masa-900">
-            Total: {formatearMoneda(total)}
-          </p>
+          <div>
+            <p className="font-mono text-lg font-bold tabular-nums text-masa-900">
+              Total: {formatearMoneda(total)}
+            </p>
+            {comprobante !== 'remito' && total > 0 && (
+              <p className="font-mono text-xs tabular-nums text-masa-700">
+                Neto {formatearMoneda(Math.round(total / 1.21))} + IVA 21%{' '}
+                {formatearMoneda(total - Math.round(total / 1.21))}
+              </p>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               type="button"
@@ -359,7 +447,13 @@ export function FormularioVenta({
               disabled={!valido}
               className="rounded-ficha bg-dulce-600 px-5 py-2 text-sm font-bold text-white outline-none hover:bg-dulce-700 focus-visible:ring-2 focus-visible:ring-dulce-400 disabled:bg-masa-300 disabled:text-masa-700"
             >
-              {guardando ? 'Registrando...' : 'Confirmar venta'}
+              {guardando
+                ? comprobante === 'remito'
+                  ? 'Registrando...'
+                  : 'Pidiendo CAE a ARCA...'
+                : comprobante === 'remito'
+                  ? 'Confirmar venta'
+                  : 'Facturar y registrar'}
             </button>
           </div>
         </div>

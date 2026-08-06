@@ -250,6 +250,18 @@ const COLUMNAS_VENTAS: readonly Columna<VentaVista>[] = [
       v.clienteNombre ?? <span className="text-masa-700">Mostrador (sin identificar)</span>,
   },
   { clave: 'items', titulo: 'Items', celda: (v) => v.cantidadItems, numerica: true },
+  {
+    clave: 'comprobante',
+    titulo: 'Comprobante',
+    celda: (v) =>
+      v.comprobanteEtiqueta == null ? (
+        <span className="text-masa-700">Remito X</span>
+      ) : (
+        <span title={v.cae === null ? undefined : `CAE ${v.cae}`} className="font-mono text-xs font-semibold text-masa-900">
+          {v.comprobanteEtiqueta}
+        </span>
+      ),
+  },
   { clave: 'pago', titulo: 'Forma de pago', celda: (v) => ETIQUETA_FORMA_PAGO[v.formaPago] },
   {
     clave: 'pedido',

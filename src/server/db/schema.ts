@@ -729,6 +729,77 @@ export type Cheque = typeof cheques.$inferSelect;
 export type NuevoCheque = typeof cheques.$inferInsert;
 
 /* ------------------------------------------------------------------------- */
+/* Facturacion electronica ARCA                                              */
+/* ------------------------------------------------------------------------- */
+
+export const ENTORNOS_ARCA = ['homologacion', 'produccion'] as const;
+export type EntornoArca = (typeof ENTORNOS_ARCA)[number];
+
+export const CONDICIONES_IVA = ['RI', 'MT'] as const;
+export type CondicionIva = (typeof CONDICIONES_IVA)[number];
+
+/** Configuracion fiscal del emisor. Singleton: id fijo 'unica'. */
+export const configuracionFiscal = sqliteTable('configuracion_fiscal', {
+  id: text('id').primaryKey(),
+  entorno: text('entorno', { enum: ENTORNOS_ARCA }).notNull().default('homologacion'),
+  cuit: text('cuit').notNull().default(''),
+  razonSocial: text('razon_social'),
+  direccion: text('direccion'),
+  condicionIva: text('condicion_iva', { enum: CONDICIONES_IVA }).notNull().default('RI'),
+  iibb: text('iibb'),
+  /** Rutas en disco al certificado X.509 y la clave privada del tramite ARCA. */
+  rutaCertificado: text('ruta_certificado'),
+  rutaClave: text('ruta_clave'),
+  puntoVenta: integer('punto_venta').notNull().default(1),
+  habilitada: integer('habilitada', { mode: 'boolean' }).notNull().default(false),
+  updatedAt: text('updated_at').notNull().default(AHORA),
+});
+
+export const LETRAS_COMPROBANTE = ['A', 'B'] as const;
+export type LetraComprobante = (typeof LETRAS_COMPROBANTE)[number];
+
+/**
+ * Comprobantes fiscales emitidos con CAE. Solo se persisten APROBADOS: si ARCA
+ * rechaza, no se consume numeracion ni queda rastro local (patron StockFlow).
+ * Los datos del receptor se congelan al emitir: ARCA los exige inmutables.
+ */
+export const comprobantes = sqliteTable(
+  'comprobantes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ventaId: integer('venta_id')
+      .notNull()
+      .references(() => ventas.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Codigo ARCA: 1 = Factura A, 6 = Factura B. */
+    codigoArca: integer('codigo_arca').notNull(),
+    letra: text('letra', { enum: LETRAS_COMPROBANTE }).notNull(),
+    puntoVenta: integer('punto_venta').notNull(),
+    numero: integer('numero').notNull(),
+    fecha: text('fecha').notNull(),
+    /** Doc del receptor: 80 = CUIT, 96 = DNI, 99 = consumidor final. */
+    docTipo: integer('doc_tipo').notNull(),
+    docNumero: text('doc_numero').notNull(),
+    receptorNombre: text('receptor_nombre').notNull(),
+    /** Centavos. neto + iva = total. */
+    neto: integer('neto').notNull(),
+    iva: integer('iva').notNull(),
+    total: integer('total').notNull(),
+    cae: text('cae').notNull(),
+    caeVencimiento: text('cae_vencimiento'),
+    observaciones: text('observaciones'),
+    urlQr: text('url_qr'),
+    createdAt: text('created_at').notNull().default(AHORA),
+  },
+  (tabla) => [
+    uniqueIndex('ux_comprobantes_numeracion').on(tabla.codigoArca, tabla.puntoVenta, tabla.numero),
+    uniqueIndex('ux_comprobantes_venta').on(tabla.ventaId),
+  ],
+);
+
+export type ConfiguracionFiscal = typeof configuracionFiscal.$inferSelect;
+export type Comprobante = typeof comprobantes.$inferSelect;
+
+/* ------------------------------------------------------------------------- */
 /* Usuarios                                                                  */
 /* ------------------------------------------------------------------------- */
 

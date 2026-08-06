@@ -11,6 +11,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { obtenerDb } from '../../db/conexion';
 import {
   clientes,
+  comprobantes,
   ventaItems,
   ventas,
   type EstadoVenta,
@@ -30,6 +31,9 @@ export interface FilaVenta {
   pedidoId: number | null;
   cantidadItems: number;
   notas: string | null;
+  /** "FB 00001-00000042" si la venta se facturo; null = remito interno. */
+  comprobanteEtiqueta: string | null;
+  cae: string | null;
 }
 
 /** Listado de ventas, de la mas reciente a la mas antigua. */
@@ -47,9 +51,13 @@ export function listarVentas(): FilaVenta[] {
         pedidoId: ventas.pedidoId,
         cantidadItems: sql<number>`COUNT(${ventaItems.id})`.mapWith(Number),
         notas: ventas.notas,
+        comprobanteEtiqueta: sql<string | null>`CASE WHEN ${comprobantes.id} IS NULL THEN NULL ELSE
+          'F' || ${comprobantes.letra} || ' ' || printf('%05d', ${comprobantes.puntoVenta}) || '-' || printf('%08d', ${comprobantes.numero}) END`,
+        cae: comprobantes.cae,
       })
       .from(ventas)
       .leftJoin(clientes, eq(clientes.id, ventas.clienteId))
+      .leftJoin(comprobantes, eq(comprobantes.ventaId, ventas.id))
       .leftJoin(ventaItems, eq(ventaItems.ventaId, ventas.id))
       .groupBy(ventas.id)
       .orderBy(desc(ventas.fecha), desc(ventas.id))

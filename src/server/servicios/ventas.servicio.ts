@@ -23,12 +23,14 @@ import {
   cajaMovimientos,
   cajas,
   clientes,
+  comprobantes,
   cuentasCorrientes,
   movimientosStock,
   pedidos,
   ventaItems,
   ventas,
 } from '../db/schema';
+import { fiscalServicio, type DatosComprobanteAprobado } from './fiscal.servicio';
 import {
   ejecutarSeguro,
   ErrorNoEncontrado,
@@ -40,7 +42,12 @@ import { calcularSubtotalCentavos, esCentavosValido, redondearCantidad } from '.
 
 type Tx = Parameters<Parameters<ReturnType<typeof obtenerDb>['transaction']>[0]>[0];
 
-/** Vista de la venta recien escrita, con el nombre del cliente resuelto. */
+/** "FB 00001-00000042": como se muestra un comprobante en cualquier grilla. */
+export function etiquetaComprobante(letra: string, puntoVenta: number, numero: number): string {
+  return `F${letra} ${String(puntoVenta).padStart(5, '0')}-${String(numero).padStart(8, '0')}`;
+}
+
+/** Vista de la venta recien escrita, con cliente y comprobante resueltos. */
 function armarVista(tx: Tx, ventaId: number): VentaVista {
   const fila = tx
     .select({
@@ -54,13 +61,26 @@ function armarVista(tx: Tx, ventaId: number): VentaVista {
       pedidoId: ventas.pedidoId,
       cantidadItems: sql<number>`(SELECT COUNT(*) FROM venta_items WHERE venta_id = ${ventas.id})`.mapWith(Number),
       notas: ventas.notas,
+      letra: comprobantes.letra,
+      puntoVenta: comprobantes.puntoVenta,
+      numero: comprobantes.numero,
+      cae: comprobantes.cae,
     })
     .from(ventas)
     .leftJoin(clientes, eq(clientes.id, ventas.clienteId))
+    .leftJoin(comprobantes, eq(comprobantes.ventaId, ventas.id))
     .where(eq(ventas.id, ventaId))
     .get();
   if (!fila) throw new ErrorNoEncontrado('venta', ventaId);
-  return fila;
+  const { letra, puntoVenta, numero, cae, ...venta } = fila;
+  return {
+    ...venta,
+    comprobanteEtiqueta:
+      letra !== null && puntoVenta !== null && numero !== null
+        ? etiquetaComprobante(letra, puntoVenta, numero)
+        : null,
+    cae,
+  };
 }
 
 /** Caja abierta mas reciente, o undefined. */
@@ -74,7 +94,16 @@ function cajaAbierta(tx: Tx): { id: number } | undefined {
 }
 
 export const ventasServicio = {
-  crearVenta(entrada: EntradaNuevaVenta): ResultadoVenta {
+  /**
+   * Registra la venta y, si se pidio factura, emite el comprobante fiscal.
+   *
+   * El orden importa: se valida todo, se pide el CAE a ARCA y RECIEN AHI se
+   * abre la transaccion. Si ARCA rechaza, la venta no llega a existir y no se
+   * consumio numeracion; si la transaccion fallara despues del CAE, el
+   * comprobante ya emitido queda registrado en el log para regularizarlo a mano
+   * (ARCA no admite anular un CAE, solo emitir la nota de credito).
+   */
+  async crearVenta(entrada: EntradaNuevaVenta): Promise<ResultadoVenta> {
     if (entrada.items.length === 0) {
       throw new ErrorValidacion('La venta tiene que tener al menos un articulo.');
     }
@@ -103,6 +132,35 @@ export const ventasServicio = {
       throw new ErrorReglaNegocio(
         'Una venta en cuenta corriente necesita un cliente: no se le puede fiar al mostrador.',
       );
+    }
+
+    /* ------------------- Comprobante fiscal, ANTES de escribir ------------------ */
+
+    const tipoComprobante = entrada.comprobante ?? 'remito';
+    const totalPrevisto = items.reduce((suma, item) => suma + item.subtotal, 0);
+    let comprobante: DatosComprobanteAprobado | null = null;
+
+    if (tipoComprobante !== 'remito') {
+      const db = obtenerDb();
+      const receptor =
+        clienteId === null
+          ? null
+          : db
+              .select({ nombre: clientes.nombre, cuit: clientes.cuit })
+              .from(clientes)
+              .where(eq(clientes.id, clienteId))
+              .get();
+      if (clienteId !== null && !receptor) throw new ErrorNoEncontrado('cliente', clienteId);
+
+      // Si ARCA rechaza, esto lanza y no se escribio una sola fila.
+      comprobante = await fiscalServicio.emitirComprobante({
+        tipo: tipoComprobante,
+        totalCentavos: totalPrevisto,
+        receptor: {
+          nombre: receptor?.nombre ?? 'Consumidor Final',
+          cuit: receptor?.cuit ?? null,
+        },
+      });
     }
 
     const resultado = ejecutarSeguro('registrar una venta', () =>
@@ -156,6 +214,14 @@ export const ventasServicio = {
           .returning({ id: ventas.id })
           .all()[0];
         if (!venta) throw new ErrorValidacion('La base no devolvio la venta insertada.');
+
+        // El CAE ya esta aprobado: aca solo se guarda lo que ARCA autorizo.
+        if (comprobante !== null) {
+          tx.insert(comprobantes).values({ ...comprobante, ventaId: venta.id }).run();
+          if (comprobante.observaciones !== null) {
+            advertencias.push(`ARCA aprobo el comprobante con observaciones: ${comprobante.observaciones}`);
+          }
+        }
 
         for (const item of items) {
           tx.insert(ventaItems)
@@ -318,6 +384,20 @@ export const ventasServicio = {
               })
               .run();
           }
+        }
+
+        // El comprobante fiscal NO se borra: un CAE emitido no se anula ante
+        // ARCA, se cancela con una nota de credito. Se avisa para que quede claro.
+        const fiscal = tx
+          .select({ letra: comprobantes.letra, puntoVenta: comprobantes.puntoVenta, numero: comprobantes.numero })
+          .from(comprobantes)
+          .where(eq(comprobantes.ventaId, ventaId))
+          .get();
+        if (fiscal !== undefined) {
+          advertencias.push(
+            `La venta tenia ${etiquetaComprobante(fiscal.letra, fiscal.puntoVenta, fiscal.numero)} con CAE: ` +
+              'ese comprobante sigue vigente ante ARCA y hay que cancelarlo con una nota de credito.',
+          );
         }
 
         tx.update(ventas).set({ estado: 'anulada' }).where(eq(ventas.id, ventaId)).run();

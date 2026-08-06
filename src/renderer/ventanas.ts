@@ -191,7 +191,7 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     titulo: 'Facturacion electronica',
     etiqueta: 'ARCA',
     icono: 'facturacion',
-    descripcion: 'Comprobantes con CAE de ARCA. En preparacion: requiere el circuito de ventas.',
+    descripcion: 'Datos del emisor y certificado de ARCA. La factura se emite en la venta.',
   },
 };
 

@@ -2,11 +2,15 @@
  * Pantallas de gestion: caja general, estadisticas, usuarios y contabilidad.
  */
 
+import { useEffect, useState } from 'react';
+
 import {
   ETIQUETA_ROL,
   type ArticuloVendido,
+  type EntradaConfiguracionFiscal,
   type Estadisticas,
   type PeriodoEstadistica,
+  type ResultadoPruebaArca,
   type ResumenCajaGeneral,
   type UsuarioVista,
 } from '../../compartido/contratos';
@@ -14,7 +18,14 @@ import { EstadoCargando, EstadoError, Pastilla, Seccion, TarjetaIndicador } from
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { obtenerCajaGeneral, obtenerEstadisticas, obtenerUsuarios } from '../servicios/cliente';
+import {
+  guardarConfigFiscal,
+  obtenerCajaGeneral,
+  obtenerConfigFiscal,
+  obtenerEstadisticas,
+  obtenerUsuarios,
+  probarConexionArca,
+} from '../servicios/cliente';
 import { formatearCantidad, formatearEntero, formatearMoneda, formatearMonedaConSigno } from '../utiles/formato';
 
 /* ------------------------------- Caja general ------------------------------ */
@@ -293,65 +304,300 @@ export function PantallaContabilidad(): JSX.Element {
 /* ------------------------- Facturacion electronica ------------------------- */
 
 /**
- * ARCA todavia no esta integrado. La pantalla existe para que el alcance quede
- * a la vista: el cliente es Responsable Inscripto y VA a facturar desde aca.
- * El motor fiscal (WSAA + WSFEv1) ya esta resuelto y probado en StockFlow y se
- * porta cuando el circuito de ventas este construido.
+ * Configuracion de ARCA. La factura NO se emite desde aca: se emite EN la venta
+ * (como en StockFlow). Esta pantalla solo define con que datos y con que
+ * certificado se le habla a ARCA, y permite probar la conexion antes de operar.
  */
 export function PantallaFacturacion(): JSX.Element {
+  const [config, setConfig] = useState<EntradaConfiguracionFiscal | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [probando, setProbando] = useState(false);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+  const [prueba, setPrueba] = useState<ResultadoPruebaArca | null>(null);
+
+  useEffect(() => {
+    obtenerConfigFiscal()
+      .then((datos) => setConfig({ ...datos }))
+      .catch((causa: unknown) => setErrorCarga(causa instanceof Error ? causa.message : String(causa)));
+  }, []);
+
+  const editar = <C extends keyof EntradaConfiguracionFiscal>(
+    campo: C,
+    valor: EntradaConfiguracionFiscal[C],
+  ): void => setConfig((previo) => (previo === null ? previo : { ...previo, [campo]: valor }));
+
+  const guardar = (): void => {
+    if (config === null) return;
+    setGuardando(true);
+    setAviso(null);
+    guardarConfigFiscal(config)
+      .then((datos) => {
+        setConfig({ ...datos });
+        setAviso(
+          datos.habilitada
+            ? { tono: 'ok', texto: 'Configuracion guardada. Ya se puede facturar desde la venta.' }
+            : {
+                tono: 'mal',
+                texto:
+                  'Guardado, pero la facturacion queda DESACTIVADA: faltan CUIT de 11 digitos, certificado o clave.',
+              },
+        );
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      )
+      .finally(() => setGuardando(false));
+  };
+
+  const probar = (): void => {
+    setProbando(true);
+    setPrueba(null);
+    setAviso(null);
+    probarConexionArca()
+      .then(setPrueba)
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      )
+      .finally(() => setProbando(false));
+  };
+
+  if (errorCarga !== null) {
+    return (
+      <EstadoError
+        mensaje={`No se pudo leer la configuracion fiscal: ${errorCarga}`}
+        alReintentar={() => window.location.reload()}
+      />
+    );
+  }
+  if (config === null) return <EstadoCargando que="la configuracion fiscal" />;
+
+  const campo =
+    'h-10 w-full rounded-ficha border border-masa-300 bg-white px-3 text-sm text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400';
+  const rotulo = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700';
+
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <div className="rounded-ficha border border-info-200 bg-info-50 px-5 py-4">
-        <p className="font-semibold text-info-700">En preparacion</p>
+      <div
+        className={[
+          'rounded-ficha border px-5 py-4',
+          config.habilitada ? 'border-menta-200 bg-menta-50' : 'border-info-200 bg-info-50',
+        ].join(' ')}
+      >
+        <p className={config.habilitada ? 'font-semibold text-menta-700' : 'font-semibold text-info-700'}>
+          {config.habilitada ? 'Facturacion electronica activa' : 'Facturacion electronica sin configurar'}
+        </p>
         <p className="mt-1 text-sm text-masa-900">
-          El cliente es Responsable Inscripto: la facturacion electronica con CAE de ARCA es parte
-          del alcance confirmado. El motor fiscal (autenticacion WSAA con firma CMS y emision por
-          WSFEv1) ya esta construido y probado en produccion en otro producto de BPSG, y se porta
-          aca cuando exista el circuito de ventas.
+          La factura se emite <strong>en la venta</strong>: al confirmar una venta con Factura A o B,
+          el sistema pide el CAE a ARCA y solo registra la operacion si ARCA la autoriza. Aca se
+          define el emisor y el certificado.
         </p>
       </div>
 
-      <div className="rounded-ficha border border-masa-200 bg-white px-5 py-4 shadow-ficha">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
-          Que falta para activarla
-        </h2>
-        <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-masa-900">
-          <li>
-            <strong>Circuito de ventas.</strong> Hoy las ventas son datos de demostracion: no se
-            emiten desde la interfaz. Primero se construye emitir la venta; facturarla es el paso
-            siguiente del mismo flujo.
-          </li>
-          <li>
-            <strong>Datos fiscales en la venta.</strong> Neto, alicuota de IVA, tipo de comprobante
-            (A/B), punto de venta y numeracion. Definidos junto con el circuito.
-          </li>
-          <li>
-            <strong>Tramite del cliente.</strong> Certificado digital de ARCA (X.509) asociado al
-            CUIT de la fabrica, alta del punto de venta para factura electronica, y pruebas en
-            homologacion antes de tocar produccion.
-          </li>
-        </ol>
+      <div className="space-y-4 rounded-ficha border border-masa-200 bg-white px-5 py-4 shadow-ficha">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className={rotulo}>Entorno</span>
+            <div className="flex gap-1 rounded-ficha border border-masa-200 bg-masa-50 p-1">
+              {(
+                [
+                  ['homologacion', 'Homologacion (pruebas)'],
+                  ['produccion', 'Produccion (real)'],
+                ] as const
+              ).map(([clave, etiqueta]) => (
+                <button
+                  key={clave}
+                  type="button"
+                  onClick={() => editar('entorno', clave)}
+                  className={[
+                    'flex-1 rounded-pastilla px-2 py-1.5 text-xs font-medium outline-none',
+                    config.entorno === clave ? 'bg-dulce-600 text-white' : 'text-masa-800 hover:bg-masa-100',
+                  ].join(' ')}
+                >
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="f-pv" className={rotulo}>Punto de venta</label>
+            <input
+              id="f-pv"
+              value={config.puntoVenta}
+              onChange={(e) => editar('puntoVenta', Math.max(1, Number(e.target.value.replace(/\D/g, '')) || 1))}
+              inputMode="numeric"
+              className={campo}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="f-cuit" className={rotulo}>CUIT del emisor</label>
+            <input
+              id="f-cuit"
+              value={config.cuit}
+              onChange={(e) => editar('cuit', e.target.value)}
+              placeholder="30712345678"
+              inputMode="numeric"
+              className={campo}
+            />
+          </div>
+          <div>
+            <label htmlFor="f-razon" className={rotulo}>Razon social</label>
+            <input
+              id="f-razon"
+              value={config.razonSocial ?? ''}
+              onChange={(e) => editar('razonSocial', e.target.value)}
+              className={campo}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <span className={rotulo}>Condicion frente al IVA</span>
+            <div className="flex gap-1 rounded-ficha border border-masa-200 bg-masa-50 p-1">
+              {(
+                [
+                  ['RI', 'Responsable Inscripto'],
+                  ['MT', 'Monotributo'],
+                ] as const
+              ).map(([clave, etiqueta]) => (
+                <button
+                  key={clave}
+                  type="button"
+                  onClick={() => editar('condicionIva', clave)}
+                  className={[
+                    'flex-1 rounded-pastilla px-2 py-1.5 text-xs font-medium outline-none',
+                    config.condicionIva === clave ? 'bg-dulce-600 text-white' : 'text-masa-800 hover:bg-masa-100',
+                  ].join(' ')}
+                >
+                  {etiqueta}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="f-iibb" className={rotulo}>Ingresos brutos</label>
+            <input
+              id="f-iibb"
+              value={config.iibb ?? ''}
+              onChange={(e) => editar('iibb', e.target.value)}
+              className={campo}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="f-cert" className={rotulo}>Certificado ARCA (.crt / .pem)</label>
+          <input
+            id="f-cert"
+            value={config.rutaCertificado ?? ''}
+            onChange={(e) => editar('rutaCertificado', e.target.value)}
+            placeholder="/Users/.../certificado.crt"
+            className={`${campo} font-mono text-xs`}
+          />
+        </div>
+        <div>
+          <label htmlFor="f-key" className={rotulo}>Clave privada (.key)</label>
+          <input
+            id="f-key"
+            value={config.rutaClave ?? ''}
+            onChange={(e) => editar('rutaClave', e.target.value)}
+            placeholder="/Users/.../clave.key"
+            className={`${campo} font-mono text-xs`}
+          />
+          <p className="mt-1 text-xs text-masa-700">
+            Rutas absolutas al certificado del tramite de ARCA y a la clave con la que se genero.
+            No se copian: se leen del disco al firmar.
+          </p>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-masa-900">
+          <input
+            type="checkbox"
+            checked={config.habilitada}
+            onChange={(e) => editar('habilitada', e.target.checked)}
+            className="h-4 w-4"
+          />
+          Ofrecer Factura A y B al registrar una venta
+        </label>
+
+        {aviso !== null && (
+          <p
+            role={aviso.tono === 'mal' ? 'alert' : 'status'}
+            className={[
+              'rounded-ficha border px-3 py-2 text-sm',
+              aviso.tono === 'ok'
+                ? 'border-menta-200 bg-menta-50 text-menta-700'
+                : 'border-peligro-200 bg-peligro-50 text-peligro-600',
+            ].join(' ')}
+          >
+            {aviso.texto}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={guardar}
+            disabled={guardando}
+            className="rounded-ficha bg-dulce-600 px-5 py-2 text-sm font-bold text-white outline-none hover:bg-dulce-700 focus-visible:ring-2 focus-visible:ring-dulce-400 disabled:bg-masa-300"
+          >
+            {guardando ? 'Guardando...' : 'Guardar configuracion'}
+          </button>
+          <button
+            type="button"
+            onClick={probar}
+            disabled={probando}
+            className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-masa-50 focus-visible:ring-2 focus-visible:ring-dulce-400 disabled:opacity-50"
+          >
+            {probando ? 'Probando...' : 'Probar conexion con ARCA'}
+          </button>
+        </div>
       </div>
 
-      <div className="rounded-ficha border border-masa-200 bg-white px-5 py-4 shadow-ficha">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
-          Lo que ya queda resuelto desde ahora
-        </h2>
-        <ul className="mt-2 space-y-2 text-sm text-masa-900">
-          <li>
-            <strong>CUIT de clientes y proveedores</strong> ya se cargan en los maestros: son el
-            dato clave para discriminar comprobantes A y B.
-          </li>
-          <li>
-            <strong>Dinero en centavos enteros</strong> en toda la base: los importes fiscales no
-            arrastran errores de redondeo.
-          </li>
-          <li>
-            <strong>Cheques y cuentas corrientes</strong> ya registran como se cobra: la factura se
-            engancha a esos medios de pago sin rehacer nada.
-          </li>
-        </ul>
-      </div>
+      {prueba !== null && (
+        <div className="rounded-ficha border border-masa-200 bg-white px-5 py-4 shadow-ficha">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
+            Prueba en {prueba.entorno}
+          </h2>
+          <ul className="mt-2 space-y-1 text-sm text-masa-900">
+            <li>
+              Servidores ARCA:{' '}
+              {prueba.servidores === null ? (
+                <span className="text-peligro-600">sin respuesta</span>
+              ) : (
+                <span className="font-mono text-xs">{prueba.servidores}</span>
+              )}
+            </li>
+            <li>
+              Autenticacion:{' '}
+              {prueba.autenticacion === null ? (
+                <span className="text-masa-700">no se probo</span>
+              ) : (
+                <span className="text-menta-700">{prueba.autenticacion}</span>
+              )}
+            </li>
+            <li>
+              Ultima Factura B autorizada:{' '}
+              {prueba.ultimoNumero === null ? (
+                <span className="text-masa-700">—</span>
+              ) : (
+                <span className="font-mono">N° {prueba.ultimoNumero}</span>
+              )}
+            </li>
+          </ul>
+          {prueba.errores.length > 0 && (
+            <ul className="mt-2 space-y-1 text-sm text-peligro-600">
+              {prueba.errores.map((mensaje) => (
+                <li key={mensaje}>{mensaje}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
