@@ -83,7 +83,7 @@ export function PantallaPrecios(): JSX.Element {
       estado={estado}
       que="las listas de precio"
       tituloVacio="Sin listas de precio"
-      detalleVacio="No hay listas cargadas. Corre el seed para crear la lista General."
+      detalleVacio="Crea la primera con el boton Nueva lista."
       comandoVacio={COMANDO_SEED_DEMO}
     >
       {(listas) => (

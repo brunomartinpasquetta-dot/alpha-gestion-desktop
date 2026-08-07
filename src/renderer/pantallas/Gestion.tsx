@@ -397,7 +397,7 @@ export function PantallaUsuarios(): JSX.Element {
       estado={estado}
       que="los usuarios"
       tituloVacio="Sin usuarios"
-      detalleVacio="No hay usuarios cargados. Corre el seed para crear el administrador inicial."
+      detalleVacio="Crea el primer usuario con el boton Nuevo usuario."
       comandoVacio={COMANDO_SEED_DEMO}
     >
       {(filas) => (

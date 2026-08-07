@@ -183,7 +183,7 @@ export function PantallaCaja(): JSX.Element {
         estado={estado}
         que="las cajas"
         tituloVacio="Sin cajas"
-        detalleVacio="Todavia no se abrio ninguna caja. Carga los datos de demostracion para ver una caja cerrada con su arqueo y una caja abierta."
+        detalleVacio="Todavia no se abrio ninguna caja. Abri la del dia con el boton Abrir caja."
         comandoVacio={COMANDO_SEED_DEMO}
       >
         {(filas) => (

@@ -83,7 +83,7 @@ export function PantallaRecetas(): JSX.Element {
       que="las recetas"
       tituloVacio="Sin recetas"
       detalleVacio="Carga la primera formula con el boton Nueva receta."
-      comandoVacio="npm run db:seed"
+      comandoVacio={COMANDO_SEED_DEMO}
     >
       {(recetas) => (
         <div className="space-y-2">

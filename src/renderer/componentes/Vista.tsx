@@ -38,7 +38,7 @@ export function Vista<T>({
       <EstadoVacio
         titulo={tituloVacio}
         detalle={detalleVacio}
-        {...(comandoVacio !== undefined ? { comando: comandoVacio } : {})}
+        {...(comandoVacio !== undefined && esDesarrollo() ? { comando: comandoVacio } : {})}
       />
     );
   }
@@ -46,5 +46,19 @@ export function Vista<T>({
   return <>{children(datos)}</>;
 }
 
-/** Sugerencia estandar para las pantallas que se llenan con el seed de demostracion. */
+/**
+ * Sugerencia para las pantallas que se llenan con el seed. SOLO se muestra en
+ * desarrollo: al operador de la fabrica un comando de terminal no le sirve de
+ * nada —no tiene terminal ni tiene por que saber que es npm— y ver eso en una
+ * pantalla vacia da la impresion de que el programa esta a medio hacer.
+ */
 export const COMANDO_SEED_DEMO = 'ALFAJORES_SEED_DEMO=1 npm run db:seed';
+
+/**
+ * En la app empaquetada el renderer se sirve desde el servidor embebido en un
+ * puerto local; en desarrollo, desde el dev server de Vite. Es la unica pista
+ * que tiene el renderer sin sumar otra via de configuracion.
+ */
+function esDesarrollo(): boolean {
+  return import.meta.env.DEV;
+}

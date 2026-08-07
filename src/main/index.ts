@@ -12,7 +12,7 @@
 
 import path from 'node:path';
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 
 import { NOMBRE_APP, NOMBRE_PRODUCTO, VERSION_APP } from '../compartido/config';
 import { leerConfig } from '../server/config';
@@ -268,6 +268,12 @@ function registrarCanalesDeVentanas(): void {
 
 async function arrancar(): Promise<void> {
   await app.whenReady();
+
+  // Sin menu de aplicacion. En Windows, Electron dibuja por defecto una barra
+  // "File / Edit / View / Window" en CADA ventana: son acciones del navegador
+  // que no significan nada en un ERP y ensucian todas las ventanas de modulo.
+  // La navegacion del sistema vive en su propia barra, dentro de la ventana.
+  Menu.setApplicationMenu(null);
 
   if (!prepararBaseDeDatos()) return;
 

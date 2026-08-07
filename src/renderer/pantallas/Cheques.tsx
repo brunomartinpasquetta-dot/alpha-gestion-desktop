@@ -151,7 +151,7 @@ export function PantallaCheques(): JSX.Element {
         estado={cheques}
         que="la cartera de cheques"
         tituloVacio="Sin cheques cargados"
-        detalleVacio="Carga el primero con el boton de arriba, o corre el seed de demostracion."
+        detalleVacio="Carga el primero con el boton Nuevo cheque."
         comandoVacio={COMANDO_SEED_DEMO}
       >
         {() =>

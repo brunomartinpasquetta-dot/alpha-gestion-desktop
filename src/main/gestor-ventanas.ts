@@ -133,6 +133,9 @@ export function abrirVentana(solicitud: SolicitudApertura): number {
   const posicion = principal && !principal.isDestroyed() ? principal.getBounds() : null;
 
   const ventana = new BrowserWindow({
+    // Ver Menu.setApplicationMenu(null) en index.ts: ademas se pide por ventana
+    // porque en Windows la barra nativa se dibuja por ventana, no por app.
+    autoHideMenuBar: true,
     width: ANCHO_DEFAULT,
     height: ALTO_DEFAULT,
     minWidth: 900,
