@@ -253,9 +253,12 @@ export const preciosMasivoServicio = {
   },
 
   /**
-   * Que hay que comprar y a quien. Sale de comparar el stock contra el minimo o
-   * el ideal, y agrupa por proveedor habitual porque las compras se hacen por
-   * proveedor, no por articulo suelto.
+   * Que falta reponer. Sale de comparar el stock contra el minimo o el ideal.
+   *
+   * Distingue COMO se repone cada cosa, que no es lo mismo: una materia prima
+   * que falta se le compra a un proveedor, pero un alfajor que falta se PRODUCE
+   * —no se compra a nadie—. Mezclarlos daba una "orden de compra" con alfajores
+   * adentro, que no se le puede mandar a ningun proveedor.
    */
   sugerenciaDeCompra(criterio: 'minimo' | 'ideal'): LineaReposicion[] {
     return ejecutarSeguro('calcular la sugerencia de compra', () => {
@@ -270,6 +273,7 @@ export const preciosMasivoServicio = {
           costoActual: articulos.costoActual,
           proveedorId: articulos.proveedorHabitualId,
           proveedorNombre: proveedores.nombre,
+          tipo: articulos.tipo,
           stock: sql<number>`COALESCE((
             SELECT SUM(cantidad) FROM movimientos_stock WHERE articulo_id = ${articulos.id}
           ), 0)`.mapWith(Number),
@@ -290,6 +294,8 @@ export const preciosMasivoServicio = {
             articuloId: f.articuloId,
             codigo: f.codigo,
             nombre: f.nombre,
+            // Un producto terminado se repone produciendolo; el resto, comprando.
+            comoSeRepone: f.tipo === 'producto_terminado' ? ('producir' as const) : ('comprar' as const),
             unidadAbreviatura: f.unidadAbreviatura,
             stock,
             objetivo,

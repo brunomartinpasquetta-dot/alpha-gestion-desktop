@@ -106,6 +106,26 @@ corrigen desde el escritorio, mientras no hayan entrado a producción.
 
 ---
 
+## 3-ter. Reglas del negocio con las que está construido el sistema
+
+Estas son las reglas que asumí. **Todo el sistema las respeta y toda pantalla
+nueva tiene que revisarse contra ellas.** Si alguna está mal, corregirla acá
+primero y después el código.
+
+| # | Regla |
+|---|---|
+| 1 | **Materia prima y pre-elaborado (insumos):** se COMPRAN a proveedores y se CONSUMEN en producción. No se venden: no llevan precio de venta, ni lista, ni unidades por caja |
+| 2 | **Producto terminado:** se PRODUCE con una receta y se VENDE. Lleva precio por lista y se vende en cajas cerradas. No se compra |
+| 3 | **Si falta un insumo** → se compra al proveedor habitual |
+| 4 | **Si falta un producto** → se produce con una orden, NO se compra |
+| 5 | **Pedidos y ventas** → solo productos terminados |
+| 6 | **Compras** → cualquier artículo, en la práctica insumos |
+| 7 | **Recetas** → producen un pre-elaborado o un terminado; consumen insumos |
+| 8 | **Precios** → hay 3 listas (General, Mayorista, Distribuidor) y cada cliente tiene la suya |
+
+Verificado el 7/8 pantalla por pantalla: venta, pedido, compra, receta, ajuste de
+stock, fijar precio, actualización masiva y ficha de artículo respetan las 8.
+
 ## 3-bis. Comparación módulo por módulo contra StockFlow
 
 Inventario hecho el 7/8 leyendo `~/dev/stockflow`. **Criterio: cuando un módulo

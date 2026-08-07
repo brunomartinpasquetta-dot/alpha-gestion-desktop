@@ -506,17 +506,21 @@ export function PantallaReposicion(): JSX.Element {
 
   useEffect(() => cargar(criterio), [cargar, criterio]);
 
-  // Agrupado por proveedor: asi sale una orden de compra por proveedor.
+  // Lo que falta se repone de dos maneras distintas y no se pueden mezclar: los
+  // insumos se le compran a un proveedor, los alfajores se producen.
+  const aComprar = useMemo(() => lineas.filter((l) => l.comoSeRepone === 'comprar'), [lineas]);
+  const aProducir = useMemo(() => lineas.filter((l) => l.comoSeRepone === 'producir'), [lineas]);
+
   const porProveedor = useMemo(() => {
     const mapa = new Map<string, LineaReposicion[]>();
-    for (const l of lineas) {
+    for (const l of aComprar) {
       const clave = l.proveedorNombre ?? 'Sin proveedor asignado';
       mapa.set(clave, [...(mapa.get(clave) ?? []), l]);
     }
     return [...mapa.entries()];
-  }, [lineas]);
+  }, [aComprar]);
 
-  const total = lineas.reduce((s, l) => s + (l.costoEstimado ?? 0), 0);
+  const total = aComprar.reduce((s, l) => s + (l.costoEstimado ?? 0), 0);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-3">
@@ -573,7 +577,7 @@ export function PantallaReposicion(): JSX.Element {
         <div className="flex-1" />
         {total > 0 && (
           <span className="text-sm text-masa-800">
-            Costo estimado total: <strong className="font-mono">{formatearMoneda(total)}</strong>
+            Costo estimado de la compra: <strong className="font-mono">{formatearMoneda(total)}</strong>
           </span>
         )}
       </div>
@@ -593,7 +597,60 @@ export function PantallaReposicion(): JSX.Element {
             </p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            {aProducir.length > 0 && (
+              <section>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
+                    Hay que producir
+                  </h2>
+                  <span className="text-xs text-masa-700">
+                    {aProducir.length} producto(s) · se reponen con una orden de produccion, no
+                    comprando
+                  </span>
+                </div>
+                <div className="overflow-hidden rounded-ficha border border-dulce-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-dulce-50">
+                      <tr className="text-left text-micro uppercase tracking-wide text-masa-700">
+                        <th scope="col" className="px-3 py-2">Codigo</th>
+                        <th scope="col" className="px-3 py-2">Producto</th>
+                        <th scope="col" className="px-3 py-2 text-right">Tiene</th>
+                        <th scope="col" className="px-3 py-2 text-right">Objetivo</th>
+                        <th scope="col" className="px-3 py-2 text-right">A producir</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aProducir.map((l) => (
+                        <tr key={l.articuloId} className="border-t border-masa-100">
+                          <td className="px-3 py-1.5 font-mono text-xs">{l.codigo}</td>
+                          <td className="px-3 py-1.5">{l.nombre}</td>
+                          <td className="px-3 py-1.5 text-right font-mono tabular-nums text-peligro-600">
+                            {formatearCantidad(l.stock)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono tabular-nums text-masa-700">
+                            {formatearCantidad(l.objetivo)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums">
+                            {formatearCantidad(l.aPedir)} {l.unidadAbreviatura}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-1 text-micro text-masa-700">
+                  Planificalos desde Produccion → Ordenes.
+                </p>
+              </section>
+            )}
+
+            {aComprar.length > 0 && (
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
+                Hay que comprar
+              </h2>
+            )}
+
             {porProveedor.map(([proveedor, items]) => (
               <section key={proveedor}>
                 <div className="mb-1 flex items-baseline justify-between">

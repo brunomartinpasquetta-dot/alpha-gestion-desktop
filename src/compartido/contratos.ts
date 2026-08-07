@@ -1196,6 +1196,8 @@ export interface LineaReposicion {
   articuloId: number;
   codigo: string;
   nombre: string;
+  /** Un producto terminado se repone produciendolo, no comprandolo. */
+  comoSeRepone: 'comprar' | 'producir';
   unidadAbreviatura: string;
   stock: number;
   objetivo: number;
