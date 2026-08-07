@@ -23,7 +23,9 @@ import type {
   EntradaMovimientoCaja,
   EntradaNuevaCompra,
   EntradaNuevaOrden,
+  EntradaNuevoPedido,
   EntradaProveedor,
+  EntradaUsuario,
   EntradaAjusteStock,
   EntradaListaPrecio,
   EntradaPrecio,
@@ -402,3 +404,22 @@ export const obtenerDatosDemo = (): Promise<DatosExistentes[]> =>
 
 export const empezarDeCero = (confirmacion: string): Promise<ResultadoInicializacion> =>
   enviar<ResultadoInicializacion>('/api/sistema/empezar-de-cero', 'POST', { confirmacion });
+
+/* -------------------------------- Usuarios -------------------------------- */
+
+export const crearUsuario = (entrada: EntradaUsuario): Promise<UsuarioVista> =>
+  enviar<UsuarioVista>('/api/usuarios', 'POST', entrada);
+
+export const actualizarUsuario = (id: number, entrada: EntradaUsuario): Promise<UsuarioVista> =>
+  enviar<UsuarioVista>(`/api/usuarios/${id}`, 'PUT', entrada);
+
+export const cambiarActivoUsuario = (id: number, activo: boolean): Promise<UsuarioVista> =>
+  enviar<UsuarioVista>(`/api/usuarios/${id}/activo`, 'PATCH', { activo });
+
+/* --------------------------------- Pedidos -------------------------------- */
+
+export const crearPedido = (entrada: EntradaNuevoPedido): Promise<PedidoVista> =>
+  enviar<PedidoVista>('/api/pedidos', 'POST', entrada);
+
+export const actualizarPedido = (id: number, entrada: EntradaNuevoPedido): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/pedidos/${id}`, 'PUT', entrada);

@@ -180,3 +180,94 @@ export function iniciarActualizador(): void {
 export function abrirPaginaDeDescarga(): void {
   void shell.openExternal(URL_RELEASES_WEB);
 }
+
+export interface ResultadoChequeo {
+  versionInstalada: string;
+  /** Version publicada mas reciente, o null si no se pudo consultar. */
+  versionDisponible: string | null;
+  /** true si hay una version mas nueva que la instalada. */
+  hayActualizacion: boolean;
+  /** Que va a pasar: se instala sola, o hay que bajarla a mano. */
+  seInstalaSola: boolean;
+  /** Mensaje listo para mostrarle al usuario. */
+  mensaje: string;
+  urlDescarga: string;
+}
+
+/**
+ * Chequeo DISPARADO POR EL USUARIO desde el menu de Ayuda. A diferencia del
+ * automatico, este siempre contesta algo: "estas al dia" tambien es una
+ * respuesta, y el usuario que aprieta el boton la espera.
+ */
+export async function verificarActualizacionesAhora(): Promise<ResultadoChequeo> {
+  const versionInstalada = app.getVersion();
+  const base: ResultadoChequeo = {
+    versionInstalada,
+    versionDisponible: null,
+    hayActualizacion: false,
+    seInstalaSola: false,
+    mensaje: '',
+    urlDescarga: URL_RELEASES_WEB,
+  };
+
+  if (!app.isPackaged) {
+    return { ...base, mensaje: 'En modo desarrollo no se buscan actualizaciones.' };
+  }
+
+  const seInstalaSola = process.platform !== 'darwin' || MAC_TIENE_FIRMA;
+
+  try {
+    const respuesta = await fetch(URL_RELEASE_LATEST, {
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+    if (!respuesta.ok) {
+      return {
+        ...base,
+        seInstalaSola,
+        mensaje: `No se pudo consultar: GitHub respondio ${respuesta.status}. Reintenta en un rato.`,
+      };
+    }
+
+    const release = (await respuesta.json()) as ReleaseGitHub;
+    const ultima = release.tag_name?.replace(/^v/, '') ?? '';
+    if (ultima === '') {
+      return { ...base, seInstalaSola, mensaje: 'No se pudo leer la ultima version publicada.' };
+    }
+
+    const urlDescarga = release.html_url ?? URL_RELEASES_WEB;
+    if (!esMasNueva(ultima, versionInstalada)) {
+      return {
+        ...base,
+        versionDisponible: ultima,
+        seInstalaSola,
+        urlDescarga,
+        mensaje: `Estas al dia. Version instalada: ${versionInstalada}.`,
+      };
+    }
+
+    // Hay version nueva: en Windows la baja el auto-updater; en Mac sin firma,
+    // el usuario tiene que bajarla a mano.
+    if (seInstalaSola) {
+      void autoUpdater.checkForUpdates().catch((error: unknown) => {
+        registrar(`No se pudo iniciar la descarga: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
+
+    return {
+      versionInstalada,
+      versionDisponible: ultima,
+      hayActualizacion: true,
+      seInstalaSola,
+      urlDescarga,
+      mensaje: seInstalaSola
+        ? `Hay una version nueva (${ultima}). Se esta descargando y se instala al cerrar el programa.`
+        : `Hay una version nueva (${ultima}). Descargala e instalala a mano desde la pagina de descargas.`,
+    };
+  } catch (error) {
+    return {
+      ...base,
+      seInstalaSola,
+      mensaje: `No hay conexion con GitHub: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}

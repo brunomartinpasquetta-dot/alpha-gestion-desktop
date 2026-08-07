@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import {
   FORMAS_PAGO,
+  ROLES_USUARIO,
   TIPOS_ARTICULO,
   TIPOS_CLIENTE,
   TIPOS_ENTIDAD_CC,
@@ -65,6 +66,12 @@ const esquemaArticulo = z.object({
   stockMin: z.number().min(0).max(1_000_000).nullable().optional(),
   unidadesPorCaja: z.number().int().min(1).max(1000).nullable().optional(),
   costoActual: z.number().int().min(0).nullable().optional(),
+});
+
+const esquemaUsuario = z.object({
+  username: z.string().min(3).max(40),
+  password: z.string().max(80).optional(),
+  rol: z.enum(ROLES_USUARIO),
 });
 
 const esquemaNuevaCompra = z.object({
@@ -202,6 +209,25 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     const { id } = validarOFallar(esquemaId, request.params, 'El identificador del articulo no es valido.');
     const { activo } = validarOFallar(esquemaActivo, request.body, 'El estado enviado no es valido.');
     return reply.status(200).send({ datos: { id: maestrosServicio.cambiarActivoArticulo(id, activo) } });
+  });
+
+  /* -------------------------------- Usuarios ------------------------------- */
+
+  app.post('/api/usuarios', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaUsuario, request.body, 'El usuario enviado no es valido.');
+    return reply.status(201).send({ datos: maestrosServicio.crearUsuario(entrada) });
+  });
+
+  app.put('/api/usuarios/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador del usuario no es valido.');
+    const entrada = validarOFallar(esquemaUsuario, request.body, 'El usuario enviado no es valido.');
+    return reply.status(200).send({ datos: maestrosServicio.actualizarUsuario(id, entrada) });
+  });
+
+  app.patch('/api/usuarios/:id/activo', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador del usuario no es valido.');
+    const { activo } = validarOFallar(esquemaActivo, request.body, 'El estado enviado no es valido.');
+    return reply.status(200).send({ datos: maestrosServicio.cambiarActivoUsuario(id, activo) });
   });
 
   /* --------------------------------- Compras ------------------------------- */

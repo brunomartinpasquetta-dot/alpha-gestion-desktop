@@ -1,6 +1,6 @@
 # Estado del proyecto — Alpha Gestión
 
-**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.10.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
+**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.11.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
 
 Este documento dice qué está terminado, qué falta y en qué orden conviene hacerlo
 para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
@@ -82,12 +82,13 @@ exige escribir una frase de confirmación y borra los datos de demostración
 conservando unidades, usuarios y la configuración de ARCA. La numeración vuelve
 a empezar en 1: la primera venta real es la venta #1.
 
-**I3 · Login y usuarios.** La tabla existe y la pantalla los lista, pero no hay
-autenticación: cualquiera que abra el programa hace todo. Para una fábrica chica
-puede ser aceptable al principio, pero hay que decidirlo con el cliente.
+**I3 · Login.** El ABM de usuarios está hecho en v0.11.0 (alta, edición, baja,
+con protección del último administrador), pero **falta la pantalla de login**:
+hoy cualquiera que abra el programa entra. Para una fábrica chica puede ser
+aceptable, pero hay que decidirlo con el cliente.
 
-**I4 · Editar y anular pedidos.** Se puede cambiar el estado, no corregir un
-pedido mal cargado desde el celular.
+~~**I4 · Editar y anular pedidos.**~~ ✅ **HECHO en v0.11.0.** Se cargan y se
+corrigen desde el escritorio, mientras no hayan entrado a producción.
 
 ### 🟢 DESEABLES (no bloquean la presentación)
 

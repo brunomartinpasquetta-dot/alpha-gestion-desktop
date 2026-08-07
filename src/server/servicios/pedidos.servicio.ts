@@ -19,7 +19,7 @@ import { eq } from 'drizzle-orm';
 
 import { TRANSICIONES_PEDIDO, type EntradaNuevoPedido } from '../../compartido/contratos';
 import { obtenerDb } from '../db/conexion';
-import { pedidos } from '../db/schema';
+import { articulos, pedidoItems, pedidos } from '../db/schema';
 import { ejecutarSeguro } from '../dominio/errores';
 import { existeEntidad } from '../repositorios/cuentas-corrientes.repositorio';
 import * as repo from '../repositorios/pedidos-escritura.repositorio';
@@ -112,6 +112,72 @@ export const pedidosServicio = {
   },
 
   /** Aplica una transicion de estado valida y avisa a las pantallas. */
+  /**
+   * Corrige un pedido mal cargado. Solo mientras no entro a produccion: una vez
+   * que la fabrica empezo a elaborar contra ese pedido, cambiarlo por atras
+   * dejaria la tanda produciendo una cosa y el pedido pidiendo otra.
+   */
+  actualizarPedido(pedidoId: number, entrada: EntradaNuevoPedido): { id: number } {
+    if (entrada.items.length === 0) {
+      throw new ErrorValidacion('El pedido tiene que tener al menos un articulo.');
+    }
+    const resultado = ejecutarSeguro('actualizar un pedido', () =>
+      obtenerDb().transaction((tx) => {
+        const pedido = tx
+          .select({ id: pedidos.id, estado: pedidos.estado })
+          .from(pedidos)
+          .where(eq(pedidos.id, pedidoId))
+          .get();
+        if (!pedido) throw new ErrorNoEncontrado('pedido', pedidoId);
+        if (pedido.estado !== 'pendiente' && pedido.estado !== 'confirmado') {
+          throw new ErrorReglaNegocio(
+            `El pedido #${pedidoId} esta ${pedido.estado}: ya no se puede modificar. ` +
+              'Cancelalo y carga uno nuevo si hace falta.',
+          );
+        }
+
+        for (const item of entrada.items) {
+          const articulo = tx
+            .select({ id: articulos.id, nombre: articulos.nombre, tipo: articulos.tipo, activo: articulos.activo })
+            .from(articulos)
+            .where(eq(articulos.id, item.articuloId))
+            .get();
+          if (!articulo) throw new ErrorNoEncontrado('articulo', item.articuloId);
+          if (articulo.tipo !== 'producto_terminado' || !articulo.activo) {
+            throw new ErrorReglaNegocio(`${articulo.nombre} no es un producto terminado activo.`);
+          }
+        }
+
+        tx.update(pedidos)
+          .set({
+            clienteId: entrada.clienteId ?? null,
+            fechaEntregaEstimada: entrada.fechaEntregaEstimada ?? null,
+            notas: entrada.notas?.trim() || null,
+          })
+          .where(eq(pedidos.id, pedidoId))
+          .run();
+
+        // Los items se reemplazan enteros: mas simple y menos propenso a error
+        // que diferenciar altas, bajas y cambios uno por uno.
+        tx.delete(pedidoItems).where(eq(pedidoItems.pedidoId, pedidoId)).run();
+        for (const item of entrada.items) {
+          tx.insert(pedidoItems)
+            .values({
+              pedidoId,
+              articuloId: item.articuloId,
+              cantidad: redondearCantidad(item.cantidad),
+              notas: item.notas?.trim() || null,
+            })
+            .run();
+        }
+
+        return { id: pedidoId };
+      }),
+    );
+    emitir('pedidos:cambio');
+    return resultado;
+  },
+
   cambiarEstado(pedidoId: number, nuevoEstado: EstadoPedido): { id: number; estado: EstadoPedido } {
     const actual = repo.buscarEstado(pedidoId);
     if (actual === undefined) throw new ErrorNoEncontrado('pedido', pedidoId);

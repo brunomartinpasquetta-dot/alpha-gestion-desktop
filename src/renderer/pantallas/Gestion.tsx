@@ -3,6 +3,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 
 import {
   CONFIRMACION_EMPEZAR_DE_CERO,
@@ -18,10 +19,13 @@ import {
   type UsuarioVista,
 } from '../../compartido/contratos';
 import { EstadoCargando, EstadoError, Pastilla, Seccion, TarjetaIndicador } from '../componentes/comunes';
+import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
+import { FormularioUsuario } from './FormulariosMaestros';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import {
+  cambiarActivoUsuario,
   empezarDeCero,
   guardarConfigFiscal,
   obtenerCajaGeneral,
@@ -357,9 +361,37 @@ function PanelEmpezarDeCero(): JSX.Element {
 
 export function PantallaUsuarios(): JSX.Element {
   const estado = usarRecurso(() => obtenerUsuarios(), []);
+  const [enEdicion, setEnEdicion] = useState<UsuarioVista | null | undefined>(undefined);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'mal'; texto: string } | null>(null);
+
+  const cambiarActivo = (usuario: UsuarioVista): void => {
+    const alta = !usuario.activo;
+    if (!alta && !window.confirm(`¿Dar de baja a ${usuario.username}? No va a poder entrar mas.`)) return;
+    setAviso(null);
+    cambiarActivoUsuario(usuario.id, alta)
+      .then(() => {
+        estado.recargar();
+        setAviso({ tono: 'ok', texto: `${usuario.username} ${alta ? 'reactivado' : 'dado de baja'}.` });
+      })
+      .catch((causa: unknown) =>
+        setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) }),
+      );
+  };
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          El administrador puede todo; el empleado opera pero no administra usuarios.
+        </p>
+        <BotonPrimario onClick={() => setEnEdicion(null)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuevo usuario
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono={aviso.tono} texto={aviso.texto} />}
+
       <PanelEmpezarDeCero />
       <Vista
       estado={estado}
@@ -374,10 +406,40 @@ export function PantallaUsuarios(): JSX.Element {
             El hash de contrasena nunca sale del servidor: esta pantalla solo lee usuario, rol y
             estado.
           </p>
-          <Tabla columnas={COLUMNAS_USUARIOS} filas={filas} claveDeFila={(u) => u.id} />
+          <Tabla
+            columnas={[
+              ...COLUMNAS_USUARIOS,
+              {
+                clave: 'acciones',
+                titulo: 'Acciones',
+                celda: (u: UsuarioVista) => (
+                  <div className="flex gap-1">
+                    <BotonFila onClick={() => setEnEdicion(u)}>Editar</BotonFila>
+                    <BotonFila onClick={() => cambiarActivo(u)} tono={u.activo ? 'peligro' : 'neutro'}>
+                      {u.activo ? 'Dar de baja' : 'Reactivar'}
+                    </BotonFila>
+                  </div>
+                ),
+              },
+            ]}
+            filas={filas}
+            claveDeFila={(u) => u.id}
+          />
         </>
       )}
       </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioUsuario
+          usuario={enEdicion}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso({ tono: 'ok', texto: mensaje });
+          }}
+        />
+      )}
     </div>
   );
 }

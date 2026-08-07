@@ -18,7 +18,11 @@ import { NOMBRE_APP, NOMBRE_PRODUCTO, VERSION_APP } from '../compartido/config';
 import { leerConfig } from '../server/config';
 import { aplicarMigraciones } from '../server/db/migraciones';
 import { iniciarServidor, type ServidorEnMarcha } from '../server/servidor';
-import { iniciarActualizador } from './actualizador';
+import {
+  abrirPaginaDeDescarga,
+  iniciarActualizador,
+  verificarActualizacionesAhora,
+} from './actualizador';
 import {
   abrirVentana,
   cerrarTodas,
@@ -225,6 +229,10 @@ function registrarCanalesDeVentanas(): void {
    * aparecen como un rechazo incomprensible de ARCA. Devuelve la ruta elegida o
    * null si el usuario cancelo.
    */
+  // Chequeo de actualizaciones a pedido, desde el menu de Ayuda.
+  ipcMain.handle('actualizador:verificar', () => verificarActualizacionesAhora());
+  ipcMain.on('actualizador:abrir-descargas', () => abrirPaginaDeDescarga());
+
   ipcMain.handle('archivo:elegir', async (evento, solicitud: unknown) => {
     const { titulo, extensiones } = (solicitud ?? {}) as {
       titulo?: unknown;

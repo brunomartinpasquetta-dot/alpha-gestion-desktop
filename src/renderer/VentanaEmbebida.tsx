@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { PantallaAyuda } from './pantallas/Ayuda';
 import { Comprobante } from './pantallas/Comprobante';
 import { EstadoVacio } from './componentes/comunes';
 import { PanelLedger } from './componentes/PanelLedger';
@@ -135,6 +136,8 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
       return <Simple><PantallaTrazabilidad /></Simple>;
     case 'cheques':
       return <Simple><PantallaCheques /></Simple>;
+    case 'ayuda':
+      return <Simple><PantallaAyuda /></Simple>;
     case 'facturacion':
       return <Simple><PantallaFacturacion /></Simple>;
     default:

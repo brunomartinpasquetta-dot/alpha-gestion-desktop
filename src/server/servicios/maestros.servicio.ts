@@ -19,10 +19,21 @@ import type {
   EntradaArticulo,
   EntradaCliente,
   EntradaProveedor,
+  EntradaUsuario,
   ProveedorVista,
+  UsuarioVista,
 } from '../../compartido/contratos';
+import bcrypt from 'bcrypt';
+
 import { obtenerDb } from '../db/conexion';
-import { articulos, clientes, movimientosStock, proveedores, unidadesMedida } from '../db/schema';
+import {
+  articulos,
+  clientes,
+  movimientosStock,
+  proveedores,
+  unidadesMedida,
+  usuarios,
+} from '../db/schema';
 import { listarClientes, listarProveedores } from '../repositorios/lectura/terceros.repositorio';
 import {
   ejecutarSeguro,
@@ -316,4 +327,117 @@ export const maestrosServicio = {
       return id;
     });
   },
+
+  /* -------------------------------- Usuarios ------------------------------- */
+
+  crearUsuario(entrada: EntradaUsuario): UsuarioVista {
+    return ejecutarSeguro('crear un usuario', () => {
+      const db = obtenerDb();
+      const username = entrada.username.trim().toLowerCase();
+      if (username.length < 3) {
+        throw new ErrorValidacion('El nombre de usuario tiene que tener al menos 3 caracteres.');
+      }
+      if (!entrada.password || entrada.password.length < 4) {
+        throw new ErrorValidacion('La contraseña tiene que tener al menos 4 caracteres.');
+      }
+      const duplicado = db.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.username, username)).get();
+      if (duplicado) throw new ErrorConflicto(`Ya existe el usuario ${username}.`);
+
+      const fila = db
+        .insert(usuarios)
+        .values({
+          username,
+          // El hash es lo unico que se guarda: la contraseña en claro no toca la base.
+          passwordHash: bcrypt.hashSync(entrada.password, 10),
+          rol: entrada.rol,
+          activo: true,
+        })
+        .returning({ id: usuarios.id })
+        .all()[0];
+      if (!fila) throw new ErrorValidacion('La base no devolvio el usuario insertado.');
+      return vistaUsuario(fila.id);
+    });
+  },
+
+  /** Actualiza rol y, solo si viene una nueva, la contraseña. */
+  actualizarUsuario(id: number, entrada: EntradaUsuario): UsuarioVista {
+    return ejecutarSeguro('actualizar un usuario', () => {
+      const db = obtenerDb();
+      const actual = db.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, id)).get();
+      if (!actual) throw new ErrorNoEncontrado('usuario', id);
+
+      const username = entrada.username.trim().toLowerCase();
+      const duplicado = db
+        .select({ id: usuarios.id })
+        .from(usuarios)
+        .where(and(eq(usuarios.username, username), ne(usuarios.id, id)))
+        .get();
+      if (duplicado) throw new ErrorConflicto(`Ya existe otro usuario llamado ${username}.`);
+
+      if (entrada.password !== undefined && entrada.password !== '' && entrada.password.length < 4) {
+        throw new ErrorValidacion('La contraseña tiene que tener al menos 4 caracteres.');
+      }
+
+      db.update(usuarios)
+        .set({
+          username,
+          rol: entrada.rol,
+          // Password vacio = "no la cambies": editar el rol no puede obligar a
+          // reescribir la contraseña.
+          ...(entrada.password !== undefined && entrada.password !== ''
+            ? { passwordHash: bcrypt.hashSync(entrada.password, 10) }
+            : {}),
+        })
+        .where(eq(usuarios.id, id))
+        .run();
+      return vistaUsuario(id);
+    });
+  },
+
+  cambiarActivoUsuario(id: number, activo: boolean): UsuarioVista {
+    return ejecutarSeguro('cambiar el estado de un usuario', () => {
+      const db = obtenerDb();
+      const usuario = db
+        .select({ id: usuarios.id, username: usuarios.username, rol: usuarios.rol })
+        .from(usuarios)
+        .where(eq(usuarios.id, id))
+        .get();
+      if (!usuario) throw new ErrorNoEncontrado('usuario', id);
+
+      if (!activo && usuario.rol === 'admin') {
+        // Quedarse sin ningun administrador activo deja el sistema sin quien
+        // administre usuarios: no hay forma de volver atras desde la interfaz.
+        const otrosAdmins =
+          db
+            .select({ n: sql<number>`COUNT(*)`.mapWith(Number) })
+            .from(usuarios)
+            .where(and(eq(usuarios.rol, 'admin'), eq(usuarios.activo, true), ne(usuarios.id, id)))
+            .get()?.n ?? 0;
+        if (otrosAdmins === 0) {
+          throw new ErrorReglaNegocio(
+            `${usuario.username} es el unico administrador activo: no se puede dar de baja. ` +
+              'Crea otro administrador primero.',
+          );
+        }
+      }
+
+      db.update(usuarios).set({ activo }).where(eq(usuarios.id, id)).run();
+      return vistaUsuario(id);
+    });
+  },
 };
+
+function vistaUsuario(id: number): UsuarioVista {
+  const fila = obtenerDb()
+    .select({
+      id: usuarios.id,
+      username: usuarios.username,
+      rol: usuarios.rol,
+      activo: usuarios.activo,
+    })
+    .from(usuarios)
+    .where(eq(usuarios.id, id))
+    .get();
+  if (!fila) throw new ErrorNoEncontrado('usuario', id);
+  return fila;
+}

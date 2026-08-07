@@ -62,8 +62,14 @@ export function registrarRutasPedidos(app: FastifyInstance): void {
   });
 
   app.post('/api/pedidos', (request: FastifyRequest, reply: FastifyReply) => {
+    // El PIN protege la carga desde AFUERA (el celular). Desde la propia
+    // maquina no se pide, porque el mostrador tambien carga pedidos y exigirle
+    // el PIN al operador que ya esta sentado frente al sistema no agrega nada.
+    // OJO con el tunel de Cloudflare: terminaria en la maquina y entraria como
+    // loopback. Ver guardia-pin.ts: antes de exponerlo hay que endurecer esto.
     const config = leerConfig();
-    if (config.pinPedidos !== undefined) {
+    const esLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.ip);
+    if (config.pinPedidos !== undefined && !esLocal) {
       const pin = request.headers['x-pin-pedidos'];
       if (typeof pin !== 'string' || pin !== config.pinPedidos) {
         return reply.status(401).send({
@@ -80,6 +86,16 @@ export function registrarRutasPedidos(app: FastifyInstance): void {
     const resultado = pedidosServicio.crearPedido(entrada);
     // 200 si la clave de idempotencia ya se habia procesado; 201 si es nuevo.
     return reply.status(resultado.existente ? 200 : 201).send({ datos: resultado.pedido });
+  });
+
+  app.put('/api/pedidos/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(
+      esquemaParametrosPedido,
+      request.params,
+      'El identificador del pedido no es valido.',
+    );
+    const entrada = validarOFallar(esquemaNuevoPedido, request.body, 'El pedido enviado no es valido.');
+    return reply.status(200).send({ datos: pedidosServicio.actualizarPedido(id, entrada) });
   });
 
   app.patch('/api/pedidos/:id/estado', (request: FastifyRequest, reply: FastifyReply) => {

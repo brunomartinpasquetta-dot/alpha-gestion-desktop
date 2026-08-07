@@ -32,6 +32,7 @@ export type ClaveModulo =
   | 'trazabilidad'
   | 'cheques'
   | 'facturacion'
+  | 'ayuda'
   /** Ventana de un documento concreto: recibe ?ventaId=N. No va en los menus. */
   | 'comprobante';
 
@@ -188,6 +189,13 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     icono: 'cheques',
     descripcion: 'Cartera de cheques recibidos y emitidos, con control de vencimientos.',
   },
+  ayuda: {
+    clave: 'ayuda',
+    titulo: 'Ayuda',
+    etiqueta: 'Manual de uso',
+    icono: 'ayuda',
+    descripcion: 'Como se usa el sistema, version instalada y actualizaciones.',
+  },
   comprobante: {
     clave: 'comprobante',
     titulo: 'Comprobante',
@@ -253,6 +261,8 @@ export const MENUS: readonly MenuSuperior[] = [
     nombre: 'Consultas',
     items: [{ clave: 'estadisticas' }, { clave: 'contabilidad' }, { clave: 'facturacion' }],
   },
+  // Ultimo por convencion: es donde todo el mundo busca la ayuda.
+  { nombre: 'Ayuda', items: [{ clave: 'ayuda' }] },
 ];
 
 /* -------------------------------------------------------------------------- */

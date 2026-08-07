@@ -12,10 +12,13 @@ import type {
   EntradaArticulo,
   EntradaCliente,
   EntradaProveedor,
+  EntradaUsuario,
   ListaPrecioVista,
   ProveedorVista,
+  RolUsuario,
   TipoArticulo,
   TipoCliente,
+  UsuarioVista,
 } from '../../compartido/contratos';
 import {
   CampoMoneda,
@@ -31,8 +34,10 @@ import {
   actualizarCliente,
   actualizarProveedor,
   crearArticulo,
+  actualizarUsuario,
   crearCliente,
   crearProveedor,
+  crearUsuario,
   obtenerListasPrecio,
 } from '../servicios/cliente';
 
@@ -334,6 +339,95 @@ export function FormularioArticulo({
           ayuda="Se actualiza solo con cada compra."
         />
       </Fila>
+    </ModalFormulario>
+  );
+}
+
+/* --------------------------------- Usuarios -------------------------------- */
+
+export function FormularioUsuario({
+  usuario,
+  alCerrar,
+  alGuardar,
+}: {
+  readonly usuario: UsuarioVista | null;
+  readonly alCerrar: () => void;
+  readonly alGuardar: (mensaje: string) => void;
+}): JSX.Element {
+  const [username, setUsername] = useState(usuario?.username ?? '');
+  const [password, setPassword] = useState('');
+  const [rol, setRol] = useState<RolUsuario>(usuario?.rol ?? 'empleado');
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  const esAlta = usuario === null;
+
+  const guardar = (): void => {
+    setGuardando(true);
+    setError(null);
+    const entrada: EntradaUsuario = {
+      username,
+      rol,
+      // Al editar, vacio significa "dejala como esta".
+      ...(password !== '' ? { password } : {}),
+    };
+    const operacion = esAlta ? crearUsuario(entrada) : actualizarUsuario(usuario.id, entrada);
+    operacion
+      .then((g) => alGuardar(`Usuario ${g.username} ${esAlta ? 'creado' : 'actualizado'}.`))
+      .catch((causa: unknown) => {
+        setError(mensajeDeError(causa));
+        setGuardando(false);
+      });
+  };
+
+  return (
+    <ModalFormulario
+      titulo={esAlta ? 'Nuevo usuario' : `Editar ${usuario.username}`}
+      descripcion="El administrador puede todo; el empleado opera pero no administra usuarios."
+      error={error}
+      guardando={guardando}
+      puedeGuardar={username.trim().length >= 3 && (!esAlta || password.length >= 4)}
+      alCerrar={alCerrar}
+      alGuardar={guardar}
+    >
+      <CampoTexto
+        id="u-user"
+        rotulo="Nombre de usuario"
+        valor={username}
+        alCambiar={setUsername}
+        requerido
+        maximo={40}
+        ayuda="Se guarda en minusculas y no se puede repetir."
+      />
+      <div>
+        <label htmlFor="u-pass" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
+          Contraseña
+          {esAlta && <span className="ml-1 text-peligro-600">*</span>}
+        </label>
+        <input
+          id="u-pass"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          maxLength={80}
+          autoComplete="new-password"
+          className="h-10 w-full rounded-ficha border border-masa-300 bg-white px-3 text-sm text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400"
+        />
+        <p className="mt-1 text-xs text-masa-700">
+          {esAlta
+            ? 'Minimo 4 caracteres. Se guarda cifrada: nadie puede leerla, ni desde la base.'
+            : 'Dejala vacia para no cambiarla.'}
+        </p>
+      </div>
+      <CampoOpciones
+        rotulo="Rol"
+        valor={rol}
+        opciones={[
+          { valor: 'empleado' as RolUsuario, etiqueta: 'Empleado' },
+          { valor: 'admin' as RolUsuario, etiqueta: 'Administrador' },
+        ]}
+        alCambiar={setRol}
+      />
     </ModalFormulario>
   );
 }

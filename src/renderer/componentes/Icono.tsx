@@ -16,10 +16,11 @@ import {
   BookText,
   Boxes,
   Building2,
-  CreditCard,
   ChefHat,
+  CircleHelp,
   ClipboardList,
   Cookie,
+  CreditCard,
   Factory,
   FileCheck2,
   HandCoins,
@@ -67,6 +68,7 @@ const ICONOS: Readonly<Record<string, LucideIcon>> = {
   cheques: CreditCard,
   /** Facturacion electronica ARCA. */
   facturacion: FileCheck2,
+  ayuda: CircleHelp,
   contabilidad: BookText,
   usuarios: UserCog,
 };

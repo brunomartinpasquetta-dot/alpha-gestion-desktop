@@ -30,11 +30,26 @@ export interface ApiArchivos {
   elegir(titulo: string, extensiones: readonly string[]): Promise<string | null>;
 }
 
+export interface ResultadoChequeoActualizacion {
+  versionInstalada: string;
+  versionDisponible: string | null;
+  hayActualizacion: boolean;
+  seInstalaSola: boolean;
+  mensaje: string;
+  urlDescarga: string;
+}
+
+export interface ApiActualizaciones {
+  verificar(): Promise<ResultadoChequeoActualizacion>;
+  abrirDescargas(): void;
+}
+
 export interface ApiAlfajores {
   readonly version: string;
   readonly plataforma: string;
   readonly ventanas: ApiVentanas;
   readonly archivos: ApiArchivos;
+  readonly actualizaciones: ApiActualizaciones;
 }
 
 declare global {

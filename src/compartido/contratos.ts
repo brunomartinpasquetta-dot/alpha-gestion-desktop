@@ -859,6 +859,13 @@ export interface EntradaProveedor {
   notas?: string | null;
 }
 
+export interface EntradaUsuario {
+  username: string;
+  /** Al editar, vacio o ausente significa "no cambiar la contraseña". */
+  password?: string;
+  rol: RolUsuario;
+}
+
 export interface EntradaArticulo {
   codigo: string;
   nombre: string;

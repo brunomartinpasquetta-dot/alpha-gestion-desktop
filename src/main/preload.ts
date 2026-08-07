@@ -99,12 +99,24 @@ const archivos = {
   },
 } as const;
 
+const actualizaciones = {
+  /** Busca actualizaciones ahora y devuelve que paso, para mostrarlo. */
+  verificar(): Promise<unknown> {
+    return ipcRenderer.invoke('actualizador:verificar');
+  },
+  /** Abre la pagina de descargas en el navegador del sistema. */
+  abrirDescargas(): void {
+    ipcRenderer.send('actualizador:abrir-descargas');
+  },
+} as const;
+
 /** API disponible en el renderer como `window.alfajores`. */
 export interface ApiAlfajores {
   readonly version: string;
   readonly plataforma: string;
   readonly ventanas: typeof ventanas;
   readonly archivos: typeof archivos;
+  readonly actualizaciones: typeof actualizaciones;
 }
 
 const api: ApiAlfajores = Object.freeze({
@@ -112,6 +124,7 @@ const api: ApiAlfajores = Object.freeze({
   plataforma: process.platform,
   ventanas,
   archivos,
+  actualizaciones,
 });
 
 contextBridge.exposeInMainWorld('alfajores', api);

@@ -15,7 +15,9 @@ import {
   type ArticuloConStock,
   type ClienteVista,
   type EntradaItemCompra,
+  type EntradaNuevoPedido,
   type FormaPago,
+  type PedidoVista,
   type MedioCobroPago,
   type ProveedorVista,
   type RecetaVista,
@@ -34,8 +36,10 @@ import {
 } from '../componentes/Formulario';
 import {
   abrirCaja,
+  actualizarPedido,
   cerrarCaja,
   crearCompra,
+  crearPedido,
   crearOrdenProduccion,
   obtenerArticulos,
   obtenerClientes,
@@ -45,7 +49,7 @@ import {
   registrarCobroPago,
   registrarMovimientoCaja,
 } from '../servicios/cliente';
-import { formatearMoneda } from '../utiles/formato';
+import { formatearCantidad, formatearMoneda } from '../utiles/formato';
 
 function mensajeDeError(causa: unknown): string {
   return causa instanceof Error ? causa.message : String(causa);
@@ -634,6 +638,167 @@ export function FormularioNuevaOrden({
         ayuda="1 = una tanda, 0.5 = media tanda, 2 = tanda doble."
       />
       <CampoTexto id="op-notas" rotulo="Notas" valor={notas} alCambiar={setNotas} maximo={500} />
+    </ModalFormulario>
+  );
+}
+
+/* --------------------------------- Pedidos --------------------------------- */
+
+/**
+ * Alta y edicion de pedidos desde el mostrador. Es el mismo formulario que usa
+ * la PWA del celular pero sin la cola offline: aca hay conexion garantizada.
+ * Las cantidades se cargan en CAJAS, como pide el cliente.
+ */
+export function FormularioPedido({
+  pedido,
+  alCerrar,
+  alGuardar,
+}: {
+  readonly pedido: PedidoVista | null;
+  readonly alCerrar: () => void;
+  readonly alGuardar: (mensaje: string) => void;
+}): JSX.Element {
+  const [productos, setProductos] = useState<ArticuloConStock[]>([]);
+  const [clientes, setClientes] = useState<ClienteVista[]>([]);
+  const [clienteId, setClienteId] = useState<number | ''>(pedido?.clienteId ?? '');
+  const [fechaEntrega, setFechaEntrega] = useState(pedido?.fechaEntregaEstimada?.slice(0, 10) ?? '');
+  const [notas, setNotas] = useState(pedido?.notas ?? '');
+  const [seleccion, setSeleccion] = useState<Record<number, number>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    Promise.all([obtenerArticulos(), obtenerClientes()])
+      .then(([a, c]) => {
+        const activos = a.filter((x) => x.tipo === 'producto_terminado' && x.activo);
+        setProductos(activos);
+        setClientes(c.filter((x) => x.activo));
+        // Al editar, las cantidades guardadas (en unidades) vuelven a cajas.
+        if (pedido !== null) {
+          const inicial: Record<number, number> = {};
+          for (const item of pedido.items) {
+            const upc = activos.find((x) => x.id === item.articuloId)?.unidadesPorCaja ?? null;
+            inicial[item.articuloId] = upc === null ? item.cantidad : Math.round(item.cantidad / upc);
+          }
+          setSeleccion(inicial);
+        }
+      })
+      .catch((causa: unknown) => setError(mensajeDeError(causa)));
+  }, [pedido]);
+
+  const items = Object.entries(seleccion)
+    .map(([id, cajas]) => {
+      const articuloId = Number(id);
+      const upc = productos.find((p) => p.id === articuloId)?.unidadesPorCaja ?? null;
+      return { articuloId, cantidad: upc === null ? cajas : cajas * upc };
+    })
+    .filter((i) => i.cantidad > 0);
+
+  const guardar = (): void => {
+    if (items.length === 0) return;
+    setGuardando(true);
+    setError(null);
+    const entrada: EntradaNuevoPedido = {
+      clienteId: clienteId === '' ? null : clienteId,
+      origen: 'mostrador',
+      fechaEntregaEstimada: fechaEntrega || null,
+      notas: notas.trim() || null,
+      items,
+    };
+    const operacion =
+      pedido === null ? crearPedido(entrada) : actualizarPedido(pedido.id, entrada);
+    operacion
+      .then(() => alGuardar(`Pedido ${pedido === null ? 'cargado' : 'actualizado'}.`))
+      .catch((causa: unknown) => {
+        setError(mensajeDeError(causa));
+        setGuardando(false);
+      });
+  };
+
+  return (
+    <ModalFormulario
+      titulo={pedido === null ? 'Nuevo pedido' : `Editar pedido #${pedido.id}`}
+      descripcion="Las cantidades van en cajas cerradas, como las pide el cliente."
+      ancho="max-w-2xl"
+      error={error}
+      guardando={guardando}
+      puedeGuardar={items.length > 0}
+      alCerrar={alCerrar}
+      alGuardar={guardar}
+    >
+      <Fila>
+        <CampoSelector
+          id="pe-cliente"
+          rotulo="Cliente"
+          valor={clienteId}
+          vacio="Mostrador / sin cliente"
+          opciones={clientes.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+          alCambiar={(v) => setClienteId(v === '' ? '' : Number(v))}
+        />
+        <div>
+          <label htmlFor="pe-fecha" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
+            Entrega estimada
+          </label>
+          <input
+            id="pe-fecha"
+            type="date"
+            value={fechaEntrega}
+            onChange={(e) => setFechaEntrega(e.target.value)}
+            className="h-10 w-full rounded-ficha border border-masa-300 bg-white px-3 text-sm text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400"
+          />
+        </div>
+      </Fila>
+
+      <div>
+        <p className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
+          Productos · cantidades en cajas
+        </p>
+        <div className="overflow-hidden rounded-ficha border border-masa-200">
+          {productos.map((producto, indice) => {
+            const cajas = seleccion[producto.id] ?? 0;
+            return (
+              <div
+                key={producto.id}
+                className={['flex items-center gap-3 px-3 py-2', indice > 0 ? 'border-t border-masa-100' : ''].join(' ')}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-masa-900">{producto.nombre}</p>
+                  <p className="text-xs text-masa-700">
+                    Stock: {formatearCantidad(producto.stock)} {producto.unidadAbreviatura}
+                    {producto.unidadesPorCaja !== null && cajas > 0
+                      ? ` · pide ${cajas * producto.unidadesPorCaja} u`
+                      : ''}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label={`Sacar ${producto.nombre}`}
+                    onClick={() => setSeleccion((s) => ({ ...s, [producto.id]: Math.max(cajas - 1, 0) }))}
+                    disabled={cajas === 0}
+                    className="h-9 w-9 rounded-ficha border border-masa-300 bg-masa-50 font-bold text-masa-900 disabled:opacity-30"
+                  >
+                    −
+                  </button>
+                  <span className="w-10 text-center font-mono text-base font-bold tabular-nums text-masa-900">
+                    {cajas}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Agregar ${producto.nombre}`}
+                    onClick={() => setSeleccion((s) => ({ ...s, [producto.id]: cajas + 1 }))}
+                    className="h-9 w-9 rounded-ficha border border-dulce-400 bg-dulce-500 font-bold text-white"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <CampoTexto id="pe-notas" rotulo="Notas" valor={notas} alCambiar={setNotas} maximo={500} />
     </ModalFormulario>
   );
 }

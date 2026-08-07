@@ -37,7 +37,7 @@ import {
   obtenerVentas,
 } from '../servicios/cliente';
 import { FormularioVenta } from './FormularioVenta';
-import { FormularioCompra } from './FormulariosOperacion';
+import { FormularioCompra, FormularioPedido } from './FormulariosOperacion';
 import {
   formatearCajas,
   formatearCantidadConUnidad,
@@ -113,6 +113,8 @@ export function PantallaPedidos(): JSX.Element {
   const estado = usarRecurso(() => obtenerPedidos(), []);
   const [expandido, setExpandido] = useState<number | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [enEdicion, setEnEdicion] = useState<PedidoVista | null | undefined>(undefined);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   // Tiempo real: un pedido cargado desde el celular aparece solo, sin refrescar.
   usarEventos('pedidos:cambio', estado.recargar);
@@ -127,11 +129,24 @@ export function PantallaPedidos(): JSX.Element {
   };
 
   return (
-    <Vista
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-masa-800">
+          Los pedidos del celular entran solos. Desde aca tambien se cargan a mano.
+        </p>
+        <BotonPrimario onClick={() => setEnEdicion(null)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuevo pedido
+        </BotonPrimario>
+      </div>
+
+      {aviso !== null && <Aviso tono="ok" texto={aviso} />}
+
+      <Vista
       estado={estado}
       que="los pedidos"
       tituloVacio="Sin pedidos"
-      detalleVacio="No hay pedidos cargados. Carga los datos de demostracion para ver pedidos en distintos estados, incluidos los que entran desde el celular."
+      detalleVacio="Carga el primero con el boton Nuevo pedido, o desde el celular."
       comandoVacio={COMANDO_SEED_DEMO}
     >
       {(pedidos) => (
@@ -189,6 +204,9 @@ export function PantallaPedidos(): JSX.Element {
                   </div>
                 </button>
 
+                {(pedido.estado === 'pendiente' || pedido.estado === 'confirmado') && (
+                  <BotonFila onClick={() => setEnEdicion(pedido)}>Editar</BotonFila>
+                )}
                 <AccionesPedido
                   pedido={pedido}
                   alCambiar={(destino) => aplicarTransicion(pedido.id, destino)}
@@ -231,7 +249,20 @@ export function PantallaPedidos(): JSX.Element {
           })}
         </div>
       )}
-    </Vista>
+      </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioPedido
+          pedido={enEdicion}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso(mensaje);
+          }}
+        />
+      )}
+    </div>
   );
 }
 
