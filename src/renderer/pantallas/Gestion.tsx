@@ -5,8 +5,11 @@
 import { useEffect, useState } from 'react';
 
 import {
+  CONFIRMACION_EMPEZAR_DE_CERO,
   ETIQUETA_ROL,
   type ArticuloVendido,
+  type DatosExistentes,
+  type ResultadoInicializacion,
   type EntradaConfiguracionFiscal,
   type Estadisticas,
   type PeriodoEstadistica,
@@ -19,8 +22,10 @@ import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import {
+  empezarDeCero,
   guardarConfigFiscal,
   obtenerCajaGeneral,
+  obtenerDatosDemo,
   obtenerConfigFiscal,
   obtenerEstadisticas,
   obtenerUsuarios,
@@ -228,11 +233,135 @@ const COLUMNAS_USUARIOS: readonly Columna<UsuarioVista>[] = [
   },
 ];
 
+/**
+ * Panel para dejar la base lista para el arranque real. Vive en la pantalla de
+ * usuarios porque es una tarea de administracion que se hace UNA vez, el dia que
+ * la fabrica empieza a cargar sus datos.
+ */
+function PanelEmpezarDeCero(): JSX.Element {
+  const [datos, setDatos] = useState<DatosExistentes[] | null>(null);
+  const [abierto, setAbierto] = useState(false);
+  const [confirmacion, setConfirmacion] = useState('');
+  const [trabajando, setTrabajando] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoInicializacion | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    obtenerDatosDemo()
+      .then(setDatos)
+      .catch(() => setDatos([]));
+  }, []);
+
+  const total = (datos ?? []).reduce((suma, d) => suma + d.filas, 0);
+
+  const ejecutar = (): void => {
+    setTrabajando(true);
+    setError(null);
+    empezarDeCero(confirmacion)
+      .then((r) => {
+        setResultado(r);
+        setAbierto(false);
+        setConfirmacion('');
+        return obtenerDatosDemo().then(setDatos);
+      })
+      .catch((causa: unknown) => setError(causa instanceof Error ? causa.message : String(causa)))
+      .finally(() => setTrabajando(false));
+  };
+
+  if (resultado !== null) {
+    return (
+      <div className="rounded-ficha border border-menta-200 bg-menta-50 px-5 py-4">
+        <p className="font-semibold text-menta-700">La base quedo lista para arrancar</p>
+        <p className="mt-1 text-sm text-masa-900">
+          Se borraron {resultado.filasBorradas} registros de demostracion. Ya se pueden cargar los
+          articulos, clientes y proveedores reales, y despues el stock inicial con un ajuste.
+        </p>
+        <p className="mt-2 font-mono text-xs text-masa-700">
+          Copia de seguridad: {resultado.rutaCopiaSeguridad}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-ficha border border-alerta-200 bg-alerta-50 px-5 py-4">
+      <p className="font-semibold text-alerta-700">Empezar con los datos reales</p>
+      {total === 0 ? (
+        <p className="mt-1 text-sm text-masa-900">
+          La base ya esta vacia de datos operativos: se puede empezar a cargar.
+        </p>
+      ) : (
+        <>
+          <p className="mt-1 text-sm text-masa-900">
+            El sistema tiene <strong>{total} registros</strong> de demostracion (ventas, compras,
+            stock, clientes). El dia que la fabrica empiece a operar hay que sacarlos: un stock
+            inventado contamina todos los numeros. Antes de borrar se guarda una copia completa de
+            la base.
+          </p>
+          <p className="mt-2 text-sm text-masa-900">
+            <strong>Se conservan:</strong> unidades de medida, usuarios y la configuracion de ARCA.
+          </p>
+
+          {!abierto ? (
+            <button
+              type="button"
+              onClick={() => setAbierto(true)}
+              className="mt-3 rounded-ficha border border-peligro-300 bg-white px-4 py-2 text-sm font-medium text-peligro-600 outline-none hover:bg-peligro-50 focus-visible:ring-2 focus-visible:ring-peligro-400"
+            >
+              Preparar la base para el arranque...
+            </button>
+          ) : (
+            <div className="mt-3 space-y-2 rounded-ficha border border-peligro-300 bg-white p-3">
+              <p className="text-sm text-masa-900">
+                Escribi <strong className="font-mono">{CONFIRMACION_EMPEZAR_DE_CERO}</strong> para
+                confirmar:
+              </p>
+              <input
+                value={confirmacion}
+                onChange={(e) => setConfirmacion(e.target.value)}
+                aria-label="Confirmacion"
+                className="h-10 w-full rounded-ficha border border-masa-300 px-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-peligro-400"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={ejecutar}
+                  disabled={confirmacion !== CONFIRMACION_EMPEZAR_DE_CERO || trabajando}
+                  className="rounded-ficha bg-peligro-600 px-4 py-2 text-sm font-bold text-white outline-none hover:bg-peligro-700 disabled:bg-masa-300 disabled:text-masa-700"
+                >
+                  {trabajando ? 'Preparando...' : 'Borrar los datos de demostracion'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAbierto(false);
+                    setConfirmacion('');
+                  }}
+                  className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 hover:bg-masa-50"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      {error !== null && (
+        <p role="alert" className="mt-2 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PantallaUsuarios(): JSX.Element {
   const estado = usarRecurso(() => obtenerUsuarios(), []);
 
   return (
-    <Vista
+    <div className="space-y-4">
+      <PanelEmpezarDeCero />
+      <Vista
       estado={estado}
       que="los usuarios"
       tituloVacio="Sin usuarios"
@@ -248,7 +377,8 @@ export function PantallaUsuarios(): JSX.Element {
           <Tabla columnas={COLUMNAS_USUARIOS} filas={filas} claveDeFila={(u) => u.id} />
         </>
       )}
-    </Vista>
+      </Vista>
+    </div>
   );
 }
 

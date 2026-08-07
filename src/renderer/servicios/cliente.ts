@@ -30,6 +30,8 @@ import type {
   EntradaReceta,
   ResultadoAjuste,
   ComprobanteImprimible,
+  DatosExistentes,
+  ResultadoInicializacion,
   ResultadoCobroPago,
   ResultadoCompra,
   UnidadMedidaVista,
@@ -392,3 +394,11 @@ export const crearListaPrecio = (entrada: EntradaListaPrecio): Promise<{ id: num
 
 export const fijarPrecio = (entrada: EntradaPrecio): Promise<{ id: number }> =>
   enviar<{ id: number }>('/api/listas-precio/precios', 'POST', entrada);
+
+/* --------------------- Arranque con los datos del cliente ----------------- */
+
+export const obtenerDatosDemo = (): Promise<DatosExistentes[]> =>
+  pedirLista<DatosExistentes>('/api/sistema/datos-demo');
+
+export const empezarDeCero = (confirmacion: string): Promise<ResultadoInicializacion> =>
+  enviar<ResultadoInicializacion>('/api/sistema/empezar-de-cero', 'POST', { confirmacion });

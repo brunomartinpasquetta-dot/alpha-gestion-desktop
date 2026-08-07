@@ -1052,3 +1052,20 @@ export interface ComprobanteImprimible {
   lineas: LineaComprobante[];
   total: number;
 }
+
+/* ======================= ARRANQUE CON DATOS REALES ====================== */
+
+/** Frase exacta que hay que escribir para vaciar la base. */
+export const CONFIRMACION_EMPEZAR_DE_CERO = 'EMPEZAR DE CERO';
+
+export interface DatosExistentes {
+  tabla: string;
+  filas: number;
+}
+
+export interface ResultadoInicializacion {
+  /** Donde quedo la copia de seguridad previa al borrado. */
+  rutaCopiaSeguridad: string;
+  filasBorradas: number;
+  detalle: DatosExistentes[];
+}

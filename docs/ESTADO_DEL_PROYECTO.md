@@ -1,6 +1,6 @@
 # Estado del proyecto — Alpha Gestión
 
-**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.9.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
+**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.10.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
 
 Este documento dice qué está terminado, qué falta y en qué orden conviene hacerlo
 para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
@@ -13,6 +13,7 @@ El sistema **ya opera completo y entrega el papel**: se puede vender, comprar,
 producir, cobrar, pagar, ajustar stock, cargar recetas y precios, facturar
 electrónicamente e **imprimir el remito o la factura con su QR**. Queda **una
 sola cosa** para presentarlo: **probarlo en Windows**, que es donde va a correr.
+Todo lo demás del alcance acordado está hecho y probado.
 
 ---
 
@@ -75,9 +76,11 @@ activación. Editar una receta no altera las tandas ya producidas.
 fijar precios. Un precio nuevo no pisa al anterior: rige desde hoy y el
 historial se conserva.
 
-**I2 · Carga inicial de datos del cliente.** Hoy la base tiene datos de
-demostración. Hace falta una forma de arrancar limpio y cargar sus artículos,
-clientes y proveedores reales.
+~~**I2 · Carga inicial de datos del cliente.**~~ ✅ **HECHO en v0.10.0.** En
+Usuarios hay un panel "Empezar con los datos reales": hace una copia de la base,
+exige escribir una frase de confirmación y borra los datos de demostración
+conservando unidades, usuarios y la configuración de ARCA. La numeración vuelve
+a empezar en 1: la primera venta real es la venta #1.
 
 **I3 · Login y usuarios.** La tabla existe y la pantalla los lista, pero no hay
 autenticación: cualquiera que abra el programa hace todo. Para una fábrica chica
@@ -148,9 +151,9 @@ vigilante que los publica en cuanto se recupere. **El Mac ya tiene v0.8.0.**
 4. ~~Firma de ARCA sin openssl externo (R2)~~ ✅
 5. ~~Selector de archivo nativo para el certificado~~ ✅
 
-### v0.9.0 — "Se puede entregar el papel"
-6. Impresión de remito y factura con QR de ARCA (B2)
-7. Modo "base limpia" para arrancar con datos del cliente (I2)
+### ~~v0.9.0 y v0.10.0~~ ✅ ENTREGADAS
+6. ~~Impresión de remito y factura con QR de ARCA (B2)~~ ✅
+7. ~~Modo "base limpia" para arrancar con datos del cliente (I2)~~ ✅
 
 ### v1.0.0 — "Presentable"
 8. **Probar todo corriendo en Windows** (B1)

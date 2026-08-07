@@ -21,6 +21,7 @@ import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { ajustesServicio } from '../servicios/ajustes.servicio';
 import { comprasServicio } from '../servicios/compras.servicio';
+import { inicializacionServicio } from '../servicios/inicializacion.servicio';
 import { maestrosServicio } from '../servicios/maestros.servicio';
 import { produccionServicio } from '../servicios/produccion.servicio';
 import { tesoreriaServicio } from '../servicios/tesoreria.servicio';
@@ -276,6 +277,21 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
   app.post('/api/listas-precio/precios', (request: FastifyRequest, reply: FastifyReply) => {
     const entrada = validarOFallar(esquemaPrecio, request.body, 'El precio enviado no es valido.');
     return reply.status(201).send({ datos: ajustesServicio.fijarPrecio(entrada) });
+  });
+
+  /* ----------------------- Arranque con datos reales ----------------------- */
+
+  app.get('/api/sistema/datos-demo', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: inicializacionServicio.contarDatosExistentes() });
+  });
+
+  app.post('/api/sistema/empezar-de-cero', (request: FastifyRequest, reply: FastifyReply) => {
+    const { confirmacion } = validarOFallar(
+      z.object({ confirmacion: z.string() }),
+      request.body,
+      'Falta la confirmacion.',
+    );
+    return reply.status(200).send({ datos: inicializacionServicio.empezarDeCero(confirmacion) });
   });
 
   /* ------------------------------- Produccion ------------------------------ */
