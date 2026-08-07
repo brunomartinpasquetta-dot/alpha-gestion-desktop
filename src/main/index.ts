@@ -17,6 +17,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { NOMBRE_APP, NOMBRE_PRODUCTO, VERSION_APP } from '../compartido/config';
 import { leerConfig } from '../server/config';
 import { aplicarMigraciones } from '../server/db/migraciones';
+import { suscribirLocal } from '../server/eventos';
 import { iniciarServidor, type ServidorEnMarcha } from '../server/servidor';
 import {
   abrirPaginaDeDescarga,
@@ -222,6 +223,13 @@ function registrarCanalesDeVentanas(): void {
   });
 
   ipcMain.handle('ventanas:listar', () => listarVentanas());
+
+  // Los eventos del negocio viajan por IPC, no por HTTP: ver eventos.ts.
+  suscribirLocal((tipo) => {
+    for (const ventana of BrowserWindow.getAllWindows()) {
+      if (!ventana.isDestroyed()) ventana.webContents.send('eventos:negocio', tipo);
+    }
+  });
 
   /**
    * Selector de archivo nativo. Existe por el certificado de ARCA: escribir a

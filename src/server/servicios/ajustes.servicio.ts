@@ -11,7 +11,7 @@
  * ejecutarse, asi que editar una receta NO altera las tandas ya producidas.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 
 import type {
   EntradaAjusteStock,
@@ -23,6 +23,7 @@ import type {
 import { obtenerDb } from '../db/conexion';
 import {
   articulos,
+  clientes,
   listasPrecio,
   movimientosStock,
   ordenesProduccion,
@@ -324,6 +325,64 @@ export const ajustesServicio = {
         return { id: fila.id };
       }),
     );
+    emitir('maestros:cambio');
+    return resultado;
+  },
+
+  /**
+   * Borra un precio de una lista. Es el unico borrado real del sistema y esta
+   * acotado a proposito: un precio mal tipeado no es un hecho del negocio como
+   * una venta, es un error de carga, y dejarlo "anulado" en el historial solo
+   * ensucia la consulta de que precio regia en cada fecha.
+   */
+  borrarPrecio(precioId: number): { id: number } {
+    const resultado = ejecutarSeguro('borrar el precio', () => {
+      const db = obtenerDb();
+      const precio = db.select({ id: precios.id }).from(precios).where(eq(precios.id, precioId)).get();
+      if (!precio) throw new ErrorNoEncontrado('precio', precioId);
+      db.delete(precios).where(eq(precios.id, precioId)).run();
+      return { id: precioId };
+    });
+    emitir('maestros:cambio');
+    return resultado;
+  },
+
+  /** Renombra o activa/desactiva una lista. */
+  actualizarListaPrecio(id: number, nombre: string, activa: boolean): { id: number } {
+    const resultado = ejecutarSeguro('actualizar la lista de precios', () => {
+      const db = obtenerDb();
+      const limpio = nombre.trim();
+      if (limpio.length < 2) throw new ErrorValidacion('El nombre de la lista es obligatorio.');
+
+      const existe = db.select({ id: listasPrecio.id }).from(listasPrecio).where(eq(listasPrecio.id, id)).get();
+      if (!existe) throw new ErrorNoEncontrado('lista de precios', id);
+
+      const duplicada = db
+        .select({ id: listasPrecio.id })
+        .from(listasPrecio)
+        .where(and(eq(listasPrecio.nombre, limpio), ne(listasPrecio.id, id)))
+        .get();
+      if (duplicada) throw new ErrorConflicto(`Ya existe otra lista llamada ${limpio}.`);
+
+      if (!activa) {
+        // Una lista asignada a clientes no se puede desactivar: quedarian sin
+        // precio de referencia al venderles.
+        const asignada =
+          db
+            .select({ n: sql<number>`COUNT(*)`.mapWith(Number) })
+            .from(clientes)
+            .where(and(eq(clientes.listaPrecioId, id), eq(clientes.activo, true)))
+            .get()?.n ?? 0;
+        if (asignada > 0) {
+          throw new ErrorReglaNegocio(
+            `Hay ${asignada} cliente(s) usando esta lista. Asignales otra antes de desactivarla.`,
+          );
+        }
+      }
+
+      db.update(listasPrecio).set({ nombre: limpio, activa }).where(eq(listasPrecio.id, id)).run();
+      return { id };
+    });
     emitir('maestros:cambio');
     return resultado;
   },

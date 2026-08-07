@@ -1,6 +1,6 @@
 # Estado del proyecto — Alpha Gestión
 
-**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.11.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
+**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.12.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
 
 Este documento dice qué está terminado, qué falta y en qué orden conviene hacerlo
 para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
@@ -50,7 +50,11 @@ Todo lo demás del alcance acordado está hecho y probado.
 
 ### 🔴 BLOQUEANTES para presentar al cliente
 
-**B1 · Probar el sistema corriendo en Windows.**
+**B1 · Probar el sistema corriendo en Windows.** ✅ **PRIMERA CORRIDA HECHA**
+el 7/8: instala y funciona. Falta la prueba a fondo (facturación con
+certificado real, PWA desde el celular, impresión).
+
+**Nota histórica del riesgo original:**
 El cliente usa Windows y el sistema nunca se ejecutó ahí: se compila en CI pero
 el runtime no se ejercitó. **Sigue siendo el mayor riesgo abierto**, aunque en
 v0.8.0 se le quitó el diente más peligroso (la dependencia de `openssl`). Lo que

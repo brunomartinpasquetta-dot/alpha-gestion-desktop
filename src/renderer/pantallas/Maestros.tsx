@@ -20,6 +20,8 @@ import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import {
+  actualizarListaPrecio,
+  borrarPrecio,
   cambiarActivoCliente,
   cambiarActivoProveedor,
   obtenerClientes,
@@ -251,6 +253,33 @@ export function PantallaPrecios(): JSX.Element {
     setAviso({ tono: 'ok', texto: mensaje });
   };
 
+  const fallar = (causa: unknown): void =>
+    setAviso({ tono: 'mal', texto: causa instanceof Error ? causa.message : String(causa) });
+
+  /** Borrar un precio es corregir un error de carga, no anular un hecho. */
+  const quitarPrecio = (precioId: number, nombre: string): void => {
+    if (!window.confirm(`¿Borrar el precio de ${nombre}? Vuelve a regir el anterior, si habia.`)) return;
+    setAviso(null);
+    borrarPrecio(precioId)
+      .then(() => {
+        estado.recargar();
+        setAviso({ tono: 'ok', texto: `Precio de ${nombre} borrado.` });
+      })
+      .catch(fallar);
+  };
+
+  const renombrar = (lista: ListaPrecioVista): void => {
+    const nombre = window.prompt('Nuevo nombre de la lista:', lista.nombre);
+    if (nombre === null || nombre.trim() === lista.nombre) return;
+    setAviso(null);
+    actualizarListaPrecio(lista.id, nombre.trim(), lista.activa)
+      .then(() => {
+        estado.recargar();
+        setAviso({ tono: 'ok', texto: `Lista renombrada a "${nombre.trim()}".` });
+      })
+      .catch(fallar);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -289,6 +318,7 @@ export function PantallaPrecios(): JSX.Element {
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-masa-700">
                   {lista.nombre}
                 </h2>
+                <BotonFila onClick={() => renombrar(lista)}>Renombrar</BotonFila>
                 {lista.activa ? (
                   <Pastilla texto="Activa" tono="positivo" />
                 ) : (
@@ -321,6 +351,15 @@ export function PantallaPrecios(): JSX.Element {
                       titulo: 'Vigente desde',
                       celda: (p) => formatearFecha(p.vigenteDesde),
                       numerica: true,
+                    },
+                    {
+                      clave: 'acciones',
+                      titulo: 'Acciones',
+                      celda: (p) => (
+                        <BotonFila onClick={() => quitarPrecio(p.id, p.nombre)} tono="peligro">
+                          Borrar
+                        </BotonFila>
+                      ),
                     },
                   ]}
                   filas={lista.precios}

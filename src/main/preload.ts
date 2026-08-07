@@ -99,6 +99,19 @@ const archivos = {
   },
 } as const;
 
+const eventos = {
+  /** Avisa cuando cambia algo del negocio. Devuelve la funcion de baja. */
+  alCambiar(manejador: (tipo: string) => void): () => void {
+    const puente = (_evento: unknown, tipo: unknown): void => {
+      if (typeof tipo === 'string') manejador(tipo);
+    };
+    ipcRenderer.on('eventos:negocio', puente);
+    return () => {
+      ipcRenderer.removeListener('eventos:negocio', puente);
+    };
+  },
+} as const;
+
 const actualizaciones = {
   /** Busca actualizaciones ahora y devuelve que paso, para mostrarlo. */
   verificar(): Promise<unknown> {
@@ -117,6 +130,7 @@ export interface ApiAlfajores {
   readonly ventanas: typeof ventanas;
   readonly archivos: typeof archivos;
   readonly actualizaciones: typeof actualizaciones;
+  readonly eventos: typeof eventos;
 }
 
 const api: ApiAlfajores = Object.freeze({
@@ -125,6 +139,7 @@ const api: ApiAlfajores = Object.freeze({
   ventanas,
   archivos,
   actualizaciones,
+  eventos,
 });
 
 contextBridge.exposeInMainWorld('alfajores', api);

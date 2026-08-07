@@ -397,6 +397,20 @@ export const crearListaPrecio = (entrada: EntradaListaPrecio): Promise<{ id: num
 export const fijarPrecio = (entrada: EntradaPrecio): Promise<{ id: number }> =>
   enviar<{ id: number }>('/api/listas-precio/precios', 'POST', entrada);
 
+export const actualizarListaPrecio = (
+  id: number,
+  nombre: string,
+  activa: boolean,
+): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/listas-precio/${id}`, 'PUT', { nombre, activa });
+
+export async function borrarPrecio(precioId: number): Promise<void> {
+  const ruta = `/api/listas-precio/precios/${precioId}`;
+  const respuesta = await fetch(ruta, { method: 'DELETE' });
+  const cuerpo = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+}
+
 /* --------------------- Arranque con los datos del cliente ----------------- */
 
 export const obtenerDatosDemo = (): Promise<DatosExistentes[]> =>

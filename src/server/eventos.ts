@@ -19,6 +19,26 @@ export type TipoEvento = TipoEventoSse;
 
 const clientes = new Set<ServerResponse>();
 
+/**
+ * Suscriptores dentro del MISMO proceso. Existen porque el servidor corre
+ * embebido en el proceso main de Electron: el escritorio no necesita abrir una
+ * conexion HTTP para enterarse de un cambio que ocurre en su propia memoria.
+ *
+ * Esto no es una optimizacion: el navegador limita las conexiones simultaneas
+ * por servidor (6 en Chromium) y cada stream SSE ocupa una para siempre. Con
+ * siete pantallas escuchando eventos, la septima ventana agotaba el cupo y
+ * TODAS las peticiones quedaban encoladas sin resolverse nunca.
+ */
+const suscriptoresLocales = new Set<(tipo: TipoEvento) => void>();
+
+/** Escucha los eventos desde codigo que corre en el mismo proceso. */
+export function suscribirLocal(callback: (tipo: TipoEvento) => void): () => void {
+  suscriptoresLocales.add(callback);
+  return () => {
+    suscriptoresLocales.delete(callback);
+  };
+}
+
 /** Cada cuanto se manda un comentario de latido para que nadie corte la conexion. */
 const MS_LATIDO = 25_000;
 let latido: NodeJS.Timeout | null = null;
@@ -47,6 +67,13 @@ export function suscribir(respuesta: ServerResponse): () => void {
 
 /** Avisa a todos los clientes conectados. Nunca lanza: un socket roto se descarta. */
 export function emitir(tipo: TipoEvento): void {
+  for (const suscriptor of suscriptoresLocales) {
+    try {
+      suscriptor(tipo);
+    } catch {
+      // Un suscriptor roto no puede impedir que se enteren los demas.
+    }
+  }
   for (const cliente of clientes) {
     try {
       cliente.write(`event: ${tipo}\ndata: {}\n\n`);
@@ -69,6 +96,7 @@ export function cerrarConexiones(): void {
     }
   }
   clientes.clear();
+  suscriptoresLocales.clear();
   if (latido !== null) {
     clearInterval(latido);
     latido = null;

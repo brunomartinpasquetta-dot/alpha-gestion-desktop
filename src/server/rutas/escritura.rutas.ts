@@ -320,6 +320,23 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply.status(200).send({ datos: inicializacionServicio.empezarDeCero(confirmacion) });
   });
 
+  app.put('/api/listas-precio/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la lista no es valido.');
+    const entrada = validarOFallar(
+      z.object({ nombre: z.string().min(2).max(80), activa: z.boolean() }),
+      request.body,
+      'La lista enviada no es valida.',
+    );
+    return reply
+      .status(200)
+      .send({ datos: ajustesServicio.actualizarListaPrecio(id, entrada.nombre, entrada.activa) });
+  });
+
+  app.delete('/api/listas-precio/precios/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador del precio no es valido.');
+    return reply.status(200).send({ datos: ajustesServicio.borrarPrecio(id) });
+  });
+
   /* ------------------------------- Produccion ------------------------------ */
 
   app.post('/api/produccion/ordenes', (request: FastifyRequest, reply: FastifyReply) => {

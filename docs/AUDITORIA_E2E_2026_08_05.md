@@ -204,6 +204,59 @@ manejando los formularios de verdad por CDP.
 - **`/api/unidades` quedo anidado dentro de otro handler** y respondia 404. Se
   detecto al probar la app instalada, no en el typecheck.
 
+## CUARTA TANDA — v0.12.0, 7 de agosto de 2026
+
+Primera corrida en **Windows real** (reportada por el usuario: "lo demas parece
+funcionar"), ABM en los modulos que faltaban, y un bug grave encontrado al
+barrer los 22 modulos a la vez.
+
+### BUG-C01 · El sistema se colgaba con varias ventanas abiertas — **CRITICO**
+
+Con siete pantallas escuchando eventos en tiempo real, la aplicacion dejaba de
+responder: las pantallas quedaban en "Cargando..." para siempre.
+
+**Causa:** cada pantalla con tiempo real abria su propio stream SSE por HTTP, y
+un stream SSE ocupa una conexion **permanentemente**. Chromium limita las
+conexiones simultaneas por servidor a 6. A partir de la septima ventana el cupo
+se agotaba y toda peticion nueva quedaba encolada sin resolverse nunca —
+incluido `/health`, que es lo que mide la barra de estado.
+
+**Por que no habia aparecido:** hasta ahora las pruebas abrian dos o tres
+ventanas. Aparecio al barrer los 22 modulos juntos.
+
+**Corregido:** en el escritorio los eventos ya no viajan por HTTP sino por IPC.
+El servidor corre embebido en el proceso main de Electron, asi que el evento
+ocurre en la misma memoria: abrir una conexion HTTP para enterarse era dar la
+vuelta al mundo. El SSE se conserva para la PWA del celular, que es el unico
+camino posible desde afuera y usa una sola pantalla por telefono.
+
+**Verificado:** los 22 modulos abiertos a la vez, 0 con problemas (antes 8
+quedaban en blanco o colgadas), y el tiempo real sigue funcionando — un pedido
+creado desde otra ventana aparece solo en la de pedidos.
+
+### ABM completado
+
+| Modulo | Antes | Ahora |
+|---|---|---|
+| Stock de insumos | Solo lectura | Alta, edicion, ajuste y baja |
+| Stock de productos | Solo lectura | Alta, edicion, ajuste y baja |
+| Usuarios | Solo listado | Alta, edicion y baja, con proteccion del ultimo admin |
+| Pedidos | Solo cambio de estado | Alta y edicion desde el escritorio |
+| Listas de precio | Solo alta | Renombrar la lista y borrar precios |
+
+### Verificaciones
+
+| Prueba | Resultado |
+|---|---|
+| Los 22 modulos abiertos simultaneamente | 22/22 cargan, 0 colgadas |
+| Tiempo real tras el cambio a IPC | Un pedido de otra ventana aparece solo |
+| Alta de usuario desde la interfaz | Creado, aparece en la grilla |
+| Baja del unico administrador | 422 con el motivo |
+| Usuario duplicado (mayusculas) | 409: se normaliza a minusculas |
+| Contraseña corta | 400 |
+| Editar pedido en produccion | Rechazado con el motivo |
+| Buscar actualizaciones a pedido | "Estas al dia. Version instalada: 0.10.0" |
+
 ## NO CUBIERTO (requiere UAT o hardware)
 
 - PWA en un teléfono físico (táctil, service worker en iOS/Android reales).

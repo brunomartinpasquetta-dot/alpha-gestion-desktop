@@ -44,12 +44,17 @@ export interface ApiActualizaciones {
   abrirDescargas(): void;
 }
 
+export interface ApiEventos {
+  alCambiar(manejador: (tipo: string) => void): () => void;
+}
+
 export interface ApiAlfajores {
   readonly version: string;
   readonly plataforma: string;
   readonly ventanas: ApiVentanas;
   readonly archivos: ApiArchivos;
   readonly actualizaciones: ApiActualizaciones;
+  readonly eventos: ApiEventos;
 }
 
 declare global {
