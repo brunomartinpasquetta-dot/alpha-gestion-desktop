@@ -212,6 +212,23 @@ export function BarraEstado({
           {salud.db.tablas} tablas · {salud.entorno}
         </span>
       )}
+
+      {/*
+        La version se muestra SIEMPRE y en las dos plataformas. Antes vivia solo
+        en la barra de titulo propia de macOS: en Windows, que usa la barra
+        nativa del sistema, no habia forma de saber que version estaba corriendo
+        sin entrar a Ayuda, y despues de una actualizacion nadie sabia si se
+        habia aplicado.
+      */}
+      {salud !== null && (
+        <span
+          className="shrink-0 rounded-pastilla bg-masa-200 px-2 py-0.5 font-mono text-micro font-semibold text-masa-800"
+          title="Version instalada"
+        >
+          v{salud.version}
+        </span>
+      )}
+
       <span className="shrink-0 font-mono text-xs tabular-nums text-masa-700">{hora}</span>
     </div>
   );

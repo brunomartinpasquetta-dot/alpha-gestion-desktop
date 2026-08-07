@@ -45,4 +45,4 @@ export const REPO_GITHUB = {
 } as const;
 
 /** Version del producto. */
-export const VERSION_APP = '0.21.0';
+export const VERSION_APP = '1.0.0';
