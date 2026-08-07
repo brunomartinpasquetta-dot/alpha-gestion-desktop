@@ -293,11 +293,22 @@ export interface CajaMovimientoVista {
 
 /* --------------------------------- Terceros ------------------------------- */
 
+export const TIPOS_DOCUMENTO = ['CUIT', 'DNI', 'CUIL', 'PASAPORTE', 'CF'] as const;
+export type TipoDocumento = (typeof TIPOS_DOCUMENTO)[number];
+
 export interface ClienteVista {
   id: number;
   nombre: string;
   cuit: string | null;
+  tipoDocumento: string | null;
+  numeroDocumento: string | null;
+  /** Codigo de la tabla de ARCA. Ver CONDICIONES_IVA_RECEPTOR. */
+  condicionIva: number;
   telefono: string | null;
+  celular: string | null;
+  localidad: string | null;
+  /** Centavos. 0 = sin limite definido. */
+  limiteCredito: number;
   email: string | null;
   direccion: string | null;
   tipo: TipoCliente;
@@ -309,9 +320,13 @@ export interface ClienteVista {
 
 export interface ProveedorVista {
   id: number;
+  codigo: string | null;
   nombre: string;
   cuit: string | null;
+  iibb: string | null;
   telefono: string | null;
+  celular: string | null;
+  localidad: string | null;
   email: string | null;
   direccion: string | null;
   activo: boolean;
@@ -862,7 +877,13 @@ export interface UnidadMedidaVista {
 export interface EntradaCliente {
   nombre: string;
   cuit?: string | null;
+  tipoDocumento?: string | null;
+  numeroDocumento?: string | null;
+  condicionIva?: number;
   telefono?: string | null;
+  celular?: string | null;
+  localidad?: string | null;
+  limiteCredito?: number;
   email?: string | null;
   direccion?: string | null;
   tipo: TipoCliente;
@@ -871,9 +892,13 @@ export interface EntradaCliente {
 }
 
 export interface EntradaProveedor {
+  codigo?: string | null;
   nombre: string;
   cuit?: string | null;
+  iibb?: string | null;
   telefono?: string | null;
+  celular?: string | null;
+  localidad?: string | null;
   email?: string | null;
   direccion?: string | null;
   notas?: string | null;

@@ -180,7 +180,11 @@ export const ventasServicio = {
         clienteId === null
           ? null
           : db
-              .select({ nombre: clientes.nombre, cuit: clientes.cuit })
+              .select({
+                nombre: clientes.nombre,
+                cuit: clientes.cuit,
+                condicionIva: clientes.condicionIva,
+              })
               .from(clientes)
               .where(eq(clientes.id, clienteId))
               .get();
@@ -215,7 +219,9 @@ export const ventasServicio = {
         receptor: {
           nombre: receptor?.nombre ?? 'Consumidor Final',
           cuit: receptor?.cuit ?? null,
-          condicionIva: entrada.condicionIvaReceptor,
+          // La condicion sale del CLIENTE; lo enviado en la venta solo la pisa
+          // si viene explicito (una venta puntual a otra condicion).
+          condicionIva: entrada.condicionIvaReceptor ?? receptor?.condicionIva,
         },
       });
     }

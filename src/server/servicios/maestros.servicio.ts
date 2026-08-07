@@ -94,6 +94,42 @@ function camposArticulo(entrada: EntradaArticulo, codigo: string) {
   };
 }
 
+/** Campos del cliente. Alta y edicion escriben lo mismo: ver camposArticulo. */
+function camposCliente(entrada: EntradaCliente) {
+  return {
+    nombre: exigirNombre(entrada.nombre),
+    cuit: cuitNormalizado(entrada.cuit),
+    tipoDocumento: textoOpcional(entrada.tipoDocumento),
+    numeroDocumento: textoOpcional(entrada.numeroDocumento),
+    condicionIva: entrada.condicionIva ?? 5,
+    telefono: textoOpcional(entrada.telefono),
+    celular: textoOpcional(entrada.celular),
+    localidad: textoOpcional(entrada.localidad),
+    limiteCredito: entrada.limiteCredito ?? 0,
+    email: textoOpcional(entrada.email),
+    direccion: textoOpcional(entrada.direccion),
+    tipo: entrada.tipo,
+    listaPrecioId: entrada.listaPrecioId ?? null,
+    notas: textoOpcional(entrada.notas),
+  };
+}
+
+/** Campos del proveedor. */
+function camposProveedor(entrada: EntradaProveedor) {
+  return {
+    codigo: textoOpcional(entrada.codigo)?.toUpperCase() ?? null,
+    nombre: exigirNombre(entrada.nombre),
+    cuit: cuitNormalizado(entrada.cuit),
+    iibb: textoOpcional(entrada.iibb),
+    telefono: textoOpcional(entrada.telefono),
+    celular: textoOpcional(entrada.celular),
+    localidad: textoOpcional(entrada.localidad),
+    email: textoOpcional(entrada.email),
+    direccion: textoOpcional(entrada.direccion),
+    notas: textoOpcional(entrada.notas),
+  };
+}
+
 function exigirNombre(nombre: string): string {
   const limpio = nombre.trim();
   if (limpio.length < 2) throw new ErrorValidacion('El nombre tiene que tener al menos 2 caracteres.');
@@ -156,20 +192,9 @@ export const maestrosServicio = {
   crearCliente(entrada: EntradaCliente): ClienteVista {
     return ejecutarSeguro('crear un cliente', () => {
       const db = obtenerDb();
-      const nombre = exigirNombre(entrada.nombre);
       const fila = db
         .insert(clientes)
-        .values({
-          nombre,
-          cuit: cuitNormalizado(entrada.cuit),
-          telefono: textoOpcional(entrada.telefono),
-          email: textoOpcional(entrada.email),
-          direccion: textoOpcional(entrada.direccion),
-          tipo: entrada.tipo,
-          listaPrecioId: entrada.listaPrecioId ?? null,
-          notas: textoOpcional(entrada.notas),
-          activo: true,
-        })
+        .values({ ...camposCliente(entrada), activo: true })
         .returning({ id: clientes.id })
         .all()[0];
       if (!fila) throw new ErrorValidacion('La base no devolvio el cliente insertado.');
@@ -182,19 +207,7 @@ export const maestrosServicio = {
       const db = obtenerDb();
       const existe = db.select({ id: clientes.id }).from(clientes).where(eq(clientes.id, id)).get();
       if (!existe) throw new ErrorNoEncontrado('cliente', id);
-      db.update(clientes)
-        .set({
-          nombre: exigirNombre(entrada.nombre),
-          cuit: cuitNormalizado(entrada.cuit),
-          telefono: textoOpcional(entrada.telefono),
-          email: textoOpcional(entrada.email),
-          direccion: textoOpcional(entrada.direccion),
-          tipo: entrada.tipo,
-          listaPrecioId: entrada.listaPrecioId ?? null,
-          notas: textoOpcional(entrada.notas),
-        })
-        .where(eq(clientes.id, id))
-        .run();
+      db.update(clientes).set(camposCliente(entrada)).where(eq(clientes.id, id)).run();
       return vistaCliente(id);
     });
   },
@@ -225,15 +238,7 @@ export const maestrosServicio = {
       const db = obtenerDb();
       const fila = db
         .insert(proveedores)
-        .values({
-          nombre: exigirNombre(entrada.nombre),
-          cuit: cuitNormalizado(entrada.cuit),
-          telefono: textoOpcional(entrada.telefono),
-          email: textoOpcional(entrada.email),
-          direccion: textoOpcional(entrada.direccion),
-          notas: textoOpcional(entrada.notas),
-          activo: true,
-        })
+        .values({ ...camposProveedor(entrada), activo: true })
         .returning({ id: proveedores.id })
         .all()[0];
       if (!fila) throw new ErrorValidacion('La base no devolvio el proveedor insertado.');
@@ -246,17 +251,7 @@ export const maestrosServicio = {
       const db = obtenerDb();
       const existe = db.select({ id: proveedores.id }).from(proveedores).where(eq(proveedores.id, id)).get();
       if (!existe) throw new ErrorNoEncontrado('proveedor', id);
-      db.update(proveedores)
-        .set({
-          nombre: exigirNombre(entrada.nombre),
-          cuit: cuitNormalizado(entrada.cuit),
-          telefono: textoOpcional(entrada.telefono),
-          email: textoOpcional(entrada.email),
-          direccion: textoOpcional(entrada.direccion),
-          notas: textoOpcional(entrada.notas),
-        })
-        .where(eq(proveedores.id, id))
-        .run();
+      db.update(proveedores).set(camposProveedor(entrada)).where(eq(proveedores.id, id)).run();
       return vistaProveedor(id);
     });
   },

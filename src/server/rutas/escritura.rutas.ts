@@ -41,7 +41,13 @@ const textoOpcional = (max: number) => z.string().max(max).nullable().optional()
 const esquemaCliente = z.object({
   nombre: z.string().min(2).max(120),
   cuit: textoOpcional(20),
+  tipoDocumento: textoOpcional(20),
+  numeroDocumento: textoOpcional(30),
+  condicionIva: z.number().int().min(1).max(20).optional(),
   telefono: textoOpcional(40),
+  celular: textoOpcional(40),
+  localidad: textoOpcional(80),
+  limiteCredito: z.number().int().min(0).optional(),
   email: textoOpcional(120),
   direccion: textoOpcional(200),
   tipo: z.enum(TIPOS_CLIENTE),
@@ -50,9 +56,13 @@ const esquemaCliente = z.object({
 });
 
 const esquemaProveedor = z.object({
+  codigo: textoOpcional(20),
   nombre: z.string().min(2).max(120),
   cuit: textoOpcional(20),
+  iibb: textoOpcional(40),
   telefono: textoOpcional(40),
+  celular: textoOpcional(40),
+  localidad: textoOpcional(80),
   email: textoOpcional(120),
   direccion: textoOpcional(200),
   notas: textoOpcional(500),

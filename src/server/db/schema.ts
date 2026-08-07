@@ -181,15 +181,24 @@ export const proveedores = sqliteTable(
   'proveedores',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Codigo corto para buscarlo rapido al cargar una compra. */
+    codigo: text('codigo'),
     nombre: text('nombre').notNull(),
     cuit: text('cuit'),
+    /** Numero de Ingresos Brutos, que va en algunos comprobantes. */
+    iibb: text('iibb'),
     telefono: text('telefono'),
+    celular: text('celular'),
+    localidad: text('localidad'),
     email: text('email'),
     direccion: text('direccion'),
     notas: text('notas'),
     activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
   },
-  (tabla) => [index('ix_proveedores_nombre').on(tabla.nombre)],
+  (tabla) => [
+    index('ix_proveedores_nombre').on(tabla.nombre),
+    uniqueIndex('ux_proveedores_codigo').on(tabla.codigo),
+  ],
 );
 
 export const TIPOS_CLIENTE = ['mostrador', 'mayorista', 'distribuidor'] as const;
@@ -201,7 +210,24 @@ export const clientes = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     nombre: text('nombre').notNull(),
     cuit: text('cuit'),
+    /** DNI, CUIT, CUIL, pasaporte o consumidor final. Define que informar a ARCA. */
+    tipoDocumento: text('tipo_documento'),
+    numeroDocumento: text('numero_documento'),
+    /**
+     * Condicion frente al IVA. Se guarda EN el cliente y no se pregunta en cada
+     * venta: es un dato del cliente, no de la operacion, y preguntarlo cada vez
+     * es como se cuela un comprobante mal emitido un viernes a la tarde.
+     * Codigos de la tabla de ARCA (FEParamGetCondicionIvaReceptor).
+     */
+    condicionIva: integer('condicion_iva').notNull().default(5),
     telefono: text('telefono'),
+    celular: text('celular'),
+    localidad: text('localidad'),
+    /**
+     * Cuanto se le puede fiar, en centavos. 0 = sin limite definido. La venta en
+     * cuenta corriente avisa cuando el saldo lo supera.
+     */
+    limiteCredito: integer('limite_credito').notNull().default(0),
     email: text('email'),
     direccion: text('direccion'),
     tipo: text('tipo', { enum: TIPOS_CLIENTE }).notNull().default('mostrador'),

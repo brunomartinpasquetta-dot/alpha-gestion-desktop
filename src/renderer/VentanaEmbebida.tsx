@@ -11,6 +11,7 @@ import { useEffect } from 'react';
 
 import { PantallaAyuda } from './pantallas/Ayuda';
 import { MaestroArticulos } from './pantallas/MaestroArticulos';
+import { MaestroTerceros } from './pantallas/MaestroTerceros';
 import { Comprobante } from './pantallas/Comprobante';
 import { EstadoVacio } from './componentes/comunes';
 import { PantallaCaja, PantallaCuentasCorrientes } from './pantallas/Finanzas';
@@ -23,7 +24,7 @@ import {
 } from './pantallas/Gestion';
 import { PantallaCheques } from './pantallas/Cheques';
 import { PantallaTrazabilidad } from './pantallas/Trazabilidad';
-import { PantallaClientes, PantallaPrecios, PantallaProveedores } from './pantallas/Maestros';
+import { PantallaPrecios } from './pantallas/Maestros';
 import { PantallaCompras, PantallaPedidos, PantallaVentas } from './pantallas/Comercial';
 import { PantallaInicio } from './pantallas/Inicio';
 import { PantallaOrdenes, PantallaRecetas } from './pantallas/Produccion';
@@ -77,9 +78,9 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
     case 'cuentas-corrientes':
       return <Simple><PantallaCuentasCorrientes /></Simple>;
     case 'clientes':
-      return <Simple><PantallaClientes /></Simple>;
+      return <MaestroTerceros que="clientes" />;
     case 'proveedores':
-      return <Simple><PantallaProveedores /></Simple>;
+      return <MaestroTerceros que="proveedores" />;
     case 'listas-precio':
       return <Simple><PantallaPrecios /></Simple>;
     case 'caja-general':

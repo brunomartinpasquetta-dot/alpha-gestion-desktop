@@ -10,6 +10,7 @@
 
 import { asc, eq, sql } from 'drizzle-orm';
 
+import type { ClienteVista, ProveedorVista } from '../../../compartido/contratos';
 import { obtenerDb } from '../../db/conexion';
 import {
   articulos,
@@ -18,7 +19,6 @@ import {
   listasPrecio,
   precios,
   proveedores,
-  type TipoCliente,
 } from '../../db/schema';
 import { ejecutarSeguro } from '../../dominio/errores';
 
@@ -28,30 +28,13 @@ const SALDO_CC = sql<number>`COALESCE(SUM(
        ELSE -${cuentasCorrientes.monto} END
 ), 0)`;
 
-export interface FilaCliente {
-  id: number;
-  nombre: string;
-  cuit: string | null;
-  telefono: string | null;
-  email: string | null;
-  direccion: string | null;
-  tipo: TipoCliente;
-  listaPrecioId: number | null;
-  listaPrecioNombre: string | null;
-  activo: boolean;
-  saldoCc: number;
-}
-
-export interface FilaProveedor {
-  id: number;
-  nombre: string;
-  cuit: string | null;
-  telefono: string | null;
-  email: string | null;
-  direccion: string | null;
-  activo: boolean;
-  saldoCc: number;
-}
+/**
+ * Las filas que se publican son EXACTAMENTE lo que define el contrato
+ * compartido. Tenerlas declaradas de nuevo aca hacia que agregar un campo
+ * compilara del lado del servidor y faltara del lado del renderer.
+ */
+export type FilaCliente = ClienteVista;
+export type FilaProveedor = ProveedorVista;
 
 export interface FilaListaPrecio {
   id: number;
@@ -77,7 +60,13 @@ export function listarClientes(): FilaCliente[] {
         id: clientes.id,
         nombre: clientes.nombre,
         cuit: clientes.cuit,
+        tipoDocumento: clientes.tipoDocumento,
+        numeroDocumento: clientes.numeroDocumento,
+        condicionIva: clientes.condicionIva,
         telefono: clientes.telefono,
+        celular: clientes.celular,
+        localidad: clientes.localidad,
+        limiteCredito: clientes.limiteCredito,
         email: clientes.email,
         direccion: clientes.direccion,
         tipo: clientes.tipo,
@@ -104,9 +93,13 @@ export function listarProveedores(): FilaProveedor[] {
     obtenerDb()
       .select({
         id: proveedores.id,
+        codigo: proveedores.codigo,
         nombre: proveedores.nombre,
         cuit: proveedores.cuit,
+        iibb: proveedores.iibb,
         telefono: proveedores.telefono,
+        celular: proveedores.celular,
+        localidad: proveedores.localidad,
         email: proveedores.email,
         direccion: proveedores.direccion,
         activo: proveedores.activo,
