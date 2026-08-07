@@ -33,8 +33,11 @@ import type {
   ResultadoAjuste,
   ComprobanteImprimible,
   DatosExistentes,
+  EntradaActualizacionPrecios,
   FamiliaVista,
+  LineaReposicion,
   PrecioDeArticulo,
+  VistaPreviaPrecio,
   ResultadoInicializacion,
   ResultadoCobroPago,
   ResultadoCompra,
@@ -456,3 +459,26 @@ export const fijarPreciosDeArticulo = (
   precios: readonly { listaPrecioId: number; precio: number }[],
 ): Promise<{ cambiados: number }> =>
   enviar<{ cambiados: number }>(`/api/articulos/${articuloId}/precios`, 'PUT', { precios });
+
+/* ---------------- Actualizacion masiva de precios y reposicion ------------- */
+
+export const vistaPreviaPrecios = (
+  entrada: EntradaActualizacionPrecios,
+): Promise<VistaPreviaPrecio[]> => {
+  return fetch('/api/precios/vista-previa', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(entrada),
+  })
+    .then(async (r) => {
+      const cuerpo = await leerJson(r, '/api/precios/vista-previa');
+      if (!r.ok) throw errorDesdeRespuesta('/api/precios/vista-previa', r, cuerpo);
+      return (cuerpo as { datos: VistaPreviaPrecio[] }).datos;
+    });
+};
+
+export const aplicarPrecios = (entrada: EntradaActualizacionPrecios): Promise<{ actualizados: number }> =>
+  enviar<{ actualizados: number }>('/api/precios/aplicar', 'POST', entrada);
+
+export const obtenerReposicion = (criterio: 'minimo' | 'ideal'): Promise<LineaReposicion[]> =>
+  pedirLista<LineaReposicion>(`/api/reposicion?criterio=${criterio}`);

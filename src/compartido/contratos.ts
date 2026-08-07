@@ -1156,3 +1156,52 @@ export interface ResultadoInicializacion {
   filasBorradas: number;
   detalle: DatosExistentes[];
 }
+
+/* ================== ACTUALIZACION MASIVA Y REPOSICION =================== */
+
+export const MODOS_ACTUALIZACION = ['porcentaje', 'monto_fijo', 'valor_exacto'] as const;
+export type ModoActualizacion = (typeof MODOS_ACTUALIZACION)[number];
+
+export const REDONDEOS_PRECIO = [
+  { valor: 'ninguno', etiqueta: 'Sin redondeo' },
+  { valor: 'multiplo_10', etiqueta: 'Multiplo de $10' },
+  { valor: 'multiplo_50', etiqueta: 'Multiplo de $50' },
+  { valor: 'multiplo_100', etiqueta: 'Multiplo de $100' },
+  { valor: 'terminado_99', etiqueta: 'Terminado en ,99' },
+] as const;
+
+export interface EntradaActualizacionPrecios {
+  articuloIds: readonly number[];
+  listaPrecioId: number;
+  /** true = actualiza el COSTO en vez del precio de la lista. */
+  sobreCosto?: boolean;
+  modo: ModoActualizacion;
+  /** Porcentaje, monto en centavos o precio exacto en centavos, segun el modo. */
+  valor: number;
+  redondeo?: string;
+}
+
+export interface VistaPreviaPrecio {
+  articuloId: number;
+  codigo: string;
+  nombre: string;
+  precioActual: number;
+  precioNuevo: number;
+  /** null cuando no habia precio previo: no hay variacion que calcular. */
+  variacionPct: number | null;
+}
+
+/** Un articulo que hay que reponer, con su proveedor habitual. */
+export interface LineaReposicion {
+  articuloId: number;
+  codigo: string;
+  nombre: string;
+  unidadAbreviatura: string;
+  stock: number;
+  objetivo: number;
+  aPedir: number;
+  costoUnitario: number | null;
+  costoEstimado: number | null;
+  proveedorId: number | null;
+  proveedorNombre: string | null;
+}

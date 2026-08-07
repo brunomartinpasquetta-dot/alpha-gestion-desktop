@@ -22,6 +22,7 @@ import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { ajustesServicio } from '../servicios/ajustes.servicio';
 import { comprasServicio } from '../servicios/compras.servicio';
+import { preciosMasivoServicio } from '../servicios/precios-masivo.servicio';
 import { inicializacionServicio } from '../servicios/inicializacion.servicio';
 import { maestrosServicio } from '../servicios/maestros.servicio';
 import { produccionServicio } from '../servicios/produccion.servicio';
@@ -162,6 +163,15 @@ const esquemaPrecio = z.object({
   listaPrecioId: z.number().int().positive(),
   articuloId: z.number().int().positive(),
   precio: z.number().int().min(0),
+});
+
+const esquemaActualizacionPrecios = z.object({
+  articuloIds: z.array(z.number().int().positive()).min(1).max(5000),
+  listaPrecioId: z.number().int().positive(),
+  sobreCosto: z.boolean().optional(),
+  modo: z.enum(['porcentaje', 'monto_fijo', 'valor_exacto']),
+  valor: z.number(),
+  redondeo: z.string().max(20).optional(),
 });
 
 const esquemaNuevaOrden = z.object({
@@ -376,6 +386,29 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply
       .status(200)
       .send({ datos: ajustesServicio.fijarPreciosDeArticulo(id, entrada.precios) });
+  });
+
+  /* ---------------------- Actualizacion masiva de precios ------------------ */
+
+  app.post('/api/precios/vista-previa', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaActualizacionPrecios, request.body, 'La actualizacion no es valida.');
+    return reply.status(200).send({ datos: preciosMasivoServicio.vistaPrevia(entrada) });
+  });
+
+  app.post('/api/precios/aplicar', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaActualizacionPrecios, request.body, 'La actualizacion no es valida.');
+    return reply.status(200).send({ datos: preciosMasivoServicio.aplicar(entrada) });
+  });
+
+  /* --------------------------- Sugerencia de compra ------------------------ */
+
+  app.get('/api/reposicion', (request: FastifyRequest, reply: FastifyReply) => {
+    const { criterio } = validarOFallar(
+      z.object({ criterio: z.enum(['minimo', 'ideal']).default('ideal') }),
+      request.query,
+      'El criterio de reposicion no es valido.',
+    );
+    return reply.status(200).send({ datos: preciosMasivoServicio.sugerenciaDeCompra(criterio) });
   });
 
   /* -------------------------------- Familias ------------------------------- */

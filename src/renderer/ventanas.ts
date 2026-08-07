@@ -33,6 +33,8 @@ export type ClaveModulo =
   | 'cheques'
   | 'facturacion'
   | 'ayuda'
+  | 'actualizacion-precios'
+  | 'reposicion'
   /** Ventana de un documento concreto: recibe ?ventaId=N. No va en los menus. */
   | 'comprobante';
 
@@ -189,6 +191,20 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     icono: 'cheques',
     descripcion: 'Cartera de cheques recibidos y emitidos, con control de vencimientos.',
   },
+  'actualizacion-precios': {
+    clave: 'actualizacion-precios',
+    titulo: 'Actualizacion de precios',
+    etiqueta: 'Actualizar precios',
+    icono: 'precios',
+    descripcion: 'Cambia los precios de muchos articulos a la vez, viendo antes como quedan.',
+  },
+  reposicion: {
+    clave: 'reposicion',
+    titulo: 'Que comprar',
+    etiqueta: 'Que comprar',
+    icono: 'compras',
+    descripcion: 'Lo que falta para llegar al stock minimo o al ideal, agrupado por proveedor.',
+  },
   ayuda: {
     clave: 'ayuda',
     titulo: 'Ayuda',
@@ -243,7 +259,15 @@ export const MENUS: readonly MenuSuperior[] = [
     nombre: 'Produccion',
     items: [{ clave: 'recetas' }, { clave: 'ordenes' }, { clave: 'trazabilidad' }],
   },
-  { nombre: 'Comercial', items: [{ clave: 'pedidos' }, { clave: 'ventas' }, { clave: 'compras' }] },
+  {
+    nombre: 'Comercial',
+    items: [
+      { clave: 'pedidos' },
+      { clave: 'ventas' },
+      { clave: 'compras' },
+      { clave: 'reposicion' },
+    ],
+  },
   {
     nombre: 'Tesoreria',
     items: [
@@ -255,7 +279,12 @@ export const MENUS: readonly MenuSuperior[] = [
   },
   {
     nombre: 'Maestros',
-    items: [{ clave: 'clientes' }, { clave: 'proveedores' }, { clave: 'listas-precio' }],
+    items: [
+      { clave: 'clientes' },
+      { clave: 'proveedores' },
+      { clave: 'listas-precio' },
+      { clave: 'actualizacion-precios' },
+    ],
   },
   {
     nombre: 'Consultas',

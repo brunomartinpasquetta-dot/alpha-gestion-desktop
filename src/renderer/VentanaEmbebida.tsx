@@ -12,6 +12,7 @@ import { useEffect } from 'react';
 import { PantallaAyuda } from './pantallas/Ayuda';
 import { MaestroArticulos } from './pantallas/MaestroArticulos';
 import { MaestroTerceros } from './pantallas/MaestroTerceros';
+import { PantallaActualizacionPrecios, PantallaReposicion } from './pantallas/PreciosYReposicion';
 import { Comprobante } from './pantallas/Comprobante';
 import { EstadoVacio } from './componentes/comunes';
 import { PantallaCaja, PantallaCuentasCorrientes } from './pantallas/Finanzas';
@@ -95,6 +96,10 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
       return <Simple><PantallaTrazabilidad /></Simple>;
     case 'cheques':
       return <Simple><PantallaCheques /></Simple>;
+    case 'actualizacion-precios':
+      return <PantallaActualizacionPrecios />;
+    case 'reposicion':
+      return <PantallaReposicion />;
     case 'ayuda':
       return <Simple><PantallaAyuda /></Simple>;
     case 'facturacion':
