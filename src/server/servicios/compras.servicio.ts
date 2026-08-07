@@ -61,6 +61,21 @@ function armarVista(tx: Tx, compraId: number): CompraVista {
   return fila;
 }
 
+/** Efectivo en la caja: lo que se abrio mas lo que entro, menos lo que salio. */
+function saldoDeCaja(tx: Tx, cajaId: number): number {
+  const apertura =
+    tx.select({ m: cajas.montoApertura }).from(cajas).where(eq(cajas.id, cajaId)).get()?.m ?? 0;
+  const movimientos =
+    tx
+      .select({
+        t: sql<number>`COALESCE(SUM(CASE WHEN ${cajaMovimientos.tipo} = 'ingreso' THEN ${cajaMovimientos.monto} ELSE -${cajaMovimientos.monto} END), 0)`.mapWith(Number),
+      })
+      .from(cajaMovimientos)
+      .where(eq(cajaMovimientos.cajaId, cajaId))
+      .get()?.t ?? 0;
+  return apertura + movimientos;
+}
+
 function cajaAbierta(tx: Tx): { id: number } | undefined {
   return tx
     .select({ id: cajas.id })
@@ -203,6 +218,17 @@ export const comprasServicio = {
               'No hay caja abierta: la compra de contado quedo registrada pero el pago no salio de ninguna caja.',
             );
           } else {
+            // Pagar mas de lo que hay no se bloquea —la mercaderia ya entro y el
+            // pago ya se hizo— pero tiene que avisarse: una caja en negativo
+            // significa que falta registrar de donde salio esa plata.
+            const disponible = saldoDeCaja(tx, caja.id);
+            if (total > disponible) {
+              advertencias.push(
+                `La caja queda en ${((disponible - total) / 100).toFixed(2)}: tenia ` +
+                  `${(disponible / 100).toFixed(2)} y el pago es de ${(total / 100).toFixed(2)}. ` +
+                  'Revisa si falta registrar un ingreso.',
+              );
+            }
             tx.insert(cajaMovimientos)
               .values({
                 cajaId: caja.id,

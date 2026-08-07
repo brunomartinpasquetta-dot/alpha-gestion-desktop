@@ -274,6 +274,15 @@ export const preciosMasivoServicio = {
           proveedorId: articulos.proveedorHabitualId,
           proveedorNombre: proveedores.nombre,
           tipo: articulos.tipo,
+          /**
+           * Lo que decide como se repone NO es el tipo sino si el articulo se
+           * fabrica: un pre-elaborado con receta —el dulce de leche— se produce
+           * igual que un alfajor, y mirando solo el tipo terminaba en la lista
+           * de compras, donde no hay a quien pedirselo.
+           */
+          tieneReceta: sql<number>`(
+            SELECT COUNT(*) FROM recetas WHERE articulo_producido_id = ${articulos.id} AND activa = 1
+          )`.mapWith(Number),
           stock: sql<number>`COALESCE((
             SELECT SUM(cantidad) FROM movimientos_stock WHERE articulo_id = ${articulos.id}
           ), 0)`.mapWith(Number),
@@ -294,8 +303,8 @@ export const preciosMasivoServicio = {
             articuloId: f.articuloId,
             codigo: f.codigo,
             nombre: f.nombre,
-            // Un producto terminado se repone produciendolo; el resto, comprando.
-            comoSeRepone: f.tipo === 'producto_terminado' ? ('producir' as const) : ('comprar' as const),
+            // Se produce lo que tiene receta; lo demas se compra.
+            comoSeRepone: f.tieneReceta > 0 ? ('producir' as const) : ('comprar' as const),
             unidadAbreviatura: f.unidadAbreviatura,
             stock,
             objetivo,

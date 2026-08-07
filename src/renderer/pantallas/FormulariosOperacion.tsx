@@ -402,9 +402,10 @@ export function FormularioMovimientoCaja({
     setGuardando(true);
     setError(null);
     registrarMovimientoCaja({ tipo, concepto, monto })
-      .then(() =>
+      .then((r) =>
         alGuardar(
-          `${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de ${formatearMoneda(monto)} registrado en caja.`,
+          `${tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} de ${formatearMoneda(monto)} registrado en caja.` +
+            (r.advertencias.length > 0 ? ` ${r.advertencias.join(' ')}` : ''),
         ),
       )
       .catch((causa: unknown) => {

@@ -15,7 +15,8 @@
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { obtenerRutaDb, obtenerSqlite } from '../db/conexion';
+import { sembrarDemo } from '../../seed/demo';
+import { obtenerDb, obtenerRutaDb, obtenerSqlite } from '../db/conexion';
 import { ErrorReglaNegocio, ErrorValidacion, ejecutarSeguro } from '../dominio/errores';
 import { emitir } from '../eventos';
 
@@ -57,6 +58,44 @@ export interface ResultadoInicializacion {
 }
 
 export const inicializacionServicio = {
+  /**
+   * Llena el sistema con una fabrica de ejemplo: insumos, recetas, productos,
+   * clientes, proveedores, precios y un historial de operaciones.
+   *
+   * Existe como boton y no solo como comando de terminal porque quien tiene que
+   * probar el sistema no tiene una terminal a mano, y sin datos no hay nada que
+   * mirar: todas las pantallas se ven vacias y no se entiende que hace cada una.
+   */
+  cargarDemostracion(): { creados: number; detalle: string } {
+    return ejecutarSeguro('cargar los datos de demostracion', () => {
+      const sqlite = obtenerSqlite();
+      const contar = (): number =>
+        TABLAS_A_VACIAR.reduce((suma, tabla) => {
+          const fila = sqlite.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get() as { n: number };
+          return suma + fila.n;
+        }, 0);
+
+      // Se cuenta antes y despues en vez de leer el resumen del seed: asi el
+      // numero refleja lo que efectivamente quedo en la base, que es lo que el
+      // usuario va a ver en las pantallas.
+      const antes = contar();
+      sembrarDemo(obtenerDb());
+      const creados = contar() - antes;
+
+      emitir('maestros:cambio');
+      emitir('ventas:cambio');
+      emitir('pedidos:cambio');
+      emitir('caja:cambio');
+      emitir('cc:cambio');
+      emitir('ordenes:cambio');
+
+      return {
+        creados,
+        detalle: 'Se cargo una fabrica de ejemplo con insumos, recetas, productos, clientes y operaciones.',
+      };
+    });
+  },
+
   /** Cuantas filas hay hoy en lo que se borraria. Para avisar antes. */
   contarDatosExistentes(): { tabla: string; filas: number }[] {
     const sqlite = obtenerSqlite();

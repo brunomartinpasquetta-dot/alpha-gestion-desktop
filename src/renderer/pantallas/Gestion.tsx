@@ -26,6 +26,7 @@ import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import {
   cambiarActivoUsuario,
+  cargarDemostracion,
   empezarDeCero,
   guardarConfigFiscal,
   obtenerCajaGeneral,
@@ -291,9 +292,37 @@ function PanelEmpezarDeCero(): JSX.Element {
     <div className="rounded-ficha border border-alerta-200 bg-alerta-50 px-5 py-4">
       <p className="font-semibold text-alerta-700">Empezar con los datos reales</p>
       {total === 0 ? (
-        <p className="mt-1 text-sm text-masa-900">
-          La base ya esta vacia de datos operativos: se puede empezar a cargar.
-        </p>
+        <div className="mt-1 space-y-2">
+          <p className="text-sm text-masa-900">
+            La base esta vacia: se puede empezar a cargar los datos reales de la fabrica.
+          </p>
+          <p className="text-sm text-masa-900">
+            Si primero queres <strong>ver el sistema funcionando</strong>, carga una fabrica de
+            ejemplo con insumos, recetas, productos, clientes y operaciones ya hechas. Despues se
+            borra con el mismo panel.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setTrabajando(true);
+              setError(null);
+              cargarDemostracion()
+                .then((r) => {
+                  setError(null);
+                  window.alert(`${r.detalle} Se crearon ${r.creados} registros.`);
+                  return obtenerDatosDemo().then(setDatos);
+                })
+                .catch((causa: unknown) =>
+                  setError(causa instanceof Error ? causa.message : String(causa)),
+                )
+                .finally(() => setTrabajando(false));
+            }}
+            disabled={trabajando}
+            className="rounded-ficha border border-masa-300 bg-white px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-masa-50 disabled:opacity-50"
+          >
+            {trabajando ? 'Cargando...' : 'Cargar una fabrica de ejemplo'}
+          </button>
+        </div>
       ) : (
         <>
           <p className="mt-1 text-sm text-masa-900">

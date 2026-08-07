@@ -329,6 +329,36 @@ export const ventasServicio = {
 
           // Efecto financiero segun la forma de pago.
           if (entrada.formaPago === 'cuenta_corriente' && clienteId !== null) {
+            // Fiar por encima del limite no se bloquea —la mercaderia ya salio—
+            // pero el duenio tiene que enterarse en el momento, no al cierre.
+            const cliente = tx
+              .select({ nombre: clientes.nombre, limite: clientes.limiteCredito })
+              .from(clientes)
+              .where(eq(clientes.id, clienteId))
+              .get();
+            if (cliente !== undefined && cliente.limite > 0) {
+              const saldoPrevio =
+                tx
+                  .select({
+                    s: sql<number>`COALESCE(SUM(CASE WHEN ${cuentasCorrientes.tipoMovimiento} = 'debe' THEN ${cuentasCorrientes.monto} ELSE -${cuentasCorrientes.monto} END), 0)`.mapWith(Number),
+                  })
+                  .from(cuentasCorrientes)
+                  .where(
+                    and(
+                      eq(cuentasCorrientes.entidadTipo, 'cliente'),
+                      eq(cuentasCorrientes.entidadId, clienteId),
+                    ),
+                  )
+                  .get()?.s ?? 0;
+              const saldoNuevo = saldoPrevio + total;
+              if (saldoNuevo > cliente.limite) {
+                advertencias.push(
+                  `${cliente.nombre} queda debiendo ${(saldoNuevo / 100).toFixed(2)} y su limite ` +
+                    `es ${(cliente.limite / 100).toFixed(2)}.`,
+                );
+              }
+            }
+
             tx.insert(cuentasCorrientes)
               .values({
                 entidadTipo: 'cliente',

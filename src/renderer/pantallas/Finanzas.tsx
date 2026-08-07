@@ -155,6 +155,11 @@ export function PantallaCaja(): JSX.Element {
           {abierta === undefined
             ? 'No hay caja abierta: las ventas de contado no van a entrar a ninguna caja.'
             : `Caja #${abierta.id} abierta · saldo teorico ${formatearMoneda(teorico)}`}
+          {abierta !== undefined && teorico < 0 && (
+            <strong className="ml-2 text-peligro-600">
+              La caja esta en negativo: falta registrar de donde salio esa plata.
+            </strong>
+          )}
         </p>
         <div className="flex shrink-0 gap-2">
           {abierta === undefined ? (

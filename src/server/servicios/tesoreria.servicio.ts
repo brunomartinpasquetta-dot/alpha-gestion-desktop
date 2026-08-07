@@ -21,6 +21,7 @@ import type {
   EntradaCobroPago,
   EntradaMovimientoCaja,
   ResultadoCobroPago,
+  ResultadoMovimientoCaja,
 } from '../../compartido/contratos';
 import { obtenerDb } from '../db/conexion';
 import {
@@ -145,7 +146,7 @@ export const tesoreriaServicio = {
   },
 
   /** Movimiento manual: retiro del dueño, pago de un flete, aporte, etc. */
-  registrarMovimientoCaja(entrada: EntradaMovimientoCaja): CajaVista {
+  registrarMovimientoCaja(entrada: EntradaMovimientoCaja): ResultadoMovimientoCaja {
     if (!esCentavosValido(entrada.monto) || entrada.monto <= 0) {
       throw new ErrorValidacion('El monto tiene que ser un entero de centavos mayor a cero.');
     }
@@ -158,11 +159,15 @@ export const tesoreriaServicio = {
         if (abierta === undefined) {
           throw new ErrorReglaNegocio('No hay ninguna caja abierta: abri la caja del dia primero.');
         }
+        // Un egreso mayor al saldo no se bloquea: puede ser plata que ya salio y
+        // se esta registrando tarde. Queda avisado en el resultado.
+        const avisos: string[] = [];
         if (entrada.tipo === 'egreso') {
           const disponible = saldoTeorico(tx, abierta.id);
           if (entrada.monto > disponible) {
-            throw new ErrorReglaNegocio(
-              `La caja tiene ${(disponible / 100).toFixed(2)} y estas sacando mas que eso.`,
+            avisos.push(
+              `La caja queda en ${((disponible - entrada.monto) / 100).toFixed(2)}: tenia ` +
+                `${(disponible / 100).toFixed(2)}.`,
             );
           }
         }
@@ -179,7 +184,7 @@ export const tesoreriaServicio = {
             notas: entrada.notas?.trim() || null,
           })
           .run();
-        return vistaCaja(tx, abierta.id);
+        return { caja: vistaCaja(tx, abierta.id), advertencias: avisos };
       }),
     );
     emitir('caja:cambio');
@@ -254,10 +259,14 @@ export const tesoreriaServicio = {
             );
           } else {
             if (!esCobro) {
+              // No se bloquea: el pago ya se hizo y el sistema registra hechos.
+              // Bloquearlo lograria que el operador no lo cargue, que es peor
+              // que una caja en negativo bien visible.
               const disponible = saldoTeorico(tx, abierta.id);
               if (entrada.monto > disponible) {
-                throw new ErrorReglaNegocio(
-                  `La caja tiene ${(disponible / 100).toFixed(2)}: no alcanza para pagar ${(entrada.monto / 100).toFixed(2)}.`,
+                advertencias.push(
+                  `La caja queda en ${((disponible - entrada.monto) / 100).toFixed(2)}: tenia ` +
+                    `${(disponible / 100).toFixed(2)}. Revisa si falta registrar un ingreso.`,
                 );
               }
             }

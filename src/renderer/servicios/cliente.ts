@@ -42,6 +42,7 @@ import type {
   ResultadoInicializacion,
   ResultadoCobroPago,
   ResultadoCompra,
+  ResultadoMovimientoCaja,
   UnidadMedidaVista,
   ChequeVista,
   ConfiguracionFiscalVista,
@@ -380,8 +381,10 @@ export const abrirCaja = (montoApertura: number, usuario?: string | null): Promi
 export const cerrarCaja = (id: number, entrada: EntradaCierreCaja): Promise<CajaVista> =>
   enviar<CajaVista>(`/api/caja/${id}/cerrar`, 'PATCH', entrada);
 
-export const registrarMovimientoCaja = (entrada: EntradaMovimientoCaja): Promise<CajaVista> =>
-  enviar<CajaVista>('/api/caja/movimientos', 'POST', entrada);
+export const registrarMovimientoCaja = (
+  entrada: EntradaMovimientoCaja,
+): Promise<ResultadoMovimientoCaja> =>
+  enviar<ResultadoMovimientoCaja>('/api/caja/movimientos', 'POST', entrada);
 
 export const registrarCobroPago = (entrada: EntradaCobroPago): Promise<ResultadoCobroPago> =>
   enviar<ResultadoCobroPago>('/api/cuentas-corrientes/movimientos', 'POST', entrada);
@@ -429,6 +432,9 @@ export async function borrarPrecio(precioId: number): Promise<void> {
 
 export const obtenerDatosDemo = (): Promise<DatosExistentes[]> =>
   pedirLista<DatosExistentes>('/api/sistema/datos-demo');
+
+export const cargarDemostracion = (): Promise<{ creados: number; detalle: string }> =>
+  enviar<{ creados: number; detalle: string }>('/api/sistema/cargar-demo', 'POST');
 
 export const empezarDeCero = (confirmacion: string): Promise<ResultadoInicializacion> =>
   enviar<ResultadoInicializacion>('/api/sistema/empezar-de-cero', 'POST', { confirmacion });

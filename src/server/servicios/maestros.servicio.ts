@@ -94,6 +94,27 @@ function camposArticulo(entrada: EntradaArticulo, codigo: string) {
   };
 }
 
+/**
+ * Un CUIT identifica a una persona o empresa: repetirlo significa que el mismo
+ * cliente quedo cargado dos veces, y a partir de ahi su cuenta corriente vive
+ * partida en dos y ninguno de los dos saldos es el real. El nombre SI se puede
+ * repetir (dos sucursales del mismo kiosco son dos clientes distintos).
+ */
+function verificarCuitUnico(
+  cuit: string | null,
+  tabla: typeof clientes | typeof proveedores,
+  idPropio: number | null,
+  que: string,
+): void {
+  if (cuit === null) return;
+  const condicion =
+    idPropio === null ? eq(tabla.cuit, cuit) : and(eq(tabla.cuit, cuit), ne(tabla.id, idPropio));
+  const duplicado = obtenerDb().select({ nombre: tabla.nombre }).from(tabla).where(condicion).get();
+  if (duplicado) {
+    throw new ErrorConflicto(`El CUIT ${cuit} ya lo tiene ${que} "${duplicado.nombre}".`);
+  }
+}
+
 /** Campos del cliente. Alta y edicion escriben lo mismo: ver camposArticulo. */
 function camposCliente(entrada: EntradaCliente) {
   return {
@@ -192,6 +213,7 @@ export const maestrosServicio = {
   crearCliente(entrada: EntradaCliente): ClienteVista {
     return ejecutarSeguro('crear un cliente', () => {
       const db = obtenerDb();
+      verificarCuitUnico(cuitNormalizado(entrada.cuit), clientes, null, 'el cliente');
       const fila = db
         .insert(clientes)
         .values({ ...camposCliente(entrada), activo: true })
@@ -207,6 +229,7 @@ export const maestrosServicio = {
       const db = obtenerDb();
       const existe = db.select({ id: clientes.id }).from(clientes).where(eq(clientes.id, id)).get();
       if (!existe) throw new ErrorNoEncontrado('cliente', id);
+      verificarCuitUnico(cuitNormalizado(entrada.cuit), clientes, id, 'el cliente');
       db.update(clientes).set(camposCliente(entrada)).where(eq(clientes.id, id)).run();
       return vistaCliente(id);
     });
@@ -236,6 +259,7 @@ export const maestrosServicio = {
   crearProveedor(entrada: EntradaProveedor): ProveedorVista {
     return ejecutarSeguro('crear un proveedor', () => {
       const db = obtenerDb();
+      verificarCuitUnico(cuitNormalizado(entrada.cuit), proveedores, null, 'el proveedor');
       const fila = db
         .insert(proveedores)
         .values({ ...camposProveedor(entrada), activo: true })
@@ -251,6 +275,7 @@ export const maestrosServicio = {
       const db = obtenerDb();
       const existe = db.select({ id: proveedores.id }).from(proveedores).where(eq(proveedores.id, id)).get();
       if (!existe) throw new ErrorNoEncontrado('proveedor', id);
+      verificarCuitUnico(cuitNormalizado(entrada.cuit), proveedores, id, 'el proveedor');
       db.update(proveedores).set(camposProveedor(entrada)).where(eq(proveedores.id, id)).run();
       return vistaProveedor(id);
     });

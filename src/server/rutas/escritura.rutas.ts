@@ -339,6 +339,10 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply.status(200).send({ datos: inicializacionServicio.contarDatosExistentes() });
   });
 
+  app.post('/api/sistema/cargar-demo', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: inicializacionServicio.cargarDemostracion() });
+  });
+
   app.post('/api/sistema/empezar-de-cero', (request: FastifyRequest, reply: FastifyReply) => {
     const { confirmacion } = validarOFallar(
       z.object({ confirmacion: z.string() }),

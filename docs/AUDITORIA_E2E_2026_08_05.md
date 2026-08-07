@@ -257,6 +257,73 @@ creado desde otra ventana aparece solo en la de pedidos.
 | Editar pedido en produccion | Rechazado con el motivo |
 | Buscar actualizaciones a pedido | "Estas al dia. Version instalada: 0.10.0" |
 
+## QUINTA TANDA — v1.1.0, 7 de agosto de 2026: fabrica completa
+
+Se cargo una fabrica de alfajores DESDE CERO por la API —como lo haria el
+cliente— y se corrio el circuito entero. Objetivo: ver si el sistema procesa
+bien la informacion de una operacion real, no si cada endpoint responde 200.
+
+### Lo que se cargo
+
+4 proveedores · 5 familias · 5 insumos y 2 productos con costo, minimo, ideal,
+proveedor habitual e IVA · 3 clientes con su condicion frente al IVA, lista de
+precios y limite de credito · 6 precios (3 listas x 2 productos) · 3 recetas
+encadenadas (el dulce de leche es insumo del alfajor).
+
+### El circuito, con los numeros
+
+| Paso | Resultado |
+|---|---|
+| Reposicion inicial | Separa bien: 3 a producir (tienen receta), 4 a comprar |
+| Compra a Molinos (cta. cte.) | $191.250 · stock +100.000 g harina, +75.000 g azucar · deuda exacta |
+| Compra de contado | Egreso de caja correcto |
+| Tanda de dulce de leche (x2) | Leche 80.000→40.000 · azucar 75.000→67.000 · DDL 0→36.000. **Exacto** |
+| Tanda de alfajores (x2,5) | 600 unidades · harina −24.000 · DDL −18.000. **Exacto** |
+| Pedido del celular → venta | Tomo el precio del DISTRIBUIDOR ($1.300, no el general $1.800) |
+| Venta desde pedido | Pedido pasa a entregado · stock −240 · CC +$312.000 |
+| Cobro en efectivo | Baja la deuda y entra a la caja |
+| Cobro en cheque | Baja la deuda, NO toca la caja |
+| Cierre de caja | Teorico, contado y diferencia correctos |
+| Trazabilidad del lote | Devuelve la orden, sus 4 consumos y 5 movimientos |
+
+### CINCO problemas encontrados y corregidos
+
+**C01 · El dulce de leche aparecia en "hay que comprar".** Es un pre-elaborado
+que se fabrica con receta, pero la regla miraba el TIPO (solo los terminados se
+producian). Un pre-elaborado con receta terminaba en la lista de compras, donde
+no hay a quien pedirselo. Ahora decide por si el articulo tiene receta activa.
+
+**C02 · La caja quedaba en negativo sin avisar.** Una compra de contado de
+$352.000 con $200.000 en caja se registro sin una palabra: la caja quedo en
+−$288.000 y nada lo indicaba. Ahora avisa con cuanto queda y sugiere que falta
+registrar un ingreso, y la pantalla de caja lo marca en rojo.
+
+**C03 · Criterio inconsistente entre bloquear y avisar.** El pago a proveedor y
+el retiro de caja BLOQUEABAN si no alcanzaba, pero la compra de contado no.
+Unificado en avisar: el sistema registra hechos, y bloquear logra que el
+operador no cargue lo que ya paso, que es peor que una caja en negativo visible.
+
+**C04 · Se podian cargar dos clientes con el mismo CUIT.** Un CUIT identifica a
+una persona: repetirlo parte su cuenta corriente en dos y ninguno de los saldos
+es el real. Ahora se rechaza, en clientes y en proveedores. El NOMBRE si se
+puede repetir: dos sucursales del mismo kiosco son dos clientes.
+
+**C05 · El aviso de limite de credito no existia.** Se habia escrito pero la
+edicion nunca se aplico al archivo, asi que fiar por encima del limite pasaba en
+silencio. Verificado: una venta que deja al kiosco debiendo $108.000 con limite
+$500 ahora lo dice.
+
+### Evaluacion contra el objetivo
+
+El sistema **procesa correctamente la operacion de la fabrica**: los saldos de
+stock salen del ledger y coinciden al gramo con lo que dictan las recetas, los
+precios respetan la lista del cliente, la cuenta corriente y la caja cierran, y
+un lote permite reconstruir que se uso para fabricarlo.
+
+Lo que la auditoria confirma que **falta para operar de verdad** es lo ya
+listado en el estado del proyecto: facturar con el certificado real del cliente
+y la prueba a fondo en Windows.
+
 ## NO CUBIERTO (requiere UAT o hardware)
 
 - PWA en un teléfono físico (táctil, service worker en iOS/Android reales).

@@ -996,6 +996,12 @@ export interface EntradaCierreCaja {
   montoCierreReal: number;
 }
 
+export interface ResultadoMovimientoCaja {
+  caja: CajaVista;
+  /** Avisos que no bloquean, por ejemplo que la caja queda en negativo. */
+  advertencias: string[];
+}
+
 export interface EntradaMovimientoCaja {
   tipo: TipoMovimientoCaja;
   concepto: string;
