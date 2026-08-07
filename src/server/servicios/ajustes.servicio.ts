@@ -28,7 +28,7 @@ import {
   listasPrecio,
   movimientosStock,
   ordenesProduccion,
-  precios,
+  precios as precios_tabla,
   recetaItems,
   recetas,
 } from '../db/schema';
@@ -302,25 +302,25 @@ export const ajustesServicio = {
         const hoy = new Date().toISOString().slice(0, 10);
         // Dos precios el mismo dia para el mismo articulo: se pisa el ultimo, que
         // es una correccion, no un cambio de precio historico.
-        tx.delete(precios)
+        tx.delete(precios_tabla)
           .where(
             and(
-              eq(precios.listaPrecioId, entrada.listaPrecioId),
-              eq(precios.articuloId, entrada.articuloId),
-              eq(precios.vigenteDesde, hoy),
+              eq(precios_tabla.listaPrecioId, entrada.listaPrecioId),
+              eq(precios_tabla.articuloId, entrada.articuloId),
+              eq(precios_tabla.vigenteDesde, hoy),
             ),
           )
           .run();
 
         const fila = tx
-          .insert(precios)
+          .insert(precios_tabla)
           .values({
             listaPrecioId: entrada.listaPrecioId,
             articuloId: entrada.articuloId,
             precio: entrada.precio,
             vigenteDesde: hoy,
           })
-          .returning({ id: precios.id })
+          .returning({ id: precios_tabla.id })
           .all()[0];
         if (!fila) throw new ErrorValidacion('La base no devolvio el precio insertado.');
         return { id: fila.id };
@@ -339,9 +339,9 @@ export const ajustesServicio = {
   borrarPrecio(precioId: number): { id: number } {
     const resultado = ejecutarSeguro('borrar el precio', () => {
       const db = obtenerDb();
-      const precio = db.select({ id: precios.id }).from(precios).where(eq(precios.id, precioId)).get();
+      const precio = db.select({ id: precios_tabla.id }).from(precios_tabla).where(eq(precios_tabla.id, precioId)).get();
       if (!precio) throw new ErrorNoEncontrado('precio', precioId);
-      db.delete(precios).where(eq(precios.id, precioId)).run();
+      db.delete(precios_tabla).where(eq(precios_tabla.id, precioId)).run();
       return { id: precioId };
     });
     emitir('maestros:cambio');
@@ -425,6 +425,57 @@ export const ajustesServicio = {
       return { id: fila.id };
     });
     emitir('maestros:cambio');
+    return resultado;
+  },
+
+  /**
+   * Precio vigente de un articulo en CADA lista. Es lo que el formulario del
+   * articulo muestra y edita: el operador piensa "cuanto vale esto", no "que
+   * precios tiene la lista mayorista".
+   */
+  preciosDeArticulo(articuloId: number): { listaPrecioId: number; listaNombre: string; precio: number | null }[] {
+    return ejecutarSeguro('leer los precios del articulo', () =>
+      obtenerDb()
+        .select({
+          listaPrecioId: listasPrecio.id,
+          listaNombre: listasPrecio.nombre,
+          // El vigente es el mas reciente de esa lista para ese articulo.
+          precio: sql<number | null>`(
+            SELECT precio FROM precios
+            WHERE lista_precio_id = ${listasPrecio.id} AND articulo_id = ${articuloId}
+            ORDER BY vigente_desde DESC, id DESC LIMIT 1
+          )`,
+        })
+        .from(listasPrecio)
+        .where(eq(listasPrecio.activa, true))
+        .orderBy(listasPrecio.id)
+        .all(),
+    );
+  },
+
+  /** Fija de una sola vez los precios de un articulo en varias listas. */
+  fijarPreciosDeArticulo(
+    articuloId: number,
+    precios: readonly { listaPrecioId: number; precio: number }[],
+  ): { cambiados: number } {
+    const resultado = ejecutarSeguro('fijar los precios del articulo', () => {
+      let cambiados = 0;
+      for (const p of precios) {
+        // Solo se escribe lo que efectivamente cambio: fijar el mismo precio de
+        // nuevo ensuciaria el historial con una fila que no dice nada.
+        const vigente = obtenerDb()
+          .select({ precio: precios_tabla.precio })
+          .from(precios_tabla)
+          .where(and(eq(precios_tabla.listaPrecioId, p.listaPrecioId), eq(precios_tabla.articuloId, articuloId)))
+          .orderBy(sql`vigente_desde DESC, id DESC`)
+          .limit(1)
+          .get();
+        if (vigente?.precio === p.precio) continue;
+        ajustesServicio.fijarPrecio({ listaPrecioId: p.listaPrecioId, articuloId, precio: p.precio });
+        cambiados += 1;
+      }
+      return { cambiados };
+    });
     return resultado;
   },
 };

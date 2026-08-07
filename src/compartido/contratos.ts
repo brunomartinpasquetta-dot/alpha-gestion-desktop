@@ -914,6 +914,13 @@ export interface EntradaArticulo {
   costoActual?: number | null;
 }
 
+/** Precio vigente de un articulo en una lista. null = todavia no tiene. */
+export interface PrecioDeArticulo {
+  listaPrecioId: number;
+  listaNombre: string;
+  precio: number | null;
+}
+
 export interface FamiliaVista {
   id: number;
   nombre: string;

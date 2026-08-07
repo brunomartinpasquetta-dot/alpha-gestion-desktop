@@ -345,6 +345,29 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply.status(200).send({ datos: ajustesServicio.borrarPrecio(id) });
   });
 
+  /* --------------------- Precios de un articulo puntual -------------------- */
+
+  app.get('/api/articulos/:id/precios', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador del articulo no es valido.');
+    return reply.status(200).send({ datos: ajustesServicio.preciosDeArticulo(id) });
+  });
+
+  app.put('/api/articulos/:id/precios', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador del articulo no es valido.');
+    const entrada = validarOFallar(
+      z.object({
+        precios: z
+          .array(z.object({ listaPrecioId: z.number().int().positive(), precio: z.number().int().min(0) }))
+          .max(20),
+      }),
+      request.body,
+      'Los precios enviados no son validos.',
+    );
+    return reply
+      .status(200)
+      .send({ datos: ajustesServicio.fijarPreciosDeArticulo(id, entrada.precios) });
+  });
+
   /* -------------------------------- Familias ------------------------------- */
 
   app.get('/api/familias', (_request: FastifyRequest, reply: FastifyReply) => {

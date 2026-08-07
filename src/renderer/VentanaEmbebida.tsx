@@ -7,12 +7,12 @@
  * asi que repetir el chrome adentro seria ruido.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { PantallaAyuda } from './pantallas/Ayuda';
+import { MaestroArticulos } from './pantallas/MaestroArticulos';
 import { Comprobante } from './pantallas/Comprobante';
 import { EstadoVacio } from './componentes/comunes';
-import { PanelLedger } from './componentes/PanelLedger';
 import { PantallaCaja, PantallaCuentasCorrientes } from './pantallas/Finanzas';
 import {
   PantallaCajaGeneral,
@@ -27,54 +27,8 @@ import { PantallaClientes, PantallaPrecios, PantallaProveedores } from './pantal
 import { PantallaCompras, PantallaPedidos, PantallaVentas } from './pantallas/Comercial';
 import { PantallaInicio } from './pantallas/Inicio';
 import { PantallaOrdenes, PantallaRecetas } from './pantallas/Produccion';
-import {
-  PantallaArticulos,
-  PantallaStockInsumos,
-  PantallaStockProductos,
-  type PropsConSeleccion,
-} from './pantallas/Stock';
+
 import { definicionDeModulo, esClaveModulo, type ClaveModulo } from './ventanas';
-
-interface ArticuloElegido {
-  readonly id: number;
-  readonly nombre: string;
-  readonly codigo: string;
-}
-
-/**
- * Envuelve las pantallas de stock para que el detalle del ledger viva DENTRO de
- * la misma ventana. La seleccion es estado local: cada ventana de stock recuerda
- * su propio articulo abierto, sin pisarse con las demas.
- */
-function ConPanelLedger({
-  Pantalla,
-}: {
-  readonly Pantalla: (props: PropsConSeleccion) => JSX.Element;
-}): JSX.Element {
-  const [articulo, setArticulo] = useState<ArticuloElegido | null>(null);
-
-  return (
-    <div className="flex min-h-0 flex-1">
-      <div className="min-w-0 flex-1 overflow-auto p-5">
-        <Pantalla
-          articuloSeleccionadoId={articulo?.id ?? null}
-          alSeleccionarArticulo={(elegido) =>
-            setArticulo((actual) => (actual?.id === elegido.id ? null : elegido))
-          }
-        />
-      </div>
-
-      {articulo !== null && (
-        <PanelLedger
-          articuloId={articulo.id}
-          titulo={articulo.nombre}
-          subtitulo={`Ledger de stock · ${articulo.codigo}`}
-          alCerrar={() => setArticulo(null)}
-        />
-      )}
-    </div>
-  );
-}
 
 /** Pantallas que ocupan todo el ancho, sin panel lateral. */
 function Simple({ children }: { readonly children: JSX.Element }): JSX.Element {
@@ -99,11 +53,15 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
     case 'tablero':
       return <Simple><PantallaInicio /></Simple>;
     case 'stock-insumos':
-      return <ConPanelLedger Pantalla={PantallaStockInsumos} />;
+      return (
+        <MaestroArticulos grupo="insumos" titulo="Insumos" tipoNuevo="materia_prima" />
+      );
     case 'stock-productos':
-      return <ConPanelLedger Pantalla={PantallaStockProductos} />;
+      return (
+        <MaestroArticulos grupo="productos" titulo="Productos" tipoNuevo="producto_terminado" />
+      );
     case 'articulos':
-      return <ConPanelLedger Pantalla={PantallaArticulos} />;
+      return <MaestroArticulos grupo="todos" titulo="Articulos" tipoNuevo="materia_prima" />;
     case 'recetas':
       return <Simple><PantallaRecetas /></Simple>;
     case 'ordenes':

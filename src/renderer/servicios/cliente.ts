@@ -34,6 +34,7 @@ import type {
   ComprobanteImprimible,
   DatosExistentes,
   FamiliaVista,
+  PrecioDeArticulo,
   ResultadoInicializacion,
   ResultadoCobroPago,
   ResultadoCompra,
@@ -446,3 +447,12 @@ export const obtenerFamilias = (): Promise<FamiliaVista[]> =>
 
 export const crearFamilia = (nombre: string, padreId?: number | null): Promise<{ id: number }> =>
   enviar<{ id: number }>('/api/familias', 'POST', { nombre, padreId: padreId ?? null });
+
+export const obtenerPreciosDeArticulo = (articuloId: number): Promise<PrecioDeArticulo[]> =>
+  pedirLista<PrecioDeArticulo>(`/api/articulos/${articuloId}/precios`);
+
+export const fijarPreciosDeArticulo = (
+  articuloId: number,
+  precios: readonly { listaPrecioId: number; precio: number }[],
+): Promise<{ cambiados: number }> =>
+  enviar<{ cambiados: number }>(`/api/articulos/${articuloId}/precios`, 'PUT', { precios });
