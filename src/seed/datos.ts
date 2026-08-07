@@ -220,6 +220,21 @@ export const LISTA_PRECIO_GENERAL: DefinicionListaPrecio = {
   activa: true,
 };
 
+/**
+ * Las tres listas con las que arranca cualquier instalacion. La fabrica no le
+ * vende al mismo precio al kiosco de la esquina, al mayorista y al distribuidor
+ * que le compra por pallet: con una sola lista, cada venta a otro precio hay que
+ * corregirla a mano y se pierde la referencia.
+ *
+ * "General" es la primera a proposito: es la que se usa cuando el cliente no
+ * tiene ninguna asignada.
+ */
+export const LISTAS_PRECIO_BASE: readonly DefinicionListaPrecio[] = [
+  LISTA_PRECIO_GENERAL,
+  { nombre: 'Mayorista', activa: true },
+  { nombre: 'Distribuidor', activa: true },
+];
+
 export interface DefinicionCliente {
   /** Clave natural del seed. */
   readonly nombre: string;

@@ -363,12 +363,17 @@ export function MaestroArticulos({
           : await actualizarArticulo(seleccionadoId as number, entrada);
 
       // Los precios van en su propio ledger: se fijan despues de tener el id.
-      const precios = form.precios
-        .filter((p) => p.valor.trim() !== '')
-        .map((p) => ({
-          listaPrecioId: p.listaPrecioId,
-          precio: aCentavos(Number(p.valor.replace(',', '.'))),
-        }));
+      // Solo los productos terminados llevan precio de venta: los insumos se
+      // compran, y el servidor rechaza ponerle precio a uno.
+      const precios =
+        form.tipo === 'producto_terminado'
+          ? form.precios
+              .filter((p) => p.valor.trim() !== '')
+              .map((p) => ({
+                listaPrecioId: p.listaPrecioId,
+                precio: aCentavos(Number(p.valor.replace(',', '.'))),
+              }))
+          : [];
       if (precios.length > 0) await fijarPreciosDeArticulo(guardado.id, precios);
 
       const lista = await recargar();
@@ -812,7 +817,19 @@ export function MaestroArticulos({
             </Campo>
             <div className="col-span-7" />
 
-            {form.precios.length === 0 && form.tipo === 'producto_terminado' && (
+            {/*
+              Los precios de venta son SOLO de los productos terminados: los
+              insumos se compran, no se venden, y mostrarles listas de precio
+              confunde sobre que hace cada cosa.
+            */}
+            {form.tipo !== 'producto_terminado' && (
+              <p className="col-span-12 rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2 text-micro text-masa-700">
+                Los insumos no llevan precio de venta: se compran. Lo que importa aca es el{' '}
+                <strong>costo</strong>, que se actualiza solo con cada compra.
+              </p>
+            )}
+
+            {form.tipo === 'producto_terminado' && form.precios.length === 0 && (
               <p className="col-span-12 text-micro text-masa-700">
                 Los precios de venta aparecen al guardar el articulo por primera vez.
               </p>
@@ -820,7 +837,8 @@ export function MaestroArticulos({
 
             {/* Un precio por lista, con la utilidad al lado: es el numero que
                 decide si el precio tiene sentido. */}
-            {form.precios.map((precio) => (
+            {form.tipo === 'producto_terminado' &&
+              form.precios.map((precio) => (
               <div key={precio.listaPrecioId} className="col-span-6 grid grid-cols-6 gap-x-3">
                 <Campo columnas="col-span-4" rotulo={`P. ${precio.listaNombre}`}>
                   <input
@@ -843,7 +861,7 @@ export function MaestroArticulos({
                   <ValorCalculado>{utilidad(precio.valor, form.costoActual)}</ValorCalculado>
                 </Campo>
               </div>
-            ))}
+              ))}
 
             {/* Stock */}
             <Campo columnas="col-span-3" rotulo="Stock minimo">

@@ -35,6 +35,7 @@ import {
   CLIENTE_MAYORISTA,
   COSTO_BCRYPT,
   LISTA_PRECIO_GENERAL,
+  LISTAS_PRECIO_BASE,
   MOVIMIENTOS_EJEMPLO,
   PRECIOS,
   PROVEEDOR,
@@ -341,19 +342,19 @@ function buscarIdListaPrecio(tx: Transaccion, nombre: string): number | undefine
     .all()[0]?.id;
 }
 
+/**
+ * Crea las tres listas base. Devuelve el id de la General, que es la que usan
+ * los clientes sin lista asignada.
+ */
 function sembrarListaPrecio(tx: Transaccion, contador: Contador): number {
-  const existente = buscarIdListaPrecio(tx, LISTA_PRECIO_GENERAL.nombre);
-  if (existente !== undefined) {
-    contador.existentes += 1;
-    return existente;
+  for (const lista of LISTAS_PRECIO_BASE) {
+    if (buscarIdListaPrecio(tx, lista.nombre) !== undefined) {
+      contador.existentes += 1;
+      continue;
+    }
+    tx.insert(listasPrecio).values({ nombre: lista.nombre, activa: lista.activa }).run();
+    contador.creadas += 1;
   }
-
-  tx.insert(listasPrecio)
-    .values({ nombre: LISTA_PRECIO_GENERAL.nombre, activa: LISTA_PRECIO_GENERAL.activa })
-    .onConflictDoNothing()
-    .run();
-
-  contador.creadas += 1;
   return exigir(
     buscarIdListaPrecio(tx, LISTA_PRECIO_GENERAL.nombre),
     `la lista de precios "${LISTA_PRECIO_GENERAL.nombre}"`,
