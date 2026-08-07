@@ -400,6 +400,15 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply.status(200).send({ datos: preciosMasivoServicio.aplicar(entrada) });
   });
 
+  app.get('/api/precios/lotes', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: preciosMasivoServicio.listarLotes() });
+  });
+
+  app.post('/api/precios/lotes/:id/revertir', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador del lote no es valido.');
+    return reply.status(200).send({ datos: preciosMasivoServicio.revertirLote(id) });
+  });
+
   /* --------------------------- Sugerencia de compra ------------------------ */
 
   app.get('/api/reposicion', (request: FastifyRequest, reply: FastifyReply) => {

@@ -64,6 +64,13 @@
       "when": 1786067711283,
       "tag": "0008_clientes_proveedores",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786068941109,
+      "tag": "0009_lotes_precio",
+      "breakpoints": true
     }
   ]
 }

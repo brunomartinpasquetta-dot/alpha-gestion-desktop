@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FileSpreadsheet, Printer, RefreshCw } from 'lucide-react';
+import { FileSpreadsheet, Printer, RefreshCw, Undo2 } from 'lucide-react';
 
 import {
   MODOS_ACTUALIZACION,
@@ -20,6 +20,7 @@ import {
   type ArticuloConStock,
   type LineaReposicion,
   type ListaPrecioVista,
+  type LotePrecio,
   type ModoActualizacion,
   type VistaPreviaPrecio,
 } from '../../compartido/contratos';
@@ -28,7 +29,9 @@ import {
   aplicarPrecios,
   obtenerArticulos,
   obtenerListasPrecio,
+  obtenerLotesPrecio,
   obtenerReposicion,
+  revertirLotePrecio,
   vistaPreviaPrecios,
 } from '../servicios/cliente';
 import { aCentavos, formatearCantidad, formatearMoneda } from '../utiles/formato';
@@ -74,6 +77,8 @@ export function PantallaActualizacionPrecios(): JSX.Element {
   const [previa, setPrevia] = useState<VistaPreviaPrecio[] | null>(null);
   const [trabajando, setTrabajando] = useState(false);
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
+  const [lotes, setLotes] = useState<LotePrecio[]>([]);
+  const [verHistorial, setVerHistorial] = useState(false);
 
   useEffect(() => {
     void obtenerArticulos()
@@ -85,6 +90,7 @@ export function PantallaActualizacionPrecios(): JSX.Element {
         if (l[0] !== undefined) setListaPrecioId(l[0].id);
       })
       .catch(() => setListas([]));
+    void obtenerLotesPrecio().then(setLotes).catch(() => setLotes([]));
   }, []);
 
   const familias = useMemo(
@@ -154,10 +160,32 @@ export function PantallaActualizacionPrecios(): JSX.Element {
       .then((r) => {
         setPrevia(null);
         setElegidos(new Set());
-        setAviso({ tono: 'ok', texto: `${r.actualizados} precio(s) actualizados.` });
+        setAviso({
+          tono: 'ok',
+          texto: `${r.actualizados} precio(s) actualizados. Si te equivocaste, se puede deshacer desde el historial.`,
+        });
+        void obtenerLotesPrecio().then(setLotes).catch(() => undefined);
         return obtenerArticulos().then((l) =>
           setArticulos(l.filter((a) => a.activo && a.tipo === 'producto_terminado')),
         );
+      })
+      .catch((c: unknown) => setAviso({ tono: 'mal', texto: mensajeDeError(c) }))
+      .finally(() => setTrabajando(false));
+  };
+
+  /** Deshacer devuelve los precios al valor anterior al lote. */
+  const deshacer = (lote: LotePrecio): void => {
+    if (!window.confirm(`¿Deshacer "${lote.descripcion}"? Los precios vuelven a como estaban antes.`)) return;
+    setTrabajando(true);
+    revertirLotePrecio(lote.id)
+      .then((r) => {
+        setAviso({ tono: 'ok', texto: `${r.revertidos} precio(s) volvieron al valor anterior.` });
+        return Promise.all([
+          obtenerLotesPrecio().then(setLotes),
+          obtenerArticulos().then((l) =>
+            setArticulos(l.filter((a) => a.activo && a.tipo === 'producto_terminado')),
+          ),
+        ]);
       })
       .catch((c: unknown) => setAviso({ tono: 'mal', texto: mensajeDeError(c) }))
       .finally(() => setTrabajando(false));
@@ -207,7 +235,66 @@ export function PantallaActualizacionPrecios(): JSX.Element {
           className={`${CLASE_INPUT} w-56`}
         />
         <span className="text-sm font-semibold text-masa-900">{elegidos.size} elegido(s)</span>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => setVerHistorial((v) => !v)}
+          className={BOTON_BARRA}
+          title="Actualizaciones anteriores, con la opcion de deshacerlas"
+        >
+          <Undo2 className="h-4 w-4" aria-hidden="true" />
+          Historial ({lotes.filter((l) => !l.revertido).length})
+        </button>
       </div>
+
+      {verHistorial && (
+        <div className="max-h-52 shrink-0 overflow-auto rounded-ficha border border-masa-200 bg-white">
+          {lotes.length === 0 ? (
+            <p className="px-3 py-4 text-center text-sm text-masa-700">
+              Todavia no se hizo ninguna actualizacion masiva.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-masa-50">
+                <tr className="text-left text-micro uppercase tracking-wide text-masa-700">
+                  <th scope="col" className="px-3 py-2">Cuando</th>
+                  <th scope="col" className="px-3 py-2">Que se hizo</th>
+                  <th scope="col" className="px-3 py-2 text-right">Articulos</th>
+                  <th scope="col" className="px-3 py-2">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lotes.map((l) => (
+                  <tr key={l.id} className={`border-t border-masa-100 ${l.revertido ? 'opacity-50' : ''}`}>
+                    <td className="px-3 py-1.5 font-mono text-xs">
+                      {new Date(l.fecha).toLocaleString('es-AR', {
+                        day: '2-digit', month: '2-digit', year: '2-digit',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="px-3 py-1.5">{l.descripcion}</td>
+                    <td className="px-3 py-1.5 text-right font-mono tabular-nums">{l.cantidadArticulos}</td>
+                    <td className="px-3 py-1.5">
+                      {l.revertido ? (
+                        <span className="text-xs text-masa-700">Deshecho</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => deshacer(l)}
+                          disabled={trabajando}
+                          className="rounded-pastilla border border-peligro-300 px-2 py-0.5 text-xs font-medium text-peligro-600 outline-none hover:bg-peligro-50 disabled:opacity-40"
+                        >
+                          Deshacer
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {/* Lista con la previa al costado cuando existe */}
       <div className="flex min-h-0 flex-1 gap-2">

@@ -1205,3 +1205,12 @@ export interface LineaReposicion {
   proveedorId: number | null;
   proveedorNombre: string | null;
 }
+
+/** Una actualizacion masiva aplicada, para poder deshacerla. */
+export interface LotePrecio {
+  id: number;
+  fecha: string;
+  descripcion: string;
+  cantidadArticulos: number;
+  revertido: boolean;
+}

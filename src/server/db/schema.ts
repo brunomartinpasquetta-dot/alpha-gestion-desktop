@@ -143,6 +143,23 @@ export const articulos = sqliteTable(
 /* Listas de precio y precios                                                */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * Una actualizacion masiva de precios, para poder deshacerla entera.
+ *
+ * Sin esto, revertir un aumento mal aplicado significa corregir articulo por
+ * articulo: la red de seguridad es lo que hace que la actualizacion masiva se
+ * pueda usar sin miedo.
+ */
+export const lotesPrecio = sqliteTable('lotes_precio', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  fecha: text('fecha').notNull().default(AHORA),
+  /** "Aumento 25% sobre lista General, redondeo a $10". */
+  descripcion: text('descripcion').notNull(),
+  cantidadArticulos: integer('cantidad_articulos').notNull().default(0),
+  /** Se marca al deshacerlo; el lote no se borra, queda el rastro. */
+  revertido: integer('revertido', { mode: 'boolean' }).notNull().default(false),
+});
+
 export const listasPrecio = sqliteTable(
   'listas_precio',
   {
@@ -166,9 +183,15 @@ export const precios = sqliteTable(
     /** Precio en centavos por unidad base del articulo. */
     precio: integer('precio').notNull(),
     vigenteDesde: text('vigente_desde').notNull().default(AHORA),
+    /** Lote de la actualizacion masiva que lo creo. null = carga puntual. */
+    loteId: integer('lote_id').references(() => lotesPrecio.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
   },
   (tabla) => [
     index('ix_precios_articulo_lista').on(tabla.articuloId, tabla.listaPrecioId, tabla.vigenteDesde),
+    index('ix_precios_lote').on(tabla.loteId),
     check('ck_precios_precio', sql`${tabla.precio} >= 0`),
   ],
 );

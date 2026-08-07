@@ -19,7 +19,7 @@ import type {
   VistaPreviaPrecio,
 } from '../../compartido/contratos';
 import { obtenerDb } from '../db/conexion';
-import { articulos, listasPrecio, precios, proveedores } from '../db/schema';
+import { articulos, listasPrecio, lotesPrecio, precios, proveedores } from '../db/schema';
 import { ejecutarSeguro, ErrorNoEncontrado, ErrorValidacion } from '../dominio/errores';
 import { emitir } from '../eventos';
 import { redondearCantidad } from '../utiles/numeros';
@@ -70,6 +70,21 @@ function precioVigente(articuloId: number, listaPrecioId: number): number | null
     .limit(1)
     .get();
   return fila?.precio ?? null;
+}
+
+/** Texto legible del cambio, para el historial. */
+function describirCambio(entrada: EntradaActualizacionPrecios): string {
+  const que =
+    entrada.modo === 'porcentaje'
+      ? `${entrada.valor > 0 ? '+' : ''}${entrada.valor}%`
+      : entrada.modo === 'monto_fijo'
+        ? `${entrada.valor > 0 ? '+' : ''}$${(entrada.valor / 100).toFixed(2)}`
+        : `fijar en $${(entrada.valor / 100).toFixed(2)}`;
+  const redondeo =
+    entrada.redondeo === undefined || entrada.redondeo === 'ninguno'
+      ? ''
+      : `, redondeo ${entrada.redondeo.replace('multiplo_', 'a multiplo de $').replace('terminado_99', 'a ,99')}`;
+  return `${que} sobre ${entrada.articuloIds.length} articulo(s)${redondeo}`;
 }
 
 export const preciosMasivoServicio = {
@@ -126,14 +141,28 @@ export const preciosMasivoServicio = {
     });
   },
 
-  /** Aplica lo que mostro la vista previa. */
-  aplicar(entrada: EntradaActualizacionPrecios): { actualizados: number } {
+  /** Aplica lo que mostro la vista previa, en un LOTE que se puede deshacer. */
+  aplicar(entrada: EntradaActualizacionPrecios): { actualizados: number; loteId: number | null } {
     const previa = preciosMasivoServicio.vistaPrevia(entrada);
 
     const resultado = ejecutarSeguro('actualizar los precios', () =>
       obtenerDb().transaction((tx) => {
         const hoy = new Date().toISOString().slice(0, 10);
         let actualizados = 0;
+
+        // El lote agrupa el cambio para poder deshacerlo entero. El costo no
+        // lleva lote: no tiene historial de vigencias donde volver.
+        const lote = entrada.sobreCosto
+          ? null
+          : tx
+              .insert(lotesPrecio)
+              .values({
+                fecha: new Date().toISOString(),
+                descripcion: describirCambio(entrada),
+                cantidadArticulos: previa.length,
+              })
+              .returning({ id: lotesPrecio.id })
+              .all()[0];
 
         for (const linea of previa) {
           if (linea.precioNuevo === linea.precioActual) continue;
@@ -144,33 +173,81 @@ export const preciosMasivoServicio = {
               .where(eq(articulos.id, linea.articuloId))
               .run();
           } else {
-            // Mismo criterio que el alta puntual: un segundo cambio en el dia
-            // corrige el del dia, no agrega un escalon al historial.
-            tx.delete(precios)
-              .where(
-                and(
-                  eq(precios.listaPrecioId, entrada.listaPrecioId),
-                  eq(precios.articuloId, linea.articuloId),
-                  eq(precios.vigenteDesde, hoy),
-                ),
-              )
-              .run();
+            // A diferencia del alta puntual, la actualizacion masiva NO pisa el
+            // precio del mismo dia: agrega una fila nueva. Si la pisara, deshacer
+            // el lote borraria tambien el precio que habia antes y los precios
+            // saltarian al de un dia anterior. Dos filas del mismo dia son
+            // correctas: fueron dos cambios reales, y el vigente es el ultimo.
             tx.insert(precios)
               .values({
                 listaPrecioId: entrada.listaPrecioId,
                 articuloId: linea.articuloId,
                 precio: linea.precioNuevo,
                 vigenteDesde: hoy,
+                loteId: lote?.id ?? null,
               })
               .run();
           }
           actualizados += 1;
         }
 
-        return { actualizados };
+        if (lote !== null && lote !== undefined && actualizados !== previa.length) {
+          tx.update(lotesPrecio)
+            .set({ cantidadArticulos: actualizados })
+            .where(eq(lotesPrecio.id, lote.id))
+            .run();
+        }
+
+        return { actualizados, loteId: lote?.id ?? null };
       }),
     );
 
+    emitir('maestros:cambio');
+    return resultado;
+  },
+
+  /** Las actualizaciones masivas hechas, de la mas reciente a la mas vieja. */
+  listarLotes(): {
+    id: number;
+    fecha: string;
+    descripcion: string;
+    cantidadArticulos: number;
+    revertido: boolean;
+  }[] {
+    return ejecutarSeguro('listar los lotes de precios', () =>
+      obtenerDb()
+        .select()
+        .from(lotesPrecio)
+        .orderBy(sql`fecha DESC, id DESC`)
+        .limit(50)
+        .all(),
+    );
+  },
+
+  /**
+   * Deshace una actualizacion masiva: borra los precios que creo, con lo que
+   * vuelve a regir el que estaba antes. El lote queda marcado como revertido en
+   * vez de borrarse, para que se vea que existio.
+   */
+  revertirLote(loteId: number): { revertidos: number } {
+    const resultado = ejecutarSeguro('revertir la actualizacion de precios', () =>
+      obtenerDb().transaction((tx) => {
+        const lote = tx.select().from(lotesPrecio).where(eq(lotesPrecio.id, loteId)).get();
+        if (!lote) throw new ErrorNoEncontrado('lote de precios', loteId);
+        if (lote.revertido) throw new ErrorValidacion('Esa actualizacion ya se habia deshecho.');
+
+        const afectados = tx
+          .select({ n: sql<number>`COUNT(*)`.mapWith(Number) })
+          .from(precios)
+          .where(eq(precios.loteId, loteId))
+          .get();
+
+        tx.delete(precios).where(eq(precios.loteId, loteId)).run();
+        tx.update(lotesPrecio).set({ revertido: true }).where(eq(lotesPrecio.id, loteId)).run();
+
+        return { revertidos: afectados?.n ?? 0 };
+      }),
+    );
     emitir('maestros:cambio');
     return resultado;
   },

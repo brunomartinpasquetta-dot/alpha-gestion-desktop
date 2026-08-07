@@ -36,6 +36,7 @@ import type {
   EntradaActualizacionPrecios,
   FamiliaVista,
   LineaReposicion,
+  LotePrecio,
   PrecioDeArticulo,
   VistaPreviaPrecio,
   ResultadoInicializacion,
@@ -314,12 +315,20 @@ export async function anularVenta(ventaId: number): Promise<ResultadoVenta> {
 
 /* ======================= ESCRITURA: maestros y operacion ================== */
 
-/** Envia un cuerpo JSON y devuelve `datos`, traduciendo el error del servidor. */
+/**
+ * Envia un cuerpo JSON y devuelve `datos`, traduciendo el error del servidor.
+ *
+ * Cuando NO hay cuerpo tampoco se manda el content-type: Fastify rechaza con
+ * 400 una peticion que se declara JSON y llega vacia. Eso rompia en silencio
+ * las acciones sin cuerpo —anular una compra, deshacer una actualizacion de
+ * precios—: el boton confirmaba y no pasaba nada.
+ */
 async function enviar<T>(ruta: string, metodo: 'POST' | 'PUT' | 'PATCH', cuerpo?: unknown): Promise<T> {
   const respuesta = await fetch(ruta, {
     method: metodo,
-    headers: { 'content-type': 'application/json' },
-    body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+    ...(cuerpo === undefined
+      ? {}
+      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo) }),
   });
   const datos = await leerJson(respuesta, ruta);
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, datos);
@@ -482,3 +491,9 @@ export const aplicarPrecios = (entrada: EntradaActualizacionPrecios): Promise<{ 
 
 export const obtenerReposicion = (criterio: 'minimo' | 'ideal'): Promise<LineaReposicion[]> =>
   pedirLista<LineaReposicion>(`/api/reposicion?criterio=${criterio}`);
+
+export const obtenerLotesPrecio = (): Promise<LotePrecio[]> =>
+  pedirLista<LotePrecio>('/api/precios/lotes');
+
+export const revertirLotePrecio = (id: number): Promise<{ revertidos: number }> =>
+  enviar<{ revertidos: number }>(`/api/precios/lotes/${id}/revertir`, 'POST');
