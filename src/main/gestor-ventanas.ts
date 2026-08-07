@@ -40,6 +40,8 @@ export interface SolicitudApertura {
 interface VentanaModulo {
   readonly ventana: BrowserWindow;
   readonly clave: string;
+  /** Clave + parametros: distingue dos comprobantes distintos. Ver identidadDe. */
+  readonly identidad: string;
   readonly titulo: string;
   readonly icono: string;
 }
@@ -98,13 +100,26 @@ function construirUrl(clave: string, params?: Readonly<Record<string, string>>):
 }
 
 /**
- * Abre el modulo pedido. Si ya hay una ventana de esa misma clave, la trae al
- * frente en vez de duplicarla: dos ventanas del mismo modulo escribiendo lo mismo
- * solo genera confusion.
+ * Identidad de una ventana a los efectos de no duplicarla. Para un modulo es su
+ * clave; para una ventana que muestra UN documento (el comprobante de una venta)
+ * es la clave MAS sus parametros, porque dos comprobantes distintos son dos
+ * ventanas distintas: sin esto, imprimir una segunda venta reusaria la ventana
+ * de la primera y mostraria el documento equivocado.
+ */
+function identidadDe(clave: string, params?: Readonly<Record<string, string>>): string {
+  const entradas = Object.entries(params ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return entradas.length === 0 ? clave : `${clave}?${new URLSearchParams(entradas).toString()}`;
+}
+
+/**
+ * Abre el modulo pedido. Si ya hay una ventana con la misma identidad, la trae
+ * al frente en vez de duplicarla: dos ventanas del mismo modulo escribiendo lo
+ * mismo solo genera confusion.
  */
 export function abrirVentana(solicitud: SolicitudApertura): number {
+  const identidad = identidadDe(solicitud.clave, solicitud.params);
   for (const [id, registro] of abiertas) {
-    if (registro.clave === solicitud.clave && !registro.ventana.isDestroyed()) {
+    if (registro.identidad === identidad && !registro.ventana.isDestroyed()) {
       if (registro.ventana.isMinimized()) registro.ventana.restore();
       registro.ventana.focus();
       return id;
@@ -149,6 +164,7 @@ export function abrirVentana(solicitud: SolicitudApertura): number {
   abiertas.set(id, {
     ventana,
     clave: solicitud.clave,
+    identidad,
     titulo: solicitud.titulo,
     icono: solicitud.icono,
   });

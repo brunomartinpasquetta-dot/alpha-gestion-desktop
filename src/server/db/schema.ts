@@ -787,6 +787,13 @@ export const comprobantes = sqliteTable(
     docTipo: integer('doc_tipo').notNull(),
     docNumero: text('doc_numero').notNull(),
     receptorNombre: text('receptor_nombre').notNull(),
+    /**
+     * Condicion del receptor frente al IVA informada a ARCA (tabla
+     * FEParamGetCondicionIvaReceptor). Se guarda para poder IMPRIMIRLA: sin
+     * esto, el comprobante impreso tendria que adivinarla y diria
+     * "Consumidor Final" aunque se haya emitido a un monotributista.
+     */
+    condicionIvaReceptor: integer('condicion_iva_receptor'),
     /** Centavos. neto + iva = total. */
     neto: integer('neto').notNull(),
     iva: integer('iva').notNull(),

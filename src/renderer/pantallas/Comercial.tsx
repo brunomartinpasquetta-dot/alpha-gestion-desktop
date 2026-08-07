@@ -303,23 +303,31 @@ export function PantallaVentas(): JSX.Element {
       );
   };
 
+  /** Abre el comprobante en su propia ventana, lista para imprimir. */
+  const imprimir = (venta: VentaVista): void => {
+    window.alfajores?.ventanas.abrir(
+      'comprobante',
+      venta.comprobanteEtiqueta ?? `Remito venta #${venta.id}`,
+      'ventas',
+      { ventaId: String(venta.id) },
+    );
+  };
+
   const columnas: readonly Columna<VentaVista>[] = [
     ...COLUMNAS_VENTAS,
     {
       clave: 'acciones',
       titulo: 'Acciones',
-      celda: (v) =>
-        v.estado === 'entregada' ? (
-          <button
-            type="button"
-            onClick={() => anular(v)}
-            className="rounded-pastilla border border-peligro-300 px-2 py-0.5 text-xs font-medium text-peligro-600 outline-none hover:bg-peligro-50 focus-visible:ring-2 focus-visible:ring-peligro-400"
-          >
-            Anular
-          </button>
-        ) : (
-          <span className="text-masa-700">—</span>
-        ),
+      celda: (v) => (
+        <div className="flex gap-1">
+          <BotonFila onClick={() => imprimir(v)}>Imprimir</BotonFila>
+          {v.estado === 'entregada' && (
+            <BotonFila onClick={() => anular(v)} tono="peligro">
+              Anular
+            </BotonFila>
+          )}
+        </div>
+      ),
     },
   ];
 

@@ -69,6 +69,7 @@ export interface DatosComprobanteAprobado {
   docTipo: number;
   docNumero: string;
   receptorNombre: string;
+  condicionIvaReceptor: number;
   neto: number;
   iva: number;
   total: number;
@@ -270,6 +271,7 @@ export const fiscalServicio = {
       docTipo,
       docNumero,
       receptorNombre: datos.receptor.nombre,
+      condicionIvaReceptor,
       neto: netoCentavos,
       iva: ivaCentavos,
       total: datos.totalCentavos,

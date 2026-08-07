@@ -1,6 +1,6 @@
 # Estado del proyecto — Alpha Gestión
 
-**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.8.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
+**Fecha:** 6 de agosto de 2026 · **Versión instalada:** v0.9.0 · **Repositorio:** `brunomartinpasquetta-dot/alpha-gestion-desktop`
 
 Este documento dice qué está terminado, qué falta y en qué orden conviene hacerlo
 para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
@@ -9,10 +9,10 @@ para llegar a una versión presentable al cliente. Se actualiza en cada entrega.
 
 ## 1. Resumen en una línea
 
-El sistema **ya opera completo**: se puede vender, comprar, producir, cobrar,
-pagar, ajustar stock, cargar recetas y precios, y facturar electrónicamente.
-Quedan **dos cosas** para presentarlo: **imprimir los comprobantes** y
-**probarlo en Windows**, que es donde va a correr.
+El sistema **ya opera completo y entrega el papel**: se puede vender, comprar,
+producir, cobrar, pagar, ajustar stock, cargar recetas y precios, facturar
+electrónicamente e **imprimir el remito o la factura con su QR**. Queda **una
+sola cosa** para presentarlo: **probarlo en Windows**, que es donde va a correr.
 
 ---
 
@@ -56,10 +56,11 @@ v0.8.0 se le quitó el diente más peligroso (la dependencia de `openssl`). Lo q
 queda por verificar es de menor calibre: permisos de red y comportamiento del
 instalador. Una revisión del código no encontró rutas POSIX ni procesos externos.
 
-**B2 · Imprimir comprobantes.**
-Hoy la venta se registra y obtiene el CAE, pero no hay forma de entregarle al
-cliente un papel. Falta el remito/factura imprimible con el QR de ARCA. Sin esto
-la fábrica no puede operar de verdad.
+~~**B2 · Imprimir comprobantes.**~~ ✅ **HECHO en v0.9.0.** Remito X y factura
+A/B en hoja A4, con el QR obligatorio de la RG 4892, el CAE y su vencimiento.
+Los datos del emisor y del receptor se congelan al emitir: un comprobante viejo
+sigue diciendo lo que decía. El remito trae el pie de conformidad para el
+reparto.
 
 ~~**B3 · Ajuste manual de stock.**~~ ✅ **HECHO en v0.8.0.** Con dos modos:
 cargar lo que se contó (el sistema calcula la diferencia) o sumar/restar. El

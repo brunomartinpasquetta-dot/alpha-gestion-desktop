@@ -31,7 +31,9 @@ export type ClaveModulo =
   | 'usuarios'
   | 'trazabilidad'
   | 'cheques'
-  | 'facturacion';
+  | 'facturacion'
+  /** Ventana de un documento concreto: recibe ?ventaId=N. No va en los menus. */
+  | 'comprobante';
 
 export interface DefinicionModulo {
   readonly clave: ClaveModulo;
@@ -185,6 +187,13 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     etiqueta: 'Cheques',
     icono: 'cheques',
     descripcion: 'Cartera de cheques recibidos y emitidos, con control de vencimientos.',
+  },
+  comprobante: {
+    clave: 'comprobante',
+    titulo: 'Comprobante',
+    etiqueta: 'Comprobante',
+    icono: 'ventas',
+    descripcion: 'Remito o factura de una venta, listo para imprimir.',
   },
   facturacion: {
     clave: 'facturacion',

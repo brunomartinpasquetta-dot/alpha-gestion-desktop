@@ -26,6 +26,7 @@ import {
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { chequesServicio } from '../servicios/cheques.servicio';
+import { comprobantesServicio } from '../servicios/comprobantes.servicio';
 import { fiscalServicio } from '../servicios/fiscal.servicio';
 import { ventasServicio } from '../servicios/ventas.servicio';
 import { produccionServicio } from '../servicios/produccion.servicio';
@@ -152,6 +153,12 @@ export function registrarRutasOperaciones(app: FastifyInstance): void {
     const entrada = validarOFallar(esquemaNuevaVenta, request.body, 'La venta enviada no es valida.');
     const datos = await ventasServicio.crearVenta(entrada);
     return reply.status(201).send({ datos });
+  });
+
+  // Todo lo necesario para imprimir el remito o la factura de una venta.
+  app.get('/api/ventas/:id/comprobante', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la venta no es valido.');
+    return reply.status(200).send({ datos: comprobantesServicio.obtenerImprimible(id) });
   });
 
   app.patch('/api/ventas/:id/anular', (request: FastifyRequest, reply: FastifyReply) => {

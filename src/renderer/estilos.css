@@ -28,3 +28,44 @@
     @apply outline-none ring-2 ring-dulce-400 ring-offset-1 ring-offset-masa-50;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Impresion de comprobantes                                                  */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * El comprobante se imprime con el dialogo del navegador sobre A4. La regla
+ * clave es `print-color-adjust`: sin ella el navegador descarta los fondos y
+ * bordes al imprimir, y el comprobante sale sin sus recuadros.
+ */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    height: auto;
+    overflow: visible;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* La ventana del modulo es flex y de alto fijo: al imprimir tiene que fluir. */
+  body * {
+    overflow: visible !important;
+  }
+
+  header:has(h1),
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Una fila del detalle no se parte entre dos hojas. */
+  tr,
+  article {
+    break-inside: avoid;
+  }
+}

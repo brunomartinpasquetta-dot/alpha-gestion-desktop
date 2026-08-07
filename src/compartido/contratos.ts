@@ -734,6 +734,11 @@ export const CONDICIONES_IVA_RECEPTOR = [
 export const CODIGO_RECEPTOR_RI = 1;
 export const CODIGO_RECEPTOR_CONSUMIDOR_FINAL = 5;
 
+/** Nombre legible de la condicion del receptor, para imprimir el comprobante. */
+export function nombreCondicionReceptor(codigo: number | null): string {
+  return CONDICIONES_IVA_RECEPTOR.find((c) => c.codigo === codigo)?.etiqueta ?? 'Consumidor Final';
+}
+
 /** Cuerpo de POST /api/ventas. La venta nace ENTREGADA: registra un hecho. */
 export interface EntradaNuevaVenta {
   clienteId?: number | null;
@@ -987,4 +992,63 @@ export interface EntradaPrecio {
   articuloId: number;
   /** Centavos por unidad base. */
   precio: number;
+}
+
+/* ========================= COMPROBANTE IMPRIMIBLE ======================== */
+
+export interface LineaComprobante {
+  codigo: string;
+  nombre: string;
+  cantidad: number;
+  unidadAbreviatura: string;
+  /** Cajas equivalentes, si el articulo se vende por caja cerrada. */
+  cajas: number | null;
+  precioUnitario: number;
+  subtotal: number;
+}
+
+/**
+ * Todo lo necesario para imprimir un remito o una factura, congelado en el
+ * momento de la emision. Los datos del emisor y del receptor viajan aca y no se
+ * releen de los maestros: si el cliente cambia de direccion, el comprobante
+ * viejo tiene que seguir diciendo lo que decia.
+ */
+export interface ComprobanteImprimible {
+  ventaId: number;
+  fecha: string;
+  estado: EstadoVenta;
+  formaPago: FormaPago;
+  notas: string | null;
+
+  emisor: {
+    razonSocial: string;
+    cuit: string;
+    direccion: string | null;
+    condicionIva: string;
+    iibb: string | null;
+  };
+
+  receptor: {
+    nombre: string;
+    cuit: string | null;
+    direccion: string | null;
+    condicionIva: string;
+  };
+
+  /** null = remito interno sin CAE. */
+  fiscal: {
+    letra: 'A' | 'B';
+    tipo: string;
+    puntoVenta: number;
+    numero: number;
+    etiqueta: string;
+    cae: string;
+    caeVencimiento: string | null;
+    neto: number;
+    iva: number;
+    urlQr: string | null;
+  } | null;
+
+  lineas: LineaComprobante[];
+  total: number;
 }

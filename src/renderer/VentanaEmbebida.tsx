@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { Comprobante } from './pantallas/Comprobante';
 import { EstadoVacio } from './componentes/comunes';
 import { PanelLedger } from './componentes/PanelLedger';
 import { PantallaCaja, PantallaCuentasCorrientes } from './pantallas/Finanzas';
@@ -79,8 +80,21 @@ function Simple({ children }: { readonly children: JSX.Element }): JSX.Element {
   return <div className="min-h-0 flex-1 overflow-auto p-5">{children}</div>;
 }
 
-function contenidoDe(clave: ClaveModulo): JSX.Element {
+function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
   switch (clave) {
+    case 'comprobante': {
+      const ventaId = Number(params.get('ventaId') ?? '');
+      return Number.isInteger(ventaId) && ventaId > 0 ? (
+        <Simple><Comprobante ventaId={ventaId} /></Simple>
+      ) : (
+        <Simple>
+          <EstadoVacio
+            titulo="Comprobante sin venta"
+            detalle="Esta ventana necesita saber de que venta se trata. Abrila desde el boton Imprimir de la grilla de ventas."
+          />
+        </Simple>
+      );
+    }
     case 'tablero':
       return <Simple><PantallaInicio /></Simple>;
     case 'stock-insumos':
@@ -143,6 +157,8 @@ export function VentanaEmbebida({ clave }: { readonly clave: string }): JSX.Elem
   }
 
   const definicion = definicionDeModulo(clave);
+  // Los parametros viajan en el query del hash: #/embedded/<clave>?ventaId=42
+  const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
 
   // El titulo del HTML es unico para todo el bundle: cada ventana de modulo pisa
   // el suyo para que la barra del sistema y el conmutador de apps digan de que
@@ -162,7 +178,7 @@ export function VentanaEmbebida({ clave }: { readonly clave: string }): JSX.Elem
         </div>
       </header>
 
-      {contenidoDe(clave)}
+      {contenidoDe(clave, params)}
     </div>
   );
 }

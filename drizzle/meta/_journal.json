@@ -43,6 +43,13 @@
       "when": 1786050870671,
       "tag": "0005_compra_anulada",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786060860628,
+      "tag": "0006_condicion_receptor",
+      "breakpoints": true
     }
   ]
 }

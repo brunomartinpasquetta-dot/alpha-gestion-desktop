@@ -29,6 +29,7 @@ import type {
   EntradaPrecio,
   EntradaReceta,
   ResultadoAjuste,
+  ComprobanteImprimible,
   ResultadoCobroPago,
   ResultadoCompra,
   UnidadMedidaVista,
@@ -194,6 +195,9 @@ export const obtenerUsuarios = (): Promise<UsuarioVista[]> => pedirLista<Usuario
 
 export const obtenerUnidades = (): Promise<UnidadMedidaVista[]> =>
   pedirLista<UnidadMedidaVista>('/api/unidades');
+
+export const obtenerComprobante = (ventaId: number): Promise<ComprobanteImprimible> =>
+  pedirItem<ComprobanteImprimible>(`/api/ventas/${ventaId}/comprobante`);
 
 /** Aplica una transicion de estado a un pedido. Lanza con el mensaje del servidor si es invalida. */
 export async function cambiarEstadoPedido(pedidoId: number, estado: string): Promise<void> {

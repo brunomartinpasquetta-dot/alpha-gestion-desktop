@@ -1,0 +1,1 @@
+ALTER TABLE `comprobantes` ADD `condicion_iva_receptor` integer;
