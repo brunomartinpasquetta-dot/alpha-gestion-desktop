@@ -27,8 +27,10 @@ import bcrypt from 'bcrypt';
 
 import { obtenerDb } from '../db/conexion';
 import {
+  ALICUOTAS_IVA,
   articulos,
   clientes,
+  familias,
   movimientosStock,
   proveedores,
   unidadesMedida,
@@ -59,6 +61,39 @@ function cuitNormalizado(valor: string | null | undefined): string | null {
   return digitos;
 }
 
+/**
+ * Arma los campos del articulo desde la entrada del formulario. Vive aparte
+ * porque el alta y la edicion tienen que escribir EXACTAMENTE lo mismo: cuando
+ * cada una armaba su propio objeto, un campo nuevo se agregaba en una y se
+ * olvidaba en la otra.
+ */
+function camposArticulo(entrada: EntradaArticulo, codigo: string) {
+  const alicuota = entrada.alicuotaIva ?? 21;
+  if (!ALICUOTAS_IVA.includes(alicuota as (typeof ALICUOTAS_IVA)[number])) {
+    throw new ErrorValidacion(
+      `La alicuota de IVA ${alicuota}% no existe en ARCA. Validas: ${ALICUOTAS_IVA.join(', ')}.`,
+    );
+  }
+  return {
+    codigo,
+    nombre: exigirNombre(entrada.nombre),
+    tipo: entrada.tipo,
+    unidadBaseId: entrada.unidadBaseId,
+    stockMin: entrada.stockMin ?? null,
+    stockIdeal: entrada.stockIdeal ?? null,
+    codigoBarras: textoOpcional(entrada.codigoBarras),
+    marca: textoOpcional(entrada.marca),
+    familiaId: entrada.familiaId ?? null,
+    proveedorHabitualId: entrada.proveedorHabitualId ?? null,
+    alicuotaIva: alicuota,
+    porPeso: entrada.porPeso ?? false,
+    notas: textoOpcional(entrada.notas),
+    // Las cajas cerradas solo tienen sentido en lo que se vende por caja.
+    unidadesPorCaja: entrada.tipo === 'producto_terminado' ? (entrada.unidadesPorCaja ?? null) : null,
+    costoActual: entrada.costoActual ?? null,
+  };
+}
+
 function exigirNombre(nombre: string): string {
   const limpio = nombre.trim();
   if (limpio.length < 2) throw new ErrorValidacion('El nombre tiene que tener al menos 2 caracteres.');
@@ -81,6 +116,38 @@ function vistaProveedor(id: number): ProveedorVista {
   const fila = listarProveedores().find((p) => p.id === id);
   if (!fila) throw new ErrorNoEncontrado('proveedor', id);
   return fila;
+}
+
+/** Familia y proveedor habitual, si vienen, tienen que existir. */
+function validarReferencias(entrada: EntradaArticulo): void {
+  const db = obtenerDb();
+  if (entrada.familiaId != null) {
+    const familia = db.select({ id: familias.id }).from(familias).where(eq(familias.id, entrada.familiaId)).get();
+    if (!familia) throw new ErrorNoEncontrado('familia', entrada.familiaId);
+  }
+  if (entrada.proveedorHabitualId != null) {
+    const proveedor = db
+      .select({ id: proveedores.id })
+      .from(proveedores)
+      .where(eq(proveedores.id, entrada.proveedorHabitualId))
+      .get();
+    if (!proveedor) throw new ErrorNoEncontrado('proveedor', entrada.proveedorHabitualId);
+  }
+}
+
+/** El codigo de barras identifica al articulo en la balanza y el lector: unico. */
+function validarCodigoBarras(codigoBarras: string | null | undefined, idPropio: number | null): void {
+  const limpio = codigoBarras?.trim();
+  if (!limpio) return;
+  const db = obtenerDb();
+  const condicion =
+    idPropio === null
+      ? eq(articulos.codigoBarras, limpio)
+      : and(eq(articulos.codigoBarras, limpio), ne(articulos.id, idPropio));
+  const duplicado = db.select({ codigo: articulos.codigo }).from(articulos).where(condicion).get();
+  if (duplicado) {
+    throw new ErrorConflicto(`El codigo de barras ${limpio} ya lo usa el articulo ${duplicado.codigo}.`);
+  }
 }
 
 export const maestrosServicio = {
@@ -229,23 +296,12 @@ export const maestrosServicio = {
         .where(eq(unidadesMedida.id, entrada.unidadBaseId))
         .get();
       if (!unidad) throw new ErrorNoEncontrado('unidad de medida', entrada.unidadBaseId);
-
-      // Las cajas cerradas solo tienen sentido en lo que se vende por caja.
-      const unidadesPorCaja =
-        entrada.tipo === 'producto_terminado' ? (entrada.unidadesPorCaja ?? null) : null;
+      validarReferencias(entrada);
+      validarCodigoBarras(entrada.codigoBarras, null);
 
       const fila = db
         .insert(articulos)
-        .values({
-          codigo,
-          nombre: exigirNombre(entrada.nombre),
-          tipo: entrada.tipo,
-          unidadBaseId: entrada.unidadBaseId,
-          stockMin: entrada.stockMin ?? null,
-          unidadesPorCaja,
-          costoActual: entrada.costoActual ?? null,
-          activo: true,
-        })
+        .values({ ...camposArticulo(entrada, codigo), activo: true })
         .returning({ id: articulos.id })
         .all()[0];
       if (!fila) throw new ErrorValidacion('La base no devolvio el articulo insertado.');
@@ -270,6 +326,8 @@ export const maestrosServicio = {
         .where(and(eq(articulos.codigo, codigo), ne(articulos.id, id)))
         .get();
       if (duplicado) throw new ErrorConflicto(`Ya existe otro articulo con el codigo ${codigo}.`);
+      validarReferencias(entrada);
+      validarCodigoBarras(entrada.codigoBarras, id);
 
       // Cambiar el tipo con movimientos escritos mezclaria stocks de naturaleza
       // distinta y dejaria el ledger historico bajo un tipo que ya no existe.
@@ -288,19 +346,7 @@ export const maestrosServicio = {
         }
       }
 
-      db.update(articulos)
-        .set({
-          codigo,
-          nombre: exigirNombre(entrada.nombre),
-          tipo: entrada.tipo,
-          unidadBaseId: entrada.unidadBaseId,
-          stockMin: entrada.stockMin ?? null,
-          unidadesPorCaja:
-            entrada.tipo === 'producto_terminado' ? (entrada.unidadesPorCaja ?? null) : null,
-          costoActual: entrada.costoActual ?? null,
-        })
-        .where(eq(articulos.id, id))
-        .run();
+      db.update(articulos).set(camposArticulo(entrada, codigo)).where(eq(articulos.id, id)).run();
       return id;
     });
   },

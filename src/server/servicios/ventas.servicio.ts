@@ -186,10 +186,32 @@ export const ventasServicio = {
               .get();
       if (clienteId !== null && !receptor) throw new ErrorNoEncontrado('cliente', clienteId);
 
+      // Lo vendido se agrupa por alicuota de IVA: cada articulo tiene la suya y
+      // la factura las declara por separado.
+      const alicuotaPorArticulo = new Map<number, number>();
+      for (const item of items) {
+        const fila = db
+          .select({ alicuota: articulos.alicuotaIva })
+          .from(articulos)
+          .where(eq(articulos.id, item.articuloId))
+          .get();
+        alicuotaPorArticulo.set(item.articuloId, fila?.alicuota ?? 21);
+      }
+      const acumulado = new Map<number, number>();
+      for (const item of items) {
+        const alicuota = alicuotaPorArticulo.get(item.articuloId) ?? 21;
+        acumulado.set(alicuota, (acumulado.get(alicuota) ?? 0) + item.subtotal);
+      }
+      const porAlicuota = [...acumulado.entries()].map(([alicuota, totalCentavos]) => ({
+        alicuota,
+        totalCentavos,
+      }));
+
       // Si ARCA rechaza, esto lanza y no se escribio una sola fila.
       comprobante = await fiscalServicio.emitirComprobante({
         tipo: tipoComprobante,
         totalCentavos: totalPrevisto,
+        porAlicuota,
         receptor: {
           nombre: receptor?.nombre ?? 'Consumidor Final',
           cuit: receptor?.cuit ?? null,

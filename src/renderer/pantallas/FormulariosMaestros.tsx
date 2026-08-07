@@ -6,8 +6,10 @@
 
 import { useEffect, useState } from 'react';
 
+import { ALICUOTAS_IVA_UI } from '../../compartido/contratos';
 import type {
   ArticuloConStock,
+  FamiliaVista,
   ClienteVista,
   EntradaArticulo,
   EntradaCliente,
@@ -36,9 +38,12 @@ import {
   crearArticulo,
   actualizarUsuario,
   crearCliente,
+  crearFamilia,
   crearProveedor,
   crearUsuario,
+  obtenerFamilias,
   obtenerListasPrecio,
+  obtenerProveedores,
 } from '../servicios/cliente';
 
 const TIPOS_CLIENTE_UI: readonly { valor: TipoCliente; etiqueta: string }[] = [
@@ -235,14 +240,52 @@ export function FormularioArticulo({
     articulo?.unidadBaseId ?? unidades[0]?.id ?? '',
   );
   const [stockMin, setStockMin] = useState<number | ''>(articulo?.stockMin ?? '');
+  const [stockIdeal, setStockIdeal] = useState<number | ''>(articulo?.stockIdeal ?? '');
+  const [codigoBarras, setCodigoBarras] = useState(articulo?.codigoBarras ?? '');
+  const [marca, setMarca] = useState(articulo?.marca ?? '');
+  const [familiaId, setFamiliaId] = useState<number | ''>(articulo?.familiaId ?? '');
+  const [proveedorHabitualId, setProveedorHabitualId] = useState<number | ''>(
+    articulo?.proveedorHabitualId ?? '',
+  );
+  const [alicuotaIva, setAlicuotaIva] = useState<number>(articulo?.alicuotaIva ?? 21);
+  const [porPeso, setPorPeso] = useState(articulo?.porPeso ?? false);
+  const [notas, setNotas] = useState(articulo?.notas ?? '');
   const [unidadesPorCaja, setUnidadesPorCaja] = useState<number | ''>(articulo?.unidadesPorCaja ?? 12);
   const [costoActual, setCostoActual] = useState(articulo?.costoActual ?? 0);
+
+  const [familias, setFamilias] = useState<FamiliaVista[]>([]);
+  const [proveedores, setProveedores] = useState<ProveedorVista[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    void obtenerFamilias().then(setFamilias).catch(() => setFamilias([]));
+    void obtenerProveedores()
+      .then((lista) => setProveedores(lista.filter((p) => p.activo)))
+      .catch(() => setProveedores([]));
+  }, []);
+
+  /** Crea la familia sin salir del formulario: cortar el flujo para volver a otra pantalla es lo que hace que nadie las use. */
+  const agregarFamilia = (): void => {
+    const nombreFamilia = window.prompt('Nombre de la nueva familia (rubro):');
+    if (nombreFamilia === null || nombreFamilia.trim() === '') return;
+    crearFamilia(nombreFamilia.trim())
+      .then((f) => obtenerFamilias().then((lista) => {
+        setFamilias(lista);
+        setFamiliaId(f.id);
+      }))
+      .catch((causa: unknown) => setError(mensajeDeError(causa)));
+  };
+
+  const unidad = unidades.find((u) => u.id === unidadBaseId);
 
   const guardar = (): void => {
     if (unidadBaseId === '') {
       setError('Elegi la unidad de medida base.');
+      return;
+    }
+    if (stockMin !== '' && stockIdeal !== '' && Number(stockIdeal) < Number(stockMin)) {
+      setError('El stock ideal no puede ser menor que el minimo: es hasta donde se repone.');
       return;
     }
     setGuardando(true);
@@ -253,6 +296,14 @@ export function FormularioArticulo({
       tipo,
       unidadBaseId,
       stockMin: stockMin === '' ? null : stockMin,
+      stockIdeal: stockIdeal === '' ? null : stockIdeal,
+      codigoBarras: codigoBarras.trim() || null,
+      marca: marca.trim() || null,
+      familiaId: familiaId === '' ? null : familiaId,
+      proveedorHabitualId: proveedorHabitualId === '' ? null : proveedorHabitualId,
+      alicuotaIva,
+      porPeso,
+      notas: notas.trim() || null,
       unidadesPorCaja: tipo === 'producto_terminado' && unidadesPorCaja !== '' ? unidadesPorCaja : null,
       costoActual: costoActual > 0 ? costoActual : null,
     };
@@ -269,24 +320,46 @@ export function FormularioArticulo({
   return (
     <ModalFormulario
       titulo={articulo === null ? 'Nuevo articulo' : `Editar ${articulo.nombre}`}
+      ancho="max-w-2xl"
       error={error}
       guardando={guardando}
       puedeGuardar={nombre.trim().length >= 2 && codigo.trim().length >= 2}
       alCerrar={alCerrar}
       alGuardar={guardar}
+      pieIzquierdo={
+        articulo !== null ? (
+          <span className="text-sm text-masa-800">
+            Stock actual: <strong className="font-mono">{articulo.stock} {articulo.unidadAbreviatura}</strong>
+          </span>
+        ) : undefined
+      }
     >
+      {/* ---------------------------- Identificacion --------------------------- */}
       <Fila>
         <CampoTexto
           id="a-codigo"
-          rotulo="Codigo"
+          rotulo="Codigo interno"
           valor={codigo}
           alCambiar={setCodigo}
           requerido
           maximo={40}
-          marcador="PT-ALF-CHO"
-          ayuda="Se guarda en mayusculas y no se puede repetir."
+          marcador="MP-HAR-001"
+          ayuda="En mayusculas, no se repite."
         />
+        <CampoTexto
+          id="a-barras"
+          rotulo="Codigo de barras"
+          valor={codigoBarras}
+          alCambiar={setCodigoBarras}
+          maximo={40}
+          marcador="7790000000000"
+          ayuda="Para el lector. Opcional."
+        />
+      </Fila>
+
+      <Fila>
         <CampoTexto id="a-nombre" rotulo="Nombre" valor={nombre} alCambiar={setNombre} requerido maximo={120} />
+        <CampoTexto id="a-marca" rotulo="Marca" valor={marca} alCambiar={setMarca} maximo={80} />
       </Fila>
 
       <CampoOpciones
@@ -301,6 +374,37 @@ export function FormularioArticulo({
         }
       />
 
+      {/* ------------------------- Clasificacion y compra ---------------------- */}
+      <Fila>
+        <div>
+          <CampoSelector
+            id="a-familia"
+            rotulo="Familia / rubro"
+            valor={familiaId}
+            vacio="Sin clasificar"
+            opciones={familias.map((f) => ({ valor: f.id, etiqueta: f.nombre }))}
+            alCambiar={(v) => setFamiliaId(v === '' ? '' : Number(v))}
+          />
+          <button
+            type="button"
+            onClick={agregarFamilia}
+            className="mt-1 text-xs font-medium text-dulce-700 underline outline-none hover:text-dulce-800"
+          >
+            + Crear familia nueva
+          </button>
+        </div>
+        <CampoSelector
+          id="a-proveedor"
+          rotulo="Proveedor habitual"
+          valor={proveedorHabitualId}
+          vacio="Sin proveedor fijo"
+          opciones={proveedores.map((p) => ({ valor: p.id, etiqueta: p.nombre }))}
+          alCambiar={(v) => setProveedorHabitualId(v === '' ? '' : Number(v))}
+          ayuda="A quien se le compra normalmente."
+        />
+      </Fila>
+
+      {/* --------------------------- Stock y unidades -------------------------- */}
       <Fila>
         <CampoSelector
           id="a-unidad"
@@ -310,16 +414,6 @@ export function FormularioArticulo({
           alCambiar={(v) => setUnidadBaseId(v === '' ? '' : Number(v))}
           ayuda="En esta unidad vive el stock."
         />
-        <CampoNumero
-          id="a-stockmin"
-          rotulo="Stock minimo"
-          valor={stockMin}
-          alCambiar={setStockMin}
-          ayuda="Debajo de este valor se marca en rojo."
-        />
-      </Fila>
-
-      <Fila>
         {tipo === 'producto_terminado' && (
           <CampoNumero
             id="a-upc"
@@ -331,6 +425,27 @@ export function FormularioArticulo({
             ayuda="Los clientes piden cajas cerradas."
           />
         )}
+      </Fila>
+
+      <Fila>
+        <CampoNumero
+          id="a-stockmin"
+          rotulo={`Stock minimo${unidad !== undefined ? '' : ''}`}
+          valor={stockMin}
+          alCambiar={setStockMin}
+          ayuda="Debajo de esto se marca en rojo."
+        />
+        <CampoNumero
+          id="a-stockideal"
+          rotulo="Stock ideal"
+          valor={stockIdeal}
+          alCambiar={setStockIdeal}
+          ayuda="Hasta aca se repone. Define cuanto comprar."
+        />
+      </Fila>
+
+      {/* ------------------------------ Precios e IVA -------------------------- */}
+      <Fila>
         <CampoMoneda
           id="a-costo"
           rotulo="Costo por unidad"
@@ -338,7 +453,27 @@ export function FormularioArticulo({
           alCambiar={setCostoActual}
           ayuda="Se actualiza solo con cada compra."
         />
+        <CampoSelector
+          id="a-iva"
+          rotulo="Alicuota de IVA"
+          valor={alicuotaIva}
+          opciones={ALICUOTAS_IVA_UI.map((a) => ({ valor: a.valor, etiqueta: a.etiqueta }))}
+          alCambiar={(v) => setAlicuotaIva(v === '' ? 21 : Number(v))}
+          ayuda="Con esto se desglosa la factura."
+        />
       </Fila>
+
+      <label className="flex items-center gap-2 text-sm text-masa-900">
+        <input
+          type="checkbox"
+          checked={porPeso}
+          onChange={(e) => setPorPeso(e.target.checked)}
+          className="h-4 w-4"
+        />
+        Se vende por peso (la balanza define la cantidad)
+      </label>
+
+      <CampoTexto id="a-notas" rotulo="Notas" valor={notas} alCambiar={setNotas} maximo={500} />
     </ModalFormulario>
   );
 }

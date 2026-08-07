@@ -72,6 +72,16 @@ const DESCRIPCION_SIGNO: Readonly<Record<Exclude<SignoPermitido, 'ambos'>, strin
   negativo: 'negativa (egreso)',
 };
 
+/**
+ * Cuanto falta para llegar al stock ideal. Es la respuesta a la pregunta que
+ * sigue a "falta harina": cuanta comprar. Solo tiene sentido si el articulo esta
+ * por debajo del ideal; en cualquier otro caso es cero.
+ */
+function calcularAReponer(stock: number, ideal: number | null): number {
+  if (ideal === null || ideal <= 0 || stock >= ideal) return 0;
+  return redondearCantidad(ideal - stock);
+}
+
 /** Convierte la fila cruda del repositorio en la vista de dominio del saldo. */
 function aSaldoStock(fila: FilaArticuloConStock): SaldoStock {
   return {
@@ -82,8 +92,13 @@ function aSaldoStock(fila: FilaArticuloConStock): SaldoStock {
     unidadAbreviatura: fila.unidadAbreviatura,
     stock: fila.stock,
     stockMin: fila.stockMin,
+    stockIdeal: fila.stockIdeal,
+    marca: fila.marca,
+    familiaNombre: fila.familiaNombre,
+    proveedorHabitualNombre: fila.proveedorHabitualNombre,
     unidadesPorCaja: fila.unidadesPorCaja,
     bajoMinimo: estaBajoMinimo(fila.stock, fila.stockMin),
+    aReponer: calcularAReponer(fila.stock, fila.stockIdeal),
   };
 }
 
@@ -97,11 +112,22 @@ function aArticuloConStock(fila: FilaArticuloConStock): ArticuloConStock {
     unidadBaseId: fila.unidadBaseId,
     unidadAbreviatura: fila.unidadAbreviatura,
     stockMin: fila.stockMin,
+    stockIdeal: fila.stockIdeal,
+    codigoBarras: fila.codigoBarras,
+    marca: fila.marca,
+    familiaId: fila.familiaId,
+    familiaNombre: fila.familiaNombre,
+    proveedorHabitualId: fila.proveedorHabitualId,
+    proveedorHabitualNombre: fila.proveedorHabitualNombre,
+    alicuotaIva: fila.alicuotaIva,
+    porPeso: fila.porPeso,
+    notas: fila.notas,
     unidadesPorCaja: fila.unidadesPorCaja,
     costoActual: fila.costoActual,
     activo: fila.activo,
     stock: fila.stock,
     bajoMinimo: estaBajoMinimo(fila.stock, fila.stockMin),
+    aReponer: calcularAReponer(fila.stock, fila.stockIdeal),
   };
 }
 
@@ -190,7 +216,9 @@ function resolverTipos(opciones: OpcionesListadoArticulos): readonly TipoArticul
       { grupo },
     );
   }
-  const tiposDelGrupo = TIPOS_POR_GRUPO[grupo];
+  // El grupo ya se valido arriba, asi que la clave existe; el `?? []` es para
+  // que el chequeo de indices de TypeScript no obligue a un assert.
+  const tiposDelGrupo = TIPOS_POR_GRUPO[grupo] ?? [];
   if (tipo === undefined) return tiposDelGrupo;
 
   // Pedir un tipo que no pertenece al grupo es una contradiccion, no un filtro vacio.

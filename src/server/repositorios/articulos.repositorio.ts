@@ -42,6 +42,16 @@ export interface FilaArticuloConStock {
   unidadBaseId: number;
   unidadAbreviatura: string;
   stockMin: number | null;
+  stockIdeal: number | null;
+  codigoBarras: string | null;
+  marca: string | null;
+  familiaId: number | null;
+  familiaNombre: string | null;
+  proveedorHabitualId: number | null;
+  proveedorHabitualNombre: string | null;
+  alicuotaIva: number;
+  porPeso: boolean;
+  notas: string | null;
   unidadesPorCaja: number | null;
   costoActual: number | null;
   activo: boolean;
@@ -63,6 +73,18 @@ const COLUMNAS_CON_STOCK = {
   unidadBaseId: articulos.unidadBaseId,
   unidadAbreviatura: unidadesMedida.abreviatura,
   stockMin: articulos.stockMin,
+  stockIdeal: articulos.stockIdeal,
+  codigoBarras: articulos.codigoBarras,
+  marca: articulos.marca,
+  familiaId: articulos.familiaId,
+  // Familia y proveedor por subconsulta: son opcionales y sumar dos LEFT JOIN
+  // mas al agregado del ledger complica la lectura sin ganar nada medible.
+  familiaNombre: sql<string | null>`(SELECT nombre FROM familias WHERE id = ${articulos.familiaId})`,
+  proveedorHabitualId: articulos.proveedorHabitualId,
+  proveedorHabitualNombre: sql<string | null>`(SELECT nombre FROM proveedores WHERE id = ${articulos.proveedorHabitualId})`,
+  alicuotaIva: articulos.alicuotaIva,
+  porPeso: articulos.porPeso,
+  notas: articulos.notas,
   unidadesPorCaja: articulos.unidadesPorCaja,
   costoActual: articulos.costoActual,
   activo: articulos.activo,

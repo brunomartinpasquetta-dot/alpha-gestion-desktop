@@ -33,6 +33,7 @@ import type {
   ResultadoAjuste,
   ComprobanteImprimible,
   DatosExistentes,
+  FamiliaVista,
   ResultadoInicializacion,
   ResultadoCobroPago,
   ResultadoCompra,
@@ -437,3 +438,11 @@ export const crearPedido = (entrada: EntradaNuevoPedido): Promise<PedidoVista> =
 
 export const actualizarPedido = (id: number, entrada: EntradaNuevoPedido): Promise<{ id: number }> =>
   enviar<{ id: number }>(`/api/pedidos/${id}`, 'PUT', entrada);
+
+/* -------------------------------- Familias -------------------------------- */
+
+export const obtenerFamilias = (): Promise<FamiliaVista[]> =>
+  pedirLista<FamiliaVista>('/api/familias');
+
+export const crearFamilia = (nombre: string, padreId?: number | null): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/familias', 'POST', { nombre, padreId: padreId ?? null });

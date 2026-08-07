@@ -29,8 +29,16 @@ const ID_UNICA = 'unica';
 /** Codigos ARCA de tipo de comprobante. */
 export const CODIGOS_COMPROBANTE = { factura_a: 1, factura_b: 6 } as const;
 
-/** Alicuota 21% en la tabla de ARCA. */
-const ALICUOTA_21 = 5;
+/**
+ * Codigo que usa ARCA para cada alicuota. La tabla es de ARCA, no nuestra: el
+ * 21% es el 5, no el 21.
+ */
+const CODIGO_ALICUOTA_ARCA: Readonly<Record<number, number>> = {
+  0: 3,
+  10.5: 4,
+  21: 5,
+  27: 6,
+};
 
 /** Carpeta de cache del TA, al lado de la base (userData/arca en produccion). */
 function carpetaCacheArca(): string {
@@ -174,6 +182,12 @@ export const fiscalServicio = {
   async emitirComprobante(datos: {
     tipo: Exclude<TipoComprobante, 'remito'>;
     totalCentavos: number;
+    /**
+     * Importe vendido POR ALICUOTA, en centavos y con el IVA incluido. Antes se
+     * asumia 21% para todo, lo que declaraba mal cualquier articulo con otra
+     * alicuota —y ARCA cruza esos numeros—.
+     */
+    porAlicuota: readonly { alicuota: number; totalCentavos: number }[];
     receptor: { nombre: string; cuit: string | null; condicionIva?: number };
   }): Promise<DatosComprobanteAprobado> {
     const config = obtenerFila();
@@ -207,10 +221,31 @@ export const fiscalServicio = {
           ? datos.receptor.condicionIva
           : CODIGO_RECEPTOR_CONSUMIDOR_FINAL;
 
-    // Precios de venta son FINALES (IVA incluido): neto = total / 1.21.
-    const netoCentavos = Math.round(datos.totalCentavos / 1.21);
-    const ivaCentavos = datos.totalCentavos - netoCentavos;
-    const neto = netoCentavos / 100;
+    // Los precios de venta son FINALES (IVA incluido): de cada grupo se extrae
+    // su neto segun SU alicuota, y el IVA es la diferencia.
+    const grupos = datos.porAlicuota
+      .filter((g) => g.totalCentavos > 0)
+      .map((g) => {
+        const codigo = CODIGO_ALICUOTA_ARCA[g.alicuota];
+        if (codigo === undefined) {
+          throw new ErrorReglaNegocio(
+            `La alicuota ${g.alicuota}% no existe en la tabla de ARCA. Corregi el articulo.`,
+          );
+        }
+        const netoGrupo = Math.round(g.totalCentavos / (1 + g.alicuota / 100));
+        return {
+          codigo,
+          netoCentavos: netoGrupo,
+          ivaCentavos: g.totalCentavos - netoGrupo,
+        };
+      });
+
+    const netoCentavos = grupos.reduce((suma, g) => suma + g.netoCentavos, 0);
+    const ivaCentavos = grupos.reduce((suma, g) => suma + g.ivaCentavos, 0);
+    // Si el redondeo por grupo no cierra contra el total, la diferencia va al
+    // neto: ARCA rechaza el comprobante si neto + IVA no da exactamente el total.
+    const netoAjustado = netoCentavos + (datos.totalCentavos - netoCentavos - ivaCentavos);
+    const neto = netoAjustado / 100;
     const iva = ivaCentavos / 100;
     const total = datos.totalCentavos / 100;
 
@@ -239,7 +274,11 @@ export const fiscalServicio = {
         iva,
         total,
         condicionIvaReceptor,
-        detallesIva: [{ id: ALICUOTA_21, base: neto, importe: iva }],
+        detallesIva: grupos.map((g) => ({
+          id: g.codigo,
+          base: g.netoCentavos / 100,
+          importe: g.ivaCentavos / 100,
+        })),
       });
     } catch (error) {
       const detalle = error instanceof Error ? error.message : String(error);
@@ -272,7 +311,7 @@ export const fiscalServicio = {
       docNumero,
       receptorNombre: datos.receptor.nombre,
       condicionIvaReceptor,
-      neto: netoCentavos,
+      neto: netoAjustado,
       iva: ivaCentavos,
       total: datos.totalCentavos,
       cae: aprobado.cae,

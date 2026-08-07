@@ -48,8 +48,20 @@ function pastillaDeStock(bajoMinimo: boolean): JSX.Element {
 function columnasSaldo(): readonly Columna<SaldoStock>[] {
   return [
     { clave: 'codigo', titulo: 'Codigo', celda: (a) => <span className="font-mono">{a.codigo}</span> },
-    { clave: 'nombre', titulo: 'Articulo', celda: (a) => a.nombre },
-    { clave: 'tipo', titulo: 'Tipo', celda: (a) => ETIQUETA_TIPO_ARTICULO[a.tipo] },
+    {
+      clave: 'nombre',
+      titulo: 'Articulo',
+      celda: (a) => (
+        <div className="min-w-0">
+          <p className="truncate text-masa-900">{a.nombre}</p>
+          {(a.marca !== null || a.familiaNombre !== null) && (
+            <p className="truncate text-micro text-masa-700">
+              {[a.marca, a.familiaNombre].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+      ),
+    },
     { clave: 'unidad', titulo: 'Unidad', celda: (a) => a.unidadAbreviatura },
     { clave: 'stock', titulo: 'Stock', celda: (a) => formatearCantidad(a.stock), numerica: true },
     {
@@ -60,9 +72,34 @@ function columnasSaldo(): readonly Columna<SaldoStock>[] {
     },
     {
       clave: 'minimo',
-      titulo: 'Minimo',
-      celda: (a) => (a.stockMin === null ? '—' : formatearCantidad(a.stockMin)),
+      titulo: 'Min. / Ideal',
+      celda: (a) => (
+        <span className="text-masa-800">
+          {a.stockMin === null ? '—' : formatearCantidad(a.stockMin)}
+          <span className="text-masa-700"> / </span>
+          {a.stockIdeal === null ? '—' : formatearCantidad(a.stockIdeal)}
+        </span>
+      ),
       numerica: true,
+    },
+    {
+      // La pregunta que sigue a "falta harina" es "cuanta compro": esta columna
+      // la responde sin que nadie tenga que restar.
+      clave: 'reponer',
+      titulo: 'A reponer',
+      celda: (a) =>
+        a.aReponer > 0 ? (
+          <span className="font-semibold text-alerta-700">{formatearCantidad(a.aReponer)}</span>
+        ) : (
+          <span className="text-masa-700">—</span>
+        ),
+      numerica: true,
+    },
+    {
+      clave: 'proveedor',
+      titulo: 'Proveedor',
+      celda: (a) =>
+        a.proveedorHabitualNombre ?? <span className="text-masa-700">—</span>,
     },
     { clave: 'estado', titulo: 'Estado', celda: (a) => pastillaDeStock(a.bajoMinimo) },
   ];

@@ -64,6 +64,14 @@ const esquemaArticulo = z.object({
   tipo: z.enum(TIPOS_ARTICULO),
   unidadBaseId: z.number().int().positive(),
   stockMin: z.number().min(0).max(1_000_000).nullable().optional(),
+  stockIdeal: z.number().min(0).max(1_000_000).nullable().optional(),
+  codigoBarras: textoOpcional(40),
+  marca: textoOpcional(80),
+  familiaId: z.number().int().positive().nullable().optional(),
+  proveedorHabitualId: z.number().int().positive().nullable().optional(),
+  alicuotaIva: z.number().optional(),
+  porPeso: z.boolean().optional(),
+  notas: textoOpcional(500),
   unidadesPorCaja: z.number().int().min(1).max(1000).nullable().optional(),
   costoActual: z.number().int().min(0).nullable().optional(),
 });
@@ -335,6 +343,23 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
   app.delete('/api/listas-precio/precios/:id', (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = validarOFallar(esquemaId, request.params, 'El identificador del precio no es valido.');
     return reply.status(200).send({ datos: ajustesServicio.borrarPrecio(id) });
+  });
+
+  /* -------------------------------- Familias ------------------------------- */
+
+  app.get('/api/familias', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: ajustesServicio.listarFamilias() });
+  });
+
+  app.post('/api/familias', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(
+      z.object({ nombre: z.string().min(2).max(80), padreId: z.number().int().positive().nullable().optional() }),
+      request.body,
+      'La familia enviada no es valida.',
+    );
+    return reply
+      .status(201)
+      .send({ datos: ajustesServicio.crearFamilia(entrada.nombre, entrada.padreId ?? null) });
   });
 
   /* ------------------------------- Produccion ------------------------------ */

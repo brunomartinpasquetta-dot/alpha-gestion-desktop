@@ -24,6 +24,7 @@ import { obtenerDb } from '../db/conexion';
 import {
   articulos,
   clientes,
+  familias,
   listasPrecio,
   movimientosStock,
   ordenesProduccion,
@@ -382,6 +383,46 @@ export const ajustesServicio = {
 
       db.update(listasPrecio).set({ nombre: limpio, activa }).where(eq(listasPrecio.id, id)).run();
       return { id };
+    });
+    emitir('maestros:cambio');
+    return resultado;
+  },
+
+  /* -------------------------------- Familias ------------------------------- */
+
+  listarFamilias(): { id: number; nombre: string; padreId: number | null; cantidadArticulos: number }[] {
+    return ejecutarSeguro('listar familias', () =>
+      obtenerDb()
+        .select({
+          id: familias.id,
+          nombre: familias.nombre,
+          padreId: familias.padreId,
+          cantidadArticulos: sql<number>`(SELECT COUNT(*) FROM articulos WHERE familia_id = ${familias.id})`.mapWith(Number),
+        })
+        .from(familias)
+        .orderBy(familias.nombre)
+        .all(),
+    );
+  },
+
+  crearFamilia(nombre: string, padreId: number | null): { id: number } {
+    const resultado = ejecutarSeguro('crear la familia', () => {
+      const db = obtenerDb();
+      const limpio = nombre.trim();
+      if (limpio.length < 2) throw new ErrorValidacion('El nombre de la familia es obligatorio.');
+      const duplicada = db.select({ id: familias.id }).from(familias).where(eq(familias.nombre, limpio)).get();
+      if (duplicada) throw new ErrorConflicto(`Ya existe la familia ${limpio}.`);
+      if (padreId !== null) {
+        const padre = db.select({ id: familias.id }).from(familias).where(eq(familias.id, padreId)).get();
+        if (!padre) throw new ErrorNoEncontrado('familia', padreId);
+      }
+      const fila = db
+        .insert(familias)
+        .values({ nombre: limpio, padreId })
+        .returning({ id: familias.id })
+        .all()[0];
+      if (!fila) throw new ErrorValidacion('La base no devolvio la familia insertada.');
+      return { id: fila.id };
     });
     emitir('maestros:cambio');
     return resultado;

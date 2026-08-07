@@ -47,6 +47,23 @@ export const unidadesMedida = sqliteTable(
 export const TIPOS_ARTICULO = ['materia_prima', 'pre_elaborado', 'producto_terminado'] as const;
 export type TipoArticulo = (typeof TIPOS_ARTICULO)[number];
 
+/**
+ * Familias o rubros para agrupar articulos (Chocolates, Harinas, Envases...).
+ * `padreId` permite subrubros; null es una familia de primer nivel.
+ */
+export const familias = sqliteTable(
+  'familias',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    padreId: integer('padre_id'),
+  },
+  (tabla) => [uniqueIndex('ux_familias_nombre').on(tabla.nombre)],
+);
+
+/** Alicuotas de IVA que maneja ARCA, en porcentaje. */
+export const ALICUOTAS_IVA = [0, 10.5, 21, 27] as const;
+
 export const articulos = sqliteTable(
   'articulos',
   {
@@ -59,6 +76,37 @@ export const articulos = sqliteTable(
       .notNull()
       .references(() => unidadesMedida.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
     stockMin: real('stock_min'),
+    /**
+     * Cuanto conviene tener en stock. El minimo dispara la alarma; el ideal dice
+     * hasta donde reponer, que es la pregunta que sigue: sin el, el operador ve
+     * "falta harina" pero no cuanta comprar.
+     */
+    stockIdeal: real('stock_ideal'),
+    /** Codigo de barras para escanear en el mostrador. Unico cuando esta cargado. */
+    codigoBarras: text('codigo_barras'),
+    marca: text('marca'),
+    familiaId: integer('familia_id').references(() => familias.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    /**
+     * Proveedor al que se le compra habitualmente. No obliga a nada: es el que
+     * se propone al cargar una compra y el que permite responder "a quien le
+     * compro esto" sin buscar en el historial.
+     */
+    proveedorHabitualId: integer('proveedor_habitual_id').references(() => proveedores.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    /**
+     * Alicuota de IVA en porcentaje. La factura la usa para desglosar: antes se
+     * asumia 21% para todo, lo que declaraba mal cualquier articulo con otra
+     * alicuota.
+     */
+    alicuotaIva: real('alicuota_iva').notNull().default(21),
+    /** Se vende por peso (la balanza define la cantidad), no por unidad. */
+    porPeso: integer('por_peso', { mode: 'boolean' }).notNull().default(false),
+    notas: text('notas'),
     /**
      * Unidades por caja cerrada (ej: 12 alfajores por caja). Los clientes piden
      * por cajas; el stock y el ledger siguen SIEMPRE en unidad base. NULL = el
@@ -75,6 +123,9 @@ export const articulos = sqliteTable(
     uniqueIndex('ux_articulos_codigo').on(tabla.codigo),
     index('ix_articulos_tipo').on(tabla.tipo),
     index('ix_articulos_activo').on(tabla.activo),
+    index('ix_articulos_familia').on(tabla.familiaId),
+    index('ix_articulos_proveedor').on(tabla.proveedorHabitualId),
+    index('ix_articulos_codigo_barras').on(tabla.codigoBarras),
     check(
       'ck_articulos_tipo',
       sql`${tabla.tipo} IN ('materia_prima','pre_elaborado','producto_terminado')`,

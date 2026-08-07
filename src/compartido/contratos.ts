@@ -82,12 +82,26 @@ export interface ArticuloConStock {
   unidadBaseId: number;
   unidadAbreviatura: string;
   stockMin: number | null;
+  /** Hasta donde conviene reponer cuando se cae por debajo del minimo. */
+  stockIdeal: number | null;
+  codigoBarras: string | null;
+  marca: string | null;
+  familiaId: number | null;
+  familiaNombre: string | null;
+  proveedorHabitualId: number | null;
+  proveedorHabitualNombre: string | null;
+  /** Porcentaje: 0, 10.5, 21 o 27. La factura lo usa para desglosar. */
+  alicuotaIva: number;
+  porPeso: boolean;
+  notas: string | null;
   /** Unidades por caja cerrada. null = no se comercializa por caja. */
   unidadesPorCaja: number | null;
   costoActual: number | null;
   activo: boolean;
   stock: number;
   bajoMinimo: boolean;
+  /** Cuanto falta para llegar al ideal. 0 si no hace falta reponer. */
+  aReponer: number;
 }
 
 export interface SaldoStock {
@@ -98,9 +112,15 @@ export interface SaldoStock {
   unidadAbreviatura: string;
   stock: number;
   stockMin: number | null;
+  stockIdeal: number | null;
+  marca: string | null;
+  familiaNombre: string | null;
+  proveedorHabitualNombre: string | null;
   /** Unidades por caja cerrada. null = no se comercializa por caja. */
   unidadesPorCaja: number | null;
   bajoMinimo: boolean;
+  /** Cuanto falta para llegar al ideal. 0 si no hace falta reponer. */
+  aReponer: number;
 }
 
 /** Fila del ledger de un articulo, con el saldo acumulado hasta ese movimiento. */
@@ -866,16 +886,44 @@ export interface EntradaUsuario {
   rol: RolUsuario;
 }
 
+export const ALICUOTAS_IVA_UI = [
+  { valor: 21, etiqueta: '21% (general)' },
+  { valor: 10.5, etiqueta: '10,5% (reducida)' },
+  { valor: 27, etiqueta: '27%' },
+  { valor: 0, etiqueta: 'Exento / 0%' },
+] as const;
+
 export interface EntradaArticulo {
   codigo: string;
   nombre: string;
   tipo: TipoArticulo;
   unidadBaseId: number;
   stockMin?: number | null;
+  stockIdeal?: number | null;
+  codigoBarras?: string | null;
+  marca?: string | null;
+  familiaId?: number | null;
+  proveedorHabitualId?: number | null;
+  /** Porcentaje de IVA: 0, 10.5, 21 o 27. */
+  alicuotaIva?: number;
+  porPeso?: boolean;
+  notas?: string | null;
   /** Solo tiene sentido en producto_terminado; en el resto se ignora. */
   unidadesPorCaja?: number | null;
   /** Centavos por unidad base. */
   costoActual?: number | null;
+}
+
+export interface FamiliaVista {
+  id: number;
+  nombre: string;
+  padreId: number | null;
+  cantidadArticulos: number;
+}
+
+export interface EntradaFamilia {
+  nombre: string;
+  padreId?: number | null;
 }
 
 /* ============================ COMPRAS (escritura) ========================= */

@@ -7,40 +7,21 @@
  * proyecciones derivadas para que servicios y rutas hablen el mismo idioma.
  */
 
-import type { TipoArticulo, TipoEntidadCc, TipoDocumentoStock } from '../db/schema';
+import type { TipoEntidadCc, TipoDocumentoStock } from '../db/schema';
 
-/** Agrupación derivada del campo `tipo` del artículo. */
-export type GrupoStock = 'insumos' | 'productos';
+/**
+ * Las proyecciones que VIAJAN al renderer se definen una sola vez, en el
+ * contrato compartido, y se reexportan aca. Tenerlas duplicadas hacia que
+ * agregar un campo compilara de un lado y fallara del otro, o peor: que el
+ * servidor lo devolviera y el renderer no supiera que existe.
+ */
+export type {
+  ArticuloConStock,
+  GrupoStock,
+  SaldoStock,
+} from '../../compartido/contratos';
 
-/** Saldo de stock de un artículo, calculado desde el ledger. */
-export interface SaldoStock {
-  articuloId: number;
-  codigo: string;
-  nombre: string;
-  tipo: TipoArticulo;
-  unidadAbreviatura: string;
-  stock: number;
-  stockMin: number | null;
-  /** Unidades por caja cerrada. null = no se comercializa por caja. */
-  unidadesPorCaja: number | null;
-  bajoMinimo: boolean;
-}
-
-/** Artículo con su saldo de stock resuelto, para listados. */
-export interface ArticuloConStock {
-  id: number;
-  codigo: string;
-  nombre: string;
-  tipo: TipoArticulo;
-  unidadBaseId: number;
-  unidadAbreviatura: string;
-  stockMin: number | null;
-  unidadesPorCaja: number | null;
-  costoActual: number | null;
-  activo: boolean;
-  stock: number;
-  bajoMinimo: boolean;
-}
+import type { GrupoStock, TipoArticulo } from '../../compartido/contratos';
 
 /** Documento que origina un movimiento de stock. */
 export interface ReferenciaDocumento {

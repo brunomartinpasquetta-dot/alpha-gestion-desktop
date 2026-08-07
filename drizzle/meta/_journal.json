@@ -50,6 +50,13 @@
       "when": 1786060860628,
       "tag": "0006_condicion_receptor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1786066410216,
+      "tag": "0007_articulo_completo",
+      "breakpoints": true
     }
   ]
 }
