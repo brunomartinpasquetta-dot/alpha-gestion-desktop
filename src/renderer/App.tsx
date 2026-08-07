@@ -25,6 +25,7 @@ import { usarRecurso } from './ganchos/usarRecurso';
 import { obtenerSalud } from './servicios/cliente';
 import type { DescriptorVentana } from './tipos-globales';
 import { ACCESOS_DIRECTOS, definicionDeModulo, type ClaveModulo } from './ventanas';
+import { AvisoActualizacion } from './componentes/AvisoActualizacion';
 import { VentanaEmbebida } from './VentanaEmbebida';
 
 const PREFIJO_EMBEBIDA = '#/embedded/';
@@ -92,6 +93,9 @@ function VentanaPrincipal(): JSX.Element {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-masa-100 text-masa-900">
+      {/* Arriba de todo: si hay una version lista, se ve apenas se abre. */}
+      <AvisoActualizacion />
+
       {/* En Windows queda la barra nativa del sistema, con sus botones. */}
       {esMac && <BarraTitulo version={puente?.version ?? ''} />}
 

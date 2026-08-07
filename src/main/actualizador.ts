@@ -37,6 +37,14 @@ const MS_ENTRE_CHEQUEOS = 4 * 60 * 60 * 1000;
 const URL_RELEASE_LATEST = `https://api.github.com/repos/${REPO_GITHUB.owner}/${REPO_GITHUB.repo}/releases/latest`;
 const URL_RELEASES_WEB = `https://github.com/${REPO_GITHUB.owner}/${REPO_GITHUB.repo}/releases/latest`;
 
+/**
+ * Ultimo problema del actualizador automatico. Se guarda para poder MOSTRARLO
+ * cuando el usuario pregunta desde Ayuda: si la descarga falla en su maquina,
+ * el error terminaba en un log que nadie mira y desde afuera parecia que el
+ * sistema simplemente no se actualiza.
+ */
+let ultimoErrorAutomatico: string | null = null;
+
 function registrar(mensaje: string): void {
   console.info(`[actualizador] ${mensaje}`);
 }
@@ -112,7 +120,11 @@ async function chequearManual(): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 function configurarAutoUpdate(): void {
-  // La instalacion se aplica al cerrar: nunca interrumpimos una sesion de trabajo.
+  // Se baja sola en segundo plano. Se instala de dos maneras, y las dos hacen
+  // falta: apenas termina de bajar aparece un cartel para reiniciar en el acto
+  // (que es lo que espera el usuario), y si lo ignora se aplica igual al cerrar
+  // el programa. Antes solo existia la segunda, asi que quien no cerraba nunca
+  // el programa se quedaba en la version vieja sin enterarse.
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
@@ -135,8 +147,13 @@ function configurarAutoUpdate(): void {
   });
 
   autoUpdater.on('error', (error) => {
-    // Un fallo de actualizacion NUNCA debe tumbar el ERP: se loguea y se sigue.
+    // Un fallo de actualizacion NUNCA debe tumbar el ERP: se anota y se sigue.
+    ultimoErrorAutomatico = error.message;
     registrar(`Fallo la actualizacion: ${error.message}`);
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    ultimoErrorAutomatico = null;
   });
 }
 
@@ -174,6 +191,15 @@ export function iniciarActualizador(): void {
 
   setTimeout(chequear, MS_PRIMER_CHEQUEO).unref();
   setInterval(chequear, MS_ENTRE_CHEQUEOS).unref();
+}
+
+/**
+ * Cierra el programa e instala la version ya descargada. El `true` final es
+ * `forceRunAfter`: sin eso, en Windows la app no vuelve a abrirse sola despues
+ * de actualizar y parece que se cerro por las suyas.
+ */
+export function instalarYReiniciar(): void {
+  autoUpdater.quitAndInstall(false, true);
 }
 
 /** Abre la pagina de releases en el navegador del sistema. */
@@ -242,6 +268,21 @@ export async function verificarActualizacionesAhora(): Promise<ResultadoChequeo>
         seInstalaSola,
         urlDescarga,
         mensaje: `Estas al dia. Version instalada: ${versionInstalada}.`,
+      };
+    }
+
+    // Si el chequeo automatico venia fallando, decirlo: es la unica pista que
+    // tiene el usuario de por que el programa "no se actualiza solo".
+    if (ultimoErrorAutomatico !== null) {
+      return {
+        versionInstalada,
+        versionDisponible: ultima,
+        hayActualizacion: true,
+        seInstalaSola,
+        urlDescarga,
+        mensaje:
+          `Hay una version nueva (${ultima}) pero la descarga automatica esta fallando: ` +
+          `${ultimoErrorAutomatico}. Podes bajar el instalador a mano con el boton de al lado.`,
       };
     }
 

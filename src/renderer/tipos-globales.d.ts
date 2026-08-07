@@ -42,6 +42,8 @@ export interface ResultadoChequeoActualizacion {
 export interface ApiActualizaciones {
   verificar(): Promise<ResultadoChequeoActualizacion>;
   abrirDescargas(): void;
+  instalarAhora(): void;
+  alHaberActualizacion(manejador: (version: string) => void): () => void;
 }
 
 export interface ApiEventos {

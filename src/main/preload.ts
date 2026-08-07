@@ -121,6 +121,21 @@ const actualizaciones = {
   abrirDescargas(): void {
     ipcRenderer.send('actualizador:abrir-descargas');
   },
+  /** Cierra el programa, instala la version descargada y vuelve a abrirlo. */
+  instalarAhora(): void {
+    ipcRenderer.send('actualizador:instalar');
+  },
+  /** Avisa cuando hay una version lista para instalar. Devuelve la baja. */
+  alHaberActualizacion(manejador: (version: string) => void): () => void {
+    const puente = (_e: unknown, carga: unknown): void => {
+      const version = (carga as { versionDisponible?: unknown } | null)?.versionDisponible;
+      if (typeof version === 'string') manejador(version);
+    };
+    ipcRenderer.on('actualizador:descargado', puente);
+    return () => {
+      ipcRenderer.removeListener('actualizador:descargado', puente);
+    };
+  },
 } as const;
 
 /** API disponible en el renderer como `window.alfajores`. */

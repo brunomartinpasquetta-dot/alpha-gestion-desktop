@@ -22,6 +22,7 @@ import { iniciarServidor, type ServidorEnMarcha } from '../server/servidor';
 import {
   abrirPaginaDeDescarga,
   iniciarActualizador,
+  instalarYReiniciar,
   verificarActualizacionesAhora,
 } from './actualizador';
 import {
@@ -240,6 +241,7 @@ function registrarCanalesDeVentanas(): void {
   // Chequeo de actualizaciones a pedido, desde el menu de Ayuda.
   ipcMain.handle('actualizador:verificar', () => verificarActualizacionesAhora());
   ipcMain.on('actualizador:abrir-descargas', () => abrirPaginaDeDescarga());
+  ipcMain.on('actualizador:instalar', () => instalarYReiniciar());
 
   ipcMain.handle('archivo:elegir', async (evento, solicitud: unknown) => {
     const { titulo, extensiones } = (solicitud ?? {}) as {
