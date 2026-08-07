@@ -106,6 +106,44 @@ corrigen desde el escritorio, mientras no hayan entrado a producción.
 
 ---
 
+## 3-bis. Comparación módulo por módulo contra StockFlow
+
+Inventario hecho el 7/8 leyendo `~/dev/stockflow`. **Criterio: cuando un módulo
+existe en los dos sistemas, se lee el de StockFlow y se replica** — campos,
+layout y funciones—, no se diseña algo equivalente.
+
+### Ya replicados con su patrón (panel de detalle, no modal)
+
+| Módulo | Estado |
+|---|---|
+| Artículos / Stock insumos / Stock productos | ✅ v0.14.0 — grilla de 12 columnas, precios con utilidad, alta rápida de familia y proveedor, búsqueda, filtros, Excel, atajos |
+| Clientes | ✅ v0.15.0 — + condición IVA, límite de crédito, tipo de documento, localidad, celular |
+| Proveedores | ✅ v0.15.0 — + código, ingresos brutos, localidad, celular |
+| Actualización de precios | ✅ v0.16.0 — con vista previa y redondeo comercial |
+| Generador de compras ("Qué comprar") | ✅ v0.16.0 — por mínimo o ideal, agrupado por proveedor |
+
+### Que StockFlow tiene y Alpha todavía no
+
+| Módulo | Valor para la fábrica | Nota |
+|---|---|---|
+| **Toma de inventario** | Alto | Contar el depósito y ajustar en bloque. Se apoya en el ajuste de stock que ya existe |
+| **Importar desde Excel** | Alto para arrancar | Cargar el catálogo inicial del cliente sin tipear |
+| **Historial de precios** | Medio | Los datos ya se guardan con su vigencia; falta la pantalla |
+| Libro IVA ventas/compras | Medio | Parte de contabilidad, que sigue sin implementar |
+| Presupuestos | Bajo | Una fábrica de alfajores vende, no cotiza |
+| Medios de pago (tarjetas) | Bajo | El cliente opera con efectivo, cheques y cuenta corriente |
+| Promociones | Bajo | — |
+| Ventas por vendedor | No aplica | No hay vendedores con comisión |
+| Auditoría de cambios | Medio | Quién tocó qué. Relevante recién con varios usuarios |
+
+### Que Alpha tiene y StockFlow no
+
+Producción con recetas, órdenes y **trazabilidad por lote**; pedidos desde el
+celular con cola offline; cajas cerradas de 12 unidades. Son el corazón del
+negocio de la fábrica y no tienen equivalente en StockFlow.
+
+---
+
 ## 4. Dependencias del CLIENTE (no las podemos resolver nosotros)
 
 | Qué | Para qué | Sin esto |
