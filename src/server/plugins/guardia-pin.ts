@@ -51,6 +51,37 @@ function esLocal(ip: string): boolean {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 
+/**
+ * Detecta si una request NO viene del escritorio de la propia maquina.
+ *
+ * No alcanza con mirar `request.ip`: cualquier tunel (Cloudflare, localhost.run,
+ * ngrok) reenvia desde loopback y pareceria local. La senial confiable es el
+ * HOST por el que entro: el escritorio y la LAN piden por IP o localhost; un
+ * tunel siempre trae su dominio publico. Ademas se miran las cabeceras de
+ * proxy, que refuerzan la deteccion cuando existen.
+ */
+function esRemota(request: FastifyRequest): boolean {
+  const porCabecera =
+    typeof request.headers['cf-connecting-ip'] === 'string' ||
+    typeof request.headers['x-forwarded-for'] === 'string' ||
+    typeof request.headers['x-real-ip'] === 'string' ||
+    typeof request.headers['forwarded'] === 'string';
+  if (porCabecera) return true;
+
+  // Host sin puerto, en minusculas: "192.168.1.5", "localhost", "xxx.lhr.life".
+  const host = (request.headers.host ?? '').toLowerCase().split(':')[0] ?? '';
+  const esIpOLocal =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === '[::1]' ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  // Un dominio (tiene letras y punto) SIEMPRE es acceso remoto por tunel.
+  if (!esIpOLocal && host !== '') return true;
+
+  return !esLocal(request.ip);
+}
+
 function estaPermitidaDesdeRed(metodo: string, ruta: string): boolean {
   return PERMITIDAS_DESDE_RED.some((regla) => regla.metodo === metodo && regla.ruta.test(ruta));
 }
@@ -59,10 +90,10 @@ export function registrarGuardiaPin(app: FastifyInstance): void {
   app.addHook('onRequest', (request: FastifyRequest, reply: FastifyReply, listo: () => void) => {
     const ruta = request.url.split('?')[0] ?? '';
     if (!ruta.startsWith('/api/')) return listo();
-    // Una request que entra por el tunel de Cloudflare llega como loopback
-    // pero trae cf-connecting-ip: es REMOTA, con las mismas reglas que la red.
-    const porTunel = typeof request.headers['cf-connecting-ip'] === 'string';
-    if (esLocal(request.ip) && !porTunel) return listo();
+    // Todo lo que no sea el escritorio de esta maquina pasa por la guardia.
+    const remota = esRemota(request);
+    const porTunel = remota && esLocal(request.ip);
+    if (!remota) return listo();
     if (RUTAS_LIBRES.some((libre) => ruta === libre || ruta.startsWith(`${libre}/`))) return listo();
 
     // Regla 1: desde la red solo pedidos y monitor, sin importar el PIN.

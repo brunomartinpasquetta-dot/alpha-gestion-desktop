@@ -141,9 +141,20 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
     // El escritorio (la SPA completa) es SOLO de la maquina local: un celular
     // o una tablet que pide "/" va derecho a la pantalla de pedidos. Desde la
     // red solo existen /pedidos y /elaboracion.
-    const esLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.ip);
-    const porTunel = typeof request.headers['cf-connecting-ip'] === 'string';
-    if (!esLocal || porTunel) {
+    // Misma regla que la guardia de la API: si no es el escritorio de esta
+    // maquina (por IP o por el HOST del pedido), solo existe /pedidos.
+    const desdeEsteEquipo = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.ip);
+    const hostPedido = (request.headers.host ?? '').toLowerCase().split(':')[0] ?? '';
+    const hostEsIpOLocal =
+      hostPedido === 'localhost' ||
+      hostPedido === '127.0.0.1' ||
+      /^\d{1,3}(\.\d{1,3}){3}$/.test(hostPedido);
+    const conCabeceraProxy =
+      typeof request.headers['cf-connecting-ip'] === 'string' ||
+      typeof request.headers['x-forwarded-for'] === 'string' ||
+      typeof request.headers['x-real-ip'] === 'string' ||
+      typeof request.headers['forwarded'] === 'string';
+    if (!desdeEsteEquipo || conCabeceraProxy || !hostEsIpOLocal) {
       return reply.redirect('/pedidos');
     }
 
