@@ -14,7 +14,9 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { check, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, index, integer, real, sqliteTable, text, uniqueIndex,
+  type AnySQLiteColumn,
+} from 'drizzle-orm/sqlite-core';
 
 /** Timestamp UTC en formato ISO-8601, usado como default de columnas de fecha. */
 const AHORA = sql`(strftime('%Y-%m-%dT%H:%M:%fZ','now'))`;
@@ -165,6 +167,15 @@ export const listasPrecio = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     nombre: text('nombre').notNull(),
+    /**
+     * Lista DERIVADA: sus precios se calculan desde otra lista aplicando el
+     * porcentaje ("Lista 1 + 20%"). Es como lo maneja la planilla de Anyulin:
+     * el 20% es un parametro; cuando cambia la base, cambia la derivada sola.
+     * null = lista con precios propios cargados.
+     */
+    baseListaId: integer('base_lista_id'),
+    /** Recargo en porcentaje sobre la base (20 = +20%). Solo con baseListaId. */
+    recargoPct: real('recargo_pct'),
     activa: integer('activa', { mode: 'boolean' }).notNull().default(true),
   },
   (tabla) => [uniqueIndex('ux_listas_precio_nombre').on(tabla.nombre)],
@@ -227,6 +238,34 @@ export const proveedores = sqliteTable(
 export const TIPOS_CLIENTE = ['mostrador', 'mayorista', 'distribuidor'] as const;
 export type TipoCliente = (typeof TIPOS_CLIENTE)[number];
 
+/**
+ * Vendedores / revendedores: quien trae el pedido. Un vendedor puede ademas
+ * ser cliente (compra para revender); por eso es una entidad propia y no un
+ * campo del cliente.
+ */
+export const vendedores = sqliteTable(
+  'vendedores',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull().unique(),
+    telefono: text('telefono'),
+    /** CUIT del vendedor: hace falta cuando el pedido se le factura a el. */
+    cuit: text('cuit'),
+    /**
+     * Su ficha de CLIENTE, si tambien compra o se le factura: la venta
+     * "facturada al vendedor" usa esta ficha (CUIT, condicion de IVA, cuenta
+     * corriente) como receptora.
+     */
+    clienteId: integer('cliente_id').references((): AnySQLiteColumn => clientes.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    notas: text('notas'),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+  },
+  (tabla) => [index('ix_vendedores_nombre').on(tabla.nombre)],
+);
+
 export const clientes = sqliteTable(
   'clientes',
   {
@@ -255,6 +294,11 @@ export const clientes = sqliteTable(
     direccion: text('direccion'),
     tipo: text('tipo', { enum: TIPOS_CLIENTE }).notNull().default('mostrador'),
     listaPrecioId: integer('lista_precio_id').references(() => listasPrecio.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    /** Vendedor habitual: el que se propone al cargarle un pedido. */
+    vendedorId: integer('vendedor_id').references(() => vendedores.id, {
       onDelete: 'set null',
       onUpdate: 'cascade',
     }),
@@ -345,6 +389,16 @@ export const pedidos = sqliteTable(
       onDelete: 'set null',
       onUpdate: 'cascade',
     }),
+    /** Quien trajo el pedido (revendedor). null = venta directa de fabrica. */
+    vendedorId: integer('vendedor_id').references(() => vendedores.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    /** Con que lista se liquida. null = la lista del cliente al vender. */
+    listaPrecioId: integer('lista_precio_id').references(() => listasPrecio.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
     origen: text('origen', { enum: ORIGENES_PEDIDO }).notNull().default('sistema'),
     estado: text('estado', { enum: ESTADOS_PEDIDO }).notNull().default('pendiente'),
     fechaPedido: text('fecha_pedido').notNull().default(AHORA),
@@ -398,6 +452,9 @@ export const pedidoItems = sqliteTable(
 export const ESTADOS_ORDEN_PRODUCCION = [
   'planificada',
   'en_proceso',
+  // Tanda arrancada y detenida a proposito (falta un insumo, cambio de
+  // prioridad): conserva su lote y sus insumos comprometidos.
+  'pausada',
   'finalizada',
   'cancelada',
 ] as const;
@@ -442,7 +499,7 @@ export const ordenesProduccion = sqliteTable(
     uniqueIndex('ux_ordenes_produccion_numero_lote').on(tabla.numeroLote),
     check(
       'ck_ordenes_produccion_estado',
-      sql`${tabla.estado} IN ('planificada','en_proceso','finalizada','cancelada')`,
+      sql`${tabla.estado} IN ('planificada','en_proceso','pausada','finalizada','cancelada')`,
     ),
     check('ck_ordenes_produccion_cantidad', sql`${tabla.cantidadPlanificada} > 0`),
     check('ck_ordenes_produccion_factor', sql`${tabla.factorEscala} > 0`),
@@ -526,6 +583,196 @@ export const movimientosStock = sqliteTable(
       'ck_movimientos_stock_costo',
       sql`${tabla.costoUnitario} IS NULL OR ${tabla.costoUnitario} >= 0`,
     ),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* PRESENTACIONES - como se VENDE lo que el stock cuenta en unidades          */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Una presentacion es la forma comercial de vender: la caja de 36, la docena,
+ * la bolsa de 6, la unidad suelta, o la caja SURTIDA que mezcla variedades.
+ *
+ * El modelo viene del talonario real de Anyulin: el stock y la produccion
+ * SIEMPRE cuentan unidades por variedad (el ledger no sabe de cajas); la
+ * presentacion es una capa comercial que al vender se descompone en sus
+ * componentes. La surtida B-N-FB descuenta de tres stocks a la vez.
+ *
+ * `precioPropio`: la regla general es unidades x precio unitario de la lista
+ * (asi liquida el Excel), pero cubanitos, almendras y el envase Anyulin tienen
+ * precio de renglon propio. true = el precio sale de la tabla de precios de la
+ * PRESENTACION, no se calcula desde el articulo.
+ */
+export const presentaciones = sqliteTable(
+  'presentaciones',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    /** Codigo corto para el talonario ("CAJA-B", "DOC-BNFB", "X4"). */
+    codigo: text('codigo').notNull(),
+    precioPropio: integer('precio_propio', { mode: 'boolean' }).notNull().default(false),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+    orden: integer('orden').notNull().default(0),
+  },
+  (tabla) => [uniqueIndex('ux_presentaciones_codigo').on(tabla.codigo)],
+);
+
+/**
+ * De que se compone una presentacion: articulo base + cuantas unidades aporta.
+ * Simple = 1 componente (caja de blancos: 36 u de ALF DdL-BLANCO).
+ * Surtida = N componentes (caja B-N-FB: 12+12+12).
+ * El envase cobrable (CAJA ANYULIN) es una presentacion con componentes de las
+ * 4 variedades (3 c/u) MAS su renglon de precio propio.
+ */
+export const presentacionComponentes = sqliteTable(
+  'presentacion_componentes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    presentacionId: integer('presentacion_id')
+      .notNull()
+      .references(() => presentaciones.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Unidades base del articulo que aporta UNA presentacion. */
+    unidades: real('unidades').notNull(),
+  },
+  (tabla) => [
+    index('ix_presentacion_componentes_presentacion').on(tabla.presentacionId),
+    check('ck_presentacion_componentes_unidades', sql`${tabla.unidades} > 0`),
+  ],
+);
+
+/**
+ * Precio de renglon de una presentacion con precio propio, por lista y con
+ * vigencia (mismo criterio historico que `precios`). Solo aplica cuando la
+ * presentacion tiene `precioPropio`; las demas se liquidan unidades x precio
+ * unitario del articulo.
+ */
+export const preciosPresentacion = sqliteTable(
+  'precios_presentacion',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    presentacionId: integer('presentacion_id')
+      .notNull()
+      .references(() => presentaciones.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    listaPrecioId: integer('lista_precio_id')
+      .notNull()
+      .references(() => listasPrecio.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /** Centavos por presentacion. */
+    precio: integer('precio').notNull(),
+    vigenteDesde: text('vigente_desde').notNull().default(AHORA),
+  },
+  (tabla) => [
+    index('ix_precios_presentacion_lista').on(tabla.presentacionId, tabla.listaPrecioId, tabla.vigenteDesde),
+    check('ck_precios_presentacion_precio', sql`${tabla.precio} >= 0`),
+  ],
+);
+
+/**
+ * Renglones del pedido EN PRESENTACIONES: lo que el cliente pidio tal como lo
+ * pidio ("2 cajas B-N-FB, 3 docenas de blancos"). Es la verdad comercial: de
+ * aca salen la liquidacion del remito y la orden de elaboracion impresa.
+ *
+ * Los `pedido_items` en unidades por articulo se DERIVAN de estos renglones
+ * (explotando la composicion) y siguen alimentando el circuito de reservas y
+ * produccion, que no sabe de cajas. Un pedido cargado a mano sin renglones
+ * (viejo, o desde el celular) sigue funcionando: los renglones son opcionales.
+ */
+export const pedidoRenglones = sqliteTable(
+  'pedido_renglones',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    pedidoId: integer('pedido_id')
+      .notNull()
+      .references(() => pedidos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /**
+     * NULL = renglon armado A MEDIDA: la mezcla que pidio el cliente no existe
+     * en el catalogo ("docena con 4 FN + 4 FB + 4 N"). Su composicion vive en
+     * `pedido_renglon_componentes` y `descripcion` es lo que se imprime.
+     */
+    presentacionId: integer('presentacion_id').references(() => presentaciones.id, {
+      onDelete: 'restrict',
+      onUpdate: 'cascade',
+    }),
+    descripcion: text('descripcion'),
+    cantidad: real('cantidad').notNull(),
+  },
+  (tabla) => [
+    index('ix_pedido_renglones_pedido').on(tabla.pedidoId),
+    check('ck_pedido_renglones_cantidad', sql`${tabla.cantidad} > 0`),
+    // O es de catalogo o es a medida con descripcion: nunca un renglon mudo.
+    check(
+      'ck_pedido_renglones_identidad',
+      sql`${tabla.presentacionId} IS NOT NULL OR ${tabla.descripcion} IS NOT NULL`,
+    ),
+  ],
+);
+
+/** Composicion de un renglon A MEDIDA: unidades por variedad de UNA presentacion. */
+export const pedidoRenglonComponentes = sqliteTable(
+  'pedido_renglon_componentes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    renglonId: integer('renglon_id')
+      .notNull()
+      .references(() => pedidoRenglones.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    unidades: real('unidades').notNull(),
+  },
+  (tabla) => [
+    index('ix_pedido_renglon_componentes_renglon').on(tabla.renglonId),
+    check('ck_pedido_renglon_componentes_unidades', sql`${tabla.unidades} > 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* MEDIOS DE PAGO - replicado de StockFlow (payment_methods)                  */
+/* ------------------------------------------------------------------------- */
+
+export const TIPOS_MEDIO_PAGO = [
+  'efectivo',
+  'transferencia',
+  'tarjeta_debito',
+  'tarjeta_credito',
+  'cheque',
+  'otro',
+] as const;
+export type TipoMedioPago = (typeof TIPOS_MEDIO_PAGO)[number];
+
+/**
+ * Medios de pago CONFIGURABLES, no un enum cerrado: el comercio puede tener
+ * "Transferencia Galicia" o "Visa 3 cuotas" como filas propias. El `tipo` es
+ * la taxonomia que decide el comportamiento (el cheque dispara la cartera,
+ * el efectivo fisico entra al arqueo del cajon). Copiado de StockFlow.
+ */
+export const mediosPago = sqliteTable(
+  'medios_pago',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nombre: text('nombre').notNull(),
+    tipo: text('tipo', { enum: TIPOS_MEDIO_PAGO }).notNull(),
+    /**
+     * true = billetes que entran al cajon: es lo UNICO que cuenta para el
+     * arqueo fisico del cierre de caja. Transferencias y tarjetas quedan en la
+     * caja como ingresos electronicos, visibles pero fuera del arqueo.
+     */
+    esEfectivoFisico: integer('es_efectivo_fisico', { mode: 'boolean' }).notNull().default(false),
+    /** Porcentaje que ABSORBE el comercio (no se le cobra al cliente). */
+    comisionPct: real('comision_pct').notNull().default(0),
+    activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
+    orden: integer('orden').notNull().default(0),
+  },
+  (tabla) => [
+    uniqueIndex('ux_medios_pago_nombre').on(tabla.nombre),
+    check(
+      'ck_medios_pago_tipo',
+      sql`${tabla.tipo} IN ('efectivo','transferencia','tarjeta_debito','tarjeta_credito','cheque','otro')`,
+    ),
+    check('ck_medios_pago_comision', sql`${tabla.comisionPct} >= 0 AND ${tabla.comisionPct} <= 100`),
   ],
 );
 
@@ -667,6 +914,115 @@ export const ventaItems = sqliteTable(
   ],
 );
 
+/**
+ * Pagos de una venta: N por venta (venta mixta: parte efectivo, parte
+ * transferencia, parte cheque...). Solo para ventas de contado; la venta en
+ * cuenta corriente no lleva pagos (el cobro es un acto posterior).
+ *
+ * La suma de los pagos es EXACTAMENTE el total de la venta: no hay vuelto ni
+ * redondeo (el cajero carga lo cobrado en cada medio). Regla de StockFlow.
+ */
+export const ventaPagos = sqliteTable(
+  'venta_pagos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ventaId: integer('venta_id')
+      .notNull()
+      .references(() => ventas.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    medioPagoId: integer('medio_pago_id')
+      .notNull()
+      .references(() => mediosPago.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    /** Centavos, siempre positivo. */
+    importe: integer('importe').notNull(),
+    /** Numero de transferencia, ultimos 4 de la tarjeta, etc. */
+    referencia: text('referencia'),
+    /** Snapshot de la comision del medio AL MOMENTO de la venta. */
+    comisionPct: real('comision_pct').notNull().default(0),
+    comisionImporte: integer('comision_importe').notNull().default(0),
+    netoImporte: integer('neto_importe').notNull().default(0),
+    /** Si el medio es cheque: el cheque que este pago dio de alta en la cartera. */
+    chequeId: integer('cheque_id').references(() => cheques.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+  },
+  (tabla) => [
+    index('ix_venta_pagos_venta').on(tabla.ventaId),
+    check('ck_venta_pagos_importe', sql`${tabla.importe} > 0`),
+  ],
+);
+
+/* ------------------------------------------------------------------------- */
+/* RESERVAS DE STOCK - lo que hay pero ya tiene dueño                         */
+/* ------------------------------------------------------------------------- */
+
+export const ESTADOS_RESERVA = ['activa', 'entregada', 'liberada'] as const;
+export type EstadoReserva = (typeof ESTADOS_RESERVA)[number];
+
+/** De donde salio la mercaderia reservada: se elaboro para el pedido, o ya estaba. */
+export const ORIGENES_RESERVA = ['produccion', 'stock'] as const;
+export type OrigenReserva = (typeof ORIGENES_RESERVA)[number];
+
+/**
+ * Mercaderia que existe fisicamente pero ya tiene dueño.
+ *
+ * La reserva NO es un movimiento de stock: la mercaderia esta en el deposito,
+ * el ledger no cambia. Lo que cambia es a quien se le puede prometer. De ahi
+ * salen los tres numeros que el vendedor necesita distinguir:
+ *
+ *   fisico     = SUM(movimientos_stock)          <- lo que hay en el deposito
+ *   reservado  = SUM(reservas activas)           <- lo que ya es de alguien
+ *   disponible = fisico - reservado              <- lo que se puede vender hoy
+ *
+ * Sin esta tabla, dos vendedores prometen la misma tanda al mismo tiempo y uno
+ * de los dos clientes se queda esperando.
+ *
+ * `ordenId` y `numeroLote` son la trazabilidad: dicen de que tanda salio lo que
+ * se le prometio a ese cliente, tanto si se elaboro para el como si se tomo de
+ * lo que ya habia en el deposito.
+ */
+export const reservasStock = sqliteTable(
+  'reservas_stock',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    articuloId: integer('articulo_id')
+      .notNull()
+      .references(() => articulos.id, { onDelete: 'restrict', onUpdate: 'cascade' }),
+    pedidoId: integer('pedido_id')
+      .notNull()
+      .references(() => pedidos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    /** Denormalizado del pedido: el cliente puede cambiar, la reserva historica no. */
+    clienteId: integer('cliente_id').references(() => clientes.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    cantidad: real('cantidad').notNull(),
+    origen: text('origen', { enum: ORIGENES_RESERVA }).notNull(),
+    /** Tanda de la que sale la mercaderia. Null si vino de una compra o un ajuste. */
+    ordenId: integer('orden_id').references(() => ordenesProduccion.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    numeroLote: text('numero_lote'),
+    estado: text('estado', { enum: ESTADOS_RESERVA }).notNull().default('activa'),
+    /** Venta que finalmente se llevo la reserva. Se completa al facturar el pedido. */
+    ventaId: integer('venta_id').references(() => ventas.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
+    fecha: text('fecha').notNull().default(AHORA),
+    notas: text('notas'),
+  },
+  (tabla) => [
+    index('ix_reservas_stock_articulo_estado').on(tabla.articuloId, tabla.estado),
+    index('ix_reservas_stock_pedido').on(tabla.pedidoId),
+    index('ix_reservas_stock_orden').on(tabla.ordenId),
+    check('ck_reservas_stock_cantidad', sql`${tabla.cantidad} > 0`),
+    check('ck_reservas_stock_origen', sql`${tabla.origen} IN ('produccion','stock')`),
+    check('ck_reservas_stock_estado', sql`${tabla.estado} IN ('activa','entregada','liberada')`),
+  ],
+);
+
 /* ------------------------------------------------------------------------- */
 /* LEDGER DE CUENTAS CORRIENTES (clientes y proveedores)                     */
 /* ------------------------------------------------------------------------- */
@@ -754,6 +1110,14 @@ export const cajaMovimientos = sqliteTable(
     monto: integer('monto').notNull(),
     documentoTipo: text('documento_tipo'),
     documentoId: integer('documento_id'),
+    /**
+     * Con que medio entro/salio la plata. NULL = movimiento viejo o manual:
+     * cuenta como efectivo fisico para el arqueo (criterio de StockFlow).
+     */
+    medioPagoId: integer('medio_pago_id').references(() => mediosPago.id, {
+      onDelete: 'set null',
+      onUpdate: 'cascade',
+    }),
     fecha: text('fecha').notNull().default(AHORA),
     usuario: text('usuario'),
     notas: text('notas'),

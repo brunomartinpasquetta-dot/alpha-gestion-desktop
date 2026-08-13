@@ -142,10 +142,19 @@ const config = {
         'fila-densa': '1.75rem', // alto de fila en tablas comprimidas
         panel: '17rem', // ancho del panel lateral
       },
+      // Esquinas practicamente rectas en TODO el sistema. Pedido expreso del
+      // dueño: nada de botones redondeados. El criterio viene de StockFlow
+      // (apps/desktop/src/index.css, --radius) donde cada control lleva un radio
+      // minimo uniforme y ningun chip es una pildora (su badge usa rounded-md).
+      // Aca ese minimo es 2px: suficiente para que el borde no serruche en
+      // pantallas de baja densidad, imperceptible como "redondeo". Al vivir todo
+      // el redondeo en estos tokens (y en el `rounded` pelado via DEFAULT), un
+      // solo cambio cuadra botones, campos, paneles y chips sin tocar pantallas.
       borderRadius: {
-        ficha: '0.375rem', // tarjetas, celdas destacadas
-        panel: '0.625rem', // contenedores grandes
-        pastilla: '9999px', // etiquetas de estado
+        DEFAULT: '2px', // `rounded` pelado: kbd, barras de progreso, botones chicos
+        ficha: '2px', // tarjetas, celdas destacadas, botones y campos
+        panel: '2px', // contenedores grandes
+        pastilla: '2px', // etiquetas de estado: chip recto, como el badge de StockFlow
       },
       boxShadow: {
         ficha: '0 1px 2px 0 rgb(61 53 42 / 0.08)',

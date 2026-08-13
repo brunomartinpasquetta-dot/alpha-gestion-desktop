@@ -10,8 +10,16 @@
 import { useEffect } from 'react';
 
 import { PantallaAyuda } from './pantallas/Ayuda';
-import { MaestroArticulos } from './pantallas/MaestroArticulos';
+import { MaestroArticulos, PantallaStockProductos } from './pantallas/MaestroArticulos';
 import { MaestroTerceros } from './pantallas/MaestroTerceros';
+import { PantallaVendedores } from './pantallas/Vendedores';
+import { PantallaMediosPago } from './pantallas/MediosPago';
+import { PantallaAjustesStock, PantallaMovimientosStock } from './pantallas/StockAjustes';
+import {
+  PantallaConfiguracionImpresion,
+  PantallaConfiguracionLan,
+  PantallaRespaldo,
+} from './pantallas/Sistema';
 import { PantallaActualizacionPrecios, PantallaReposicion } from './pantallas/PreciosYReposicion';
 import { Comprobante } from './pantallas/Comprobante';
 import { EstadoVacio } from './componentes/comunes';
@@ -56,14 +64,11 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
       return <Simple><PantallaInicio /></Simple>;
     case 'stock-insumos':
       return (
-        <MaestroArticulos grupo="insumos" titulo="Insumos" tipoNuevo="materia_prima" />
+        <MaestroArticulos grupo="insumos" titulo="Stock Insumos" tipoNuevo="materia_prima" />
       );
     case 'stock-productos':
-      return (
-        <MaestroArticulos grupo="productos" titulo="Productos" tipoNuevo="producto_terminado" />
-      );
-    case 'articulos':
-      return <MaestroArticulos grupo="todos" titulo="Articulos" tipoNuevo="materia_prima" />;
+    case 'articulos': // clave vieja: fusionada en Stock Productos
+      return <PantallaStockProductos />;
     case 'recetas':
       return <Simple><PantallaRecetas /></Simple>;
     case 'ordenes':
@@ -80,6 +85,8 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
       return <Simple><PantallaCuentasCorrientes /></Simple>;
     case 'clientes':
       return <MaestroTerceros que="clientes" />;
+    case 'vendedores':
+      return <Simple><PantallaVendedores /></Simple>;
     case 'proveedores':
       return <MaestroTerceros que="proveedores" />;
     case 'listas-precio':
@@ -104,6 +111,20 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
       return <Simple><PantallaAyuda /></Simple>;
     case 'facturacion':
       return <Simple><PantallaFacturacion /></Simple>;
+    case 'ajustes-insumos':
+      return <Simple><PantallaAjustesStock grupo="insumos" /></Simple>;
+    case 'ajustes-productos':
+      return <Simple><PantallaAjustesStock grupo="productos" /></Simple>;
+    case 'movimientos-stock':
+      return <Simple><PantallaMovimientosStock /></Simple>;
+    case 'medios-pago':
+      return <Simple><PantallaMediosPago /></Simple>;
+    case 'configuracion-lan':
+      return <Simple><PantallaConfiguracionLan /></Simple>;
+    case 'respaldo':
+      return <Simple><PantallaRespaldo /></Simple>;
+    case 'configuracion-impresion':
+      return <Simple><PantallaConfiguracionImpresion /></Simple>;
     default:
       // Inalcanzable: la clave viene de una union cerrada. Existe para que
       // sumar un modulo sin su pantalla sea un error de compilacion.

@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 
 import { sembrarDemo } from '../../seed/demo';
+import { sembrar } from '../../seed/sembrar';
 import { obtenerDb, obtenerRutaDb, obtenerSqlite } from '../db/conexion';
 import { ErrorReglaNegocio, ErrorValidacion, ejecutarSeguro } from '../dominio/errores';
 import { emitir } from '../eventos';
@@ -79,6 +80,15 @@ export const inicializacionServicio = {
       // numero refleja lo que efectivamente quedo en la base, que es lo que el
       // usuario va a ver en las pantallas.
       const antes = contar();
+
+      // El demo se apoya en el catalogo base (unidades, insumos, recetas). Tras
+      // "empezar de cero" ese catalogo no existe y el demo moria pidiendo que
+      // alguien corra un seed por terminal. El boton tiene que bastarse solo.
+      const articulosExistentes = sqlite
+        .prepare('SELECT COUNT(*) AS n FROM articulos')
+        .get() as { n: number };
+      if (articulosExistentes.n === 0) sembrar();
+
       sembrarDemo(obtenerDb());
       const creados = contar() - antes;
 

@@ -26,6 +26,7 @@ import type {
 import bcrypt from 'bcrypt';
 
 import { obtenerDb } from '../db/conexion';
+import { emitir } from '../eventos';
 import {
   ALICUOTAS_IVA,
   articulos,
@@ -35,6 +36,7 @@ import {
   proveedores,
   unidadesMedida,
   usuarios,
+  vendedores,
 } from '../db/schema';
 import { listarClientes, listarProveedores } from '../repositorios/lectura/terceros.repositorio';
 import {
@@ -489,6 +491,70 @@ export const maestrosServicio = {
 
       db.update(usuarios).set({ activo }).where(eq(usuarios.id, id)).run();
       return vistaUsuario(id);
+    });
+  },
+
+  /* ------------------------------ Vendedores ------------------------------ */
+
+  crearVendedor(entrada: {
+    nombre: string;
+    telefono?: string | null;
+    cuit?: string | null;
+    clienteId?: number | null;
+    notas?: string | null;
+  }): { id: number } {
+    return ejecutarSeguro('crear un vendedor', () => {
+      const nombre = entrada.nombre.trim();
+      if (nombre === '') throw new ErrorValidacion('El vendedor necesita un nombre.');
+      const existente = obtenerDb().select().from(vendedores).where(eq(vendedores.nombre, nombre)).get();
+      if (existente) throw new ErrorReglaNegocio(`Ya existe un vendedor llamado ${nombre}.`);
+      const fila = obtenerDb()
+        .insert(vendedores)
+        .values({
+          nombre,
+          telefono: entrada.telefono?.trim() || null,
+          cuit: cuitNormalizado(entrada.cuit),
+          clienteId: entrada.clienteId ?? null,
+          notas: entrada.notas?.trim() || null,
+          activo: true,
+        })
+        .returning({ id: vendedores.id })
+        .all()[0]!;
+      emitir('maestros:cambio');
+      return { id: fila.id };
+    });
+  },
+
+  actualizarVendedor(
+    id: number,
+    entrada: {
+      nombre: string;
+      telefono?: string | null;
+      cuit?: string | null;
+      clienteId?: number | null;
+      notas?: string | null;
+      activo: boolean;
+    },
+  ): { id: number } {
+    return ejecutarSeguro('actualizar un vendedor', () => {
+      const fila = obtenerDb().select().from(vendedores).where(eq(vendedores.id, id)).get();
+      if (!fila) throw new ErrorNoEncontrado('vendedor', id);
+      const nombre = entrada.nombre.trim();
+      if (nombre === '') throw new ErrorValidacion('El vendedor necesita un nombre.');
+      obtenerDb()
+        .update(vendedores)
+        .set({
+          nombre,
+          telefono: entrada.telefono?.trim() || null,
+          cuit: cuitNormalizado(entrada.cuit),
+          clienteId: entrada.clienteId ?? null,
+          notas: entrada.notas?.trim() || null,
+          activo: entrada.activo,
+        })
+        .where(eq(vendedores.id, id))
+        .run();
+      emitir('maestros:cambio');
+      return { id };
     });
   },
 };

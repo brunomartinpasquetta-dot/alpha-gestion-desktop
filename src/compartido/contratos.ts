@@ -26,7 +26,7 @@ export type TipoMovimientoStock =
   | 'merma'
   | 'ajuste';
 export type TipoDocumentoStock = 'compra' | 'venta' | 'orden_produccion' | 'ajuste';
-export type EstadoOrdenProduccion = 'planificada' | 'en_proceso' | 'finalizada' | 'cancelada';
+export type EstadoOrdenProduccion = 'planificada' | 'en_proceso' | 'pausada' | 'finalizada' | 'cancelada';
 export type FormaPago = 'contado' | 'cuenta_corriente';
 export type EstadoCompra = 'pendiente' | 'recibida' | 'anulada';
 export type EstadoVenta = 'pendiente' | 'entregada' | 'anulada';
@@ -70,6 +70,10 @@ export interface RespuestaSalud {
    * abre en el celular.
    */
   urlPedidos?: string | null;
+  /** URL del monitor de elaboracion en la red local (tablet de fabrica). */
+  urlElaboracion?: string | null;
+  /** true si el acceso desde la red pide PIN. */
+  pinConfigurado?: boolean;
 }
 
 /* ------------------------------- Articulos -------------------------------- */
@@ -98,7 +102,16 @@ export interface ArticuloConStock {
   unidadesPorCaja: number | null;
   costoActual: number | null;
   activo: boolean;
+  /** Lo que hay en el deposito, segun el ledger. */
   stock: number;
+  /** De ese stock, lo que ya esta comprometido con un pedido. */
+  reservado: number;
+  /** Lo que se le puede prometer hoy a un cliente nuevo: stock - reservado. */
+  disponible: number;
+  /** Receta activa que lo produce. null = no se elabora, se compra. */
+  recetaId: number | null;
+  recetaRinde: number | null;
+  recetaInsumos: number;
   bajoMinimo: boolean;
   /** Cuanto falta para llegar al ideal. 0 si no hace falta reponer. */
   aReponer: number;
@@ -121,6 +134,21 @@ export interface SaldoStock {
   bajoMinimo: boolean;
   /** Cuanto falta para llegar al ideal. 0 si no hace falta reponer. */
   aReponer: number;
+}
+
+/** Fila del ledger GLOBAL de un grupo de stock (auditoria de movimientos). */
+export interface MovimientoGrupoVista {
+  id: number;
+  fecha: string;
+  articuloId: number;
+  articuloCodigo: string;
+  articuloNombre: string;
+  unidadAbreviatura: string;
+  tipo: TipoMovimientoStock;
+  cantidad: number;
+  documentoTipo: TipoDocumentoStock | null;
+  documentoId: number | null;
+  notas: string | null;
 }
 
 /** Fila del ledger de un articulo, con el saldo acumulado hasta ese movimiento. */
@@ -172,11 +200,24 @@ export interface OrdenProduccionVista {
   articuloProducidoNombre: string;
   cantidadPlanificada: number;
   unidadAbreviatura: string;
+  /** 12 = el producto se cuenta por docenas, que es como se elabora y se embala. */
+  unidadesPorCaja: number | null;
   factorEscala: number;
   estado: EstadoOrdenProduccion;
   /** Numero de lote de la tanda; null hasta que la orden se ejecuta. */
   numeroLote: string | null;
   pedidoId: number | null;
+  /** Para quien se elabora. null = orden interna, para hacer stock. */
+  clienteId: number | null;
+  clienteNombre: string | null;
+  /**
+   * true si HOY no alcanzan los insumos para elaborarla (contando lo que ya
+   * comprometieron las tandas en curso). No es un estado guardado: se calcula
+   * al listar, asi cuando entra la compra de insumos la orden "despierta" sola.
+   */
+  esperaInsumos: boolean;
+  /** Que falta y cuanto, listo para mostrar. null si no falta nada. */
+  insumosFaltantes: string | null;
   rindeReal: number | null;
   fechaPlanificada: string;
   fechaInicio: string | null;
@@ -230,6 +271,22 @@ export interface PedidoItemVista {
   unidadAbreviatura: string;
   unidadesPorCaja: number | null;
   notas: string | null;
+  /** De lo pedido, cuanto ya esta apartado para este cliente. */
+  reservado: number;
+  /** Del deposito, cuanto se puede apartar hoy sin sacarselo a otro pedido. */
+  disponible: number;
+}
+
+export interface RenglonPedidoVista {
+  id: number;
+  /** null = renglon armado a medida (ver descripcion y componentes). */
+  presentacionId: number | null;
+  presentacionCodigo: string | null;
+  presentacionNombre: string | null;
+  descripcion: string | null;
+  cantidad: number;
+  /** Composicion del renglon a medida; vacio en renglones de catalogo. */
+  componentes: { articuloId: number; articuloNombre: string; unidades: number }[];
 }
 
 export interface PedidoVista {
@@ -242,7 +299,13 @@ export interface PedidoVista {
   fechaEntregaEstimada: string | null;
   cargadoPor: string | null;
   notas: string | null;
+  vendedorId: number | null;
+  vendedorNombre: string | null;
+  listaPrecioId: number | null;
+  listaPrecioNombre: string | null;
   items: PedidoItemVista[];
+  /** Renglones del talonario; vacio si el pedido se cargo por unidades. */
+  renglones: RenglonPedidoVista[];
 }
 
 /* ----------------------------- Cuentas corrientes ------------------------- */
@@ -296,6 +359,17 @@ export interface CajaMovimientoVista {
 export const TIPOS_DOCUMENTO = ['CUIT', 'DNI', 'CUIL', 'PASAPORTE', 'CF'] as const;
 export type TipoDocumento = (typeof TIPOS_DOCUMENTO)[number];
 
+export interface VendedorVista {
+  id: number;
+  nombre: string;
+  telefono: string | null;
+  cuit: string | null;
+  /** Su ficha de cliente: la receptora cuando se le factura a el. */
+  clienteId: number | null;
+  notas: string | null;
+  activo: boolean;
+}
+
 export interface ClienteVista {
   id: number;
   nombre: string;
@@ -314,6 +388,8 @@ export interface ClienteVista {
   tipo: TipoCliente;
   listaPrecioId: number | null;
   listaPrecioNombre: string | null;
+  /** Vendedor habitual: se propone al cargarle un pedido. */
+  vendedorId: number | null;
   activo: boolean;
   saldoCc: number;
 }
@@ -408,7 +484,10 @@ export const ETIQUETA_TIPO_MOVIMIENTO: Readonly<Record<TipoMovimientoStock, stri
 
 export const ETIQUETA_ESTADO_ORDEN: Readonly<Record<EstadoOrdenProduccion, string>> = {
   planificada: 'Planificada',
-  en_proceso: 'En proceso',
+  // "En elaboracion" es como lo dice el que produce; "en proceso" es jerga de
+  // sistema. La clave interna no cambia: solo lo que se lee en pantalla.
+  en_proceso: 'En elaboracion',
+  pausada: 'Pausada',
   finalizada: 'Finalizada',
   cancelada: 'Cancelada',
 };
@@ -527,10 +606,30 @@ export interface EntradaItemPedido {
 /** Cuerpo de POST /api/pedidos. Lo comparten la PWA del celular y el escritorio. */
 export interface EntradaNuevoPedido {
   clienteId?: number | null;
+  /** Quien trajo el pedido (revendedor); null = venta directa. */
+  vendedorId?: number | null;
+  /** Lista con la que se liquida; null = la del cliente. */
+  listaPrecioId?: number | null;
   origen: OrigenPedido;
   fechaEntregaEstimada?: string | null;
   cargadoPor?: string | null;
   notas?: string | null;
+  /**
+   * Renglones EN PRESENTACIONES (el talonario): "2 cajas B-N-FB". Si vienen,
+   * los items en unidades se derivan solos explotando la composicion y NO hay
+   * que mandarlos. Los items directos quedan para el celular y compatibilidad.
+   *
+   * Renglon A MEDIDA: sin presentacionId, con descripcion y composicion propia
+   * ("docena con 4 FN + 4 FB + 4 N"). Se liquida por unidades x precio, se
+   * explota al stock igual que una surtida, y la descripcion es lo que se
+   * imprime en la orden de elaboracion.
+   */
+  renglones?: {
+    presentacionId?: number | null;
+    cantidad: number;
+    descripcion?: string | null;
+    componentes?: { articuloId: number; unidades: number }[] | null;
+  }[] | null;
   items: EntradaItemPedido[];
   /**
    * Clave unica del cliente para que un reintento (cola offline con respuesta
@@ -545,10 +644,15 @@ export interface EntradaNuevoPedido {
  * Cancelable mientras no se haya entregado; la entrega es terminal.
  */
 export const TRANSICIONES_PEDIDO: Readonly<Record<EstadoPedido, readonly EstadoPedido[]>> = {
-  pendiente: ['confirmado', 'cancelado'],
-  confirmado: ['en_produccion', 'cancelado'],
-  en_produccion: ['listo', 'cancelado'],
-  listo: ['entregado'],
+  // La UNICA accion manual sobre el estado es CANCELAR. Todo lo demas lo mueve
+  // el sistema: en_produccion cuando arranca una tanda, listo cuando todo esta
+  // apartado, entregado solo con la venta. Los botones Confirmar / A produccion
+  // / Marcar listo eran restos del circuito manual y no hacian nada real.
+  // ('confirmado' sobrevive como estado por los pedidos viejos que lo tienen.)
+  pendiente: ['cancelado'],
+  confirmado: ['cancelado'],
+  en_produccion: ['cancelado'],
+  listo: ['cancelado'],
   entregado: [],
   cancelado: [],
 };
@@ -574,7 +678,10 @@ export const TRANSICIONES_ORDEN: Readonly<
   Record<EstadoOrdenProduccion, readonly EstadoOrdenProduccion[]>
 > = {
   planificada: ['en_proceso', 'cancelada'],
-  en_proceso: ['finalizada', 'cancelada'],
+  en_proceso: ['finalizada', 'pausada', 'cancelada'],
+  // Reanudar vuelve a en_proceso sin lote nuevo; tambien se puede finalizar o
+  // cancelar directo desde la pausa.
+  pausada: ['en_proceso', 'finalizada', 'cancelada'],
   finalizada: [],
   cancelada: [],
 };
@@ -582,6 +689,7 @@ export const TRANSICIONES_ORDEN: Readonly<
 export const ETIQUETA_TRANSICION_ORDEN: Readonly<Record<EstadoOrdenProduccion, string>> = {
   planificada: 'Planificar',
   en_proceso: 'Ejecutar',
+  pausada: 'Pausar',
   finalizada: 'Finalizar',
   cancelada: 'Cancelar',
 };
@@ -775,11 +883,86 @@ export function nombreCondicionReceptor(codigo: number | null): string {
 }
 
 /** Cuerpo de POST /api/ventas. La venta nace ENTREGADA: registra un hecho. */
+/**
+ * Destino del resto cuando el cliente se lleva MENOS de lo que su pedido tenia
+ * apartado: 'liberar' (no lo quiere mas: vuelve a stock disponible y el pedido
+ * cierra) o 'mantener' (lo retira despues: sigue apartado y el pedido queda
+ * listo con el saldo). Sin resto pendiente, el campo no juega.
+ */
+export type RestoPedido = 'liberar' | 'mantener';
+
+/* ----------------------------- Presentaciones ------------------------------ */
+
+/**
+ * Forma comercial de venta: caja x36, docena, bolsa x6, surtida... El stock
+ * cuenta unidades por variedad; la presentacion es la capa que el talonario
+ * carga y la venta liquida.
+ */
+export interface PresentacionVista {
+  id: number;
+  codigo: string;
+  nombre: string;
+  /** true = precio de renglon propio por lista (cubanitos, envase). */
+  precioPropio: boolean;
+  activo: boolean;
+  orden: number;
+  componentes: {
+    articuloId: number;
+    articuloCodigo: string;
+    articuloNombre: string;
+    unidades: number;
+  }[];
+  unidadesTotales: number;
+}
+
+export type TipoMedioPago =
+  | 'efectivo'
+  | 'transferencia'
+  | 'tarjeta_debito'
+  | 'tarjeta_credito'
+  | 'cheque'
+  | 'otro';
+
+export interface MedioPagoVista {
+  id: number;
+  nombre: string;
+  tipo: TipoMedioPago;
+  /** true = billetes al cajon: lo unico que entra al arqueo fisico del cierre. */
+  esEfectivoFisico: boolean;
+  /** Porcentaje que absorbe el comercio. El cliente paga el importe integro. */
+  comisionPct: number;
+  activo: boolean;
+  orden: number;
+}
+
+/** Un pago de la venta. La suma de todos es EXACTAMENTE el total: sin vuelto. */
+export interface PagoVentaEntrada {
+  medioPagoId: number;
+  /** Centavos. */
+  importe: number;
+  /** Numero de transferencia, ultimos 4 de la tarjeta... */
+  referencia?: string | null;
+  /** Obligatorio cuando el medio es de tipo cheque: da de alta la cartera. */
+  cheque?: {
+    numero: string;
+    banco?: string | null;
+    /** Fecha de cobro del diferido, AAAA-MM-DD. */
+    fechaPago: string;
+    formato?: 'fisico' | 'echeq';
+  } | null;
+}
+
 export interface EntradaNuevaVenta {
   clienteId?: number | null;
   formaPago: FormaPago;
   /** Si la venta sale de un pedido listo, se lo marca entregado en el mismo acto. */
   pedidoId?: number | null;
+  restoPedido?: RestoPedido | null;
+  /**
+   * Pagos de la venta de contado (mixtos). Si no viene, se asume todo en
+   * Efectivo: compatibilidad con la venta rapida de mostrador.
+   */
+  pagos?: PagoVentaEntrada[] | null;
   notas?: string | null;
   /** Por defecto 'remito': comportamiento historico, sin ARCA de por medio. */
   comprobante?: TipoComprobante;
@@ -1037,8 +1220,14 @@ export interface ResultadoCobroPago {
 
 export interface EntradaNuevaOrden {
   recetaId: number;
-  /** Media tanda = 0.5, doble = 2. La cantidad sale del rinde por este factor. */
-  factorEscala: number;
+  /**
+   * CUANTO se va a producir, en la unidad base del producto (240 alfajores,
+   * 18000 g de dulce de leche). Antes se pedia un "factor de escala" —media
+   * tanda, doble tanda— que es una cuenta del sistema, no algo que el que
+   * produce tenga en la cabeza: el piensa en docenas o en kilos. El factor se
+   * calcula solo, dividiendo esta cantidad por el rinde de la receta.
+   */
+  cantidad: number;
   pedidoId?: number | null;
   notas?: string | null;
 }

@@ -112,6 +112,30 @@ const eventos = {
   },
 } as const;
 
+const sistema = {
+  /** Cierra y vuelve a abrir el programa (tras restaurar un respaldo). */
+  reiniciar(): void {
+    ipcRenderer.send('app:reiniciar');
+  },
+} as const;
+
+const whatsapp = {
+  /** Pide abrir el chat de un numero E.164 sin + (ej: 549342...). */
+  abrirChat(telefono: string): void {
+    ipcRenderer.send('whatsapp:abrir-chat', String(telefono));
+  },
+  /** El panel de la ventana principal escucha adonde navegar. */
+  alNavegar(manejador: (telefono: string) => void): () => void {
+    const puente = (_evento: unknown, telefono: unknown): void => {
+      if (typeof telefono === 'string') manejador(telefono);
+    };
+    ipcRenderer.on('whatsapp:navegar', puente);
+    return () => {
+      ipcRenderer.removeListener('whatsapp:navegar', puente);
+    };
+  },
+} as const;
+
 const actualizaciones = {
   /** Busca actualizaciones ahora y devuelve que paso, para mostrarlo. */
   verificar(): Promise<unknown> {
@@ -146,6 +170,8 @@ export interface ApiAlfajores {
   readonly archivos: typeof archivos;
   readonly actualizaciones: typeof actualizaciones;
   readonly eventos: typeof eventos;
+  readonly whatsapp: typeof whatsapp;
+  readonly sistema: typeof sistema;
 }
 
 const api: ApiAlfajores = Object.freeze({
@@ -155,6 +181,8 @@ const api: ApiAlfajores = Object.freeze({
   archivos,
   actualizaciones,
   eventos,
+  whatsapp,
+  sistema,
 });
 
 contextBridge.exposeInMainWorld('alfajores', api);

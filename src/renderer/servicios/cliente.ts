@@ -37,6 +37,7 @@ import type {
   FamiliaVista,
   LineaReposicion,
   LotePrecio,
+  MedioPagoVista,
   PrecioDeArticulo,
   VistaPreviaPrecio,
   ResultadoInicializacion,
@@ -61,9 +62,11 @@ import type {
   Estadisticas,
   GrupoStock,
   ListaPrecioVista,
+  MovimientoGrupoVista,
   MovimientoStockVista,
   OrdenProduccionVista,
   PedidoVista,
+  PresentacionVista,
   ProveedorVista,
   RecetaVista,
   RespuestaSalud,
@@ -72,6 +75,7 @@ import type {
   ResumenGeneral,
   UsuarioVista,
   SaldoStock,
+  VendedorVista,
   VentaVista,
 } from '../../compartido/contratos';
 
@@ -169,6 +173,9 @@ export const obtenerStock = (grupo: GrupoStock): Promise<SaldoStock[]> =>
 export const obtenerMovimientosDeArticulo = (articuloId: number): Promise<MovimientoStockVista[]> =>
   pedirLista<MovimientoStockVista>(`/api/articulos/${articuloId}/movimientos`);
 
+export const obtenerMovimientosDeGrupo = (grupo: GrupoStock): Promise<MovimientoGrupoVista[]> =>
+  pedirLista<MovimientoGrupoVista>(`/api/stock/movimientos?grupo=${grupo}`);
+
 export const obtenerRecetas = (): Promise<RecetaVista[]> => pedirLista<RecetaVista>('/api/recetas');
 
 export const obtenerOrdenesProduccion = (): Promise<OrdenProduccionVista[]> =>
@@ -195,6 +202,52 @@ export const obtenerProveedores = (): Promise<ProveedorVista[]> =>
 
 export const obtenerListasPrecio = (): Promise<ListaPrecioVista[]> =>
   pedirLista<ListaPrecioVista>('/api/listas-precio');
+
+export const obtenerPresentaciones = (): Promise<PresentacionVista[]> =>
+  pedirLista<PresentacionVista>('/api/presentaciones');
+
+export const crearMedioPago = (entrada: {
+  nombre: string;
+  tipo: string;
+  esEfectivoFisico: boolean;
+  comisionPct: number;
+  orden: number;
+}): Promise<{ id: number }> => enviar<{ id: number }>('/api/medios-pago', 'POST', entrada);
+
+export const actualizarMedioPago = (
+  id: number,
+  entrada: {
+    nombre: string;
+    tipo: string;
+    esEfectivoFisico: boolean;
+    comisionPct: number;
+    orden: number;
+    activo: boolean;
+  },
+): Promise<{ id: number }> => enviar<{ id: number }>(`/api/medios-pago/${id}`, 'PUT', entrada);
+
+export const obtenerVendedores = (): Promise<VendedorVista[]> =>
+  pedirLista<VendedorVista>('/api/vendedores');
+
+export const crearVendedor = (entrada: {
+  nombre: string;
+  telefono?: string | null;
+  cuit?: string | null;
+  clienteId?: number | null;
+  notas?: string | null;
+}): Promise<{ id: number }> => enviar<{ id: number }>('/api/vendedores', 'POST', entrada);
+
+export const actualizarVendedor = (
+  id: number,
+  entrada: {
+    nombre: string;
+    telefono?: string | null;
+    cuit?: string | null;
+    clienteId?: number | null;
+    notas?: string | null;
+    activo: boolean;
+  },
+): Promise<{ id: number }> => enviar<{ id: number }>(`/api/vendedores/${id}`, 'PUT', entrada);
 
 export const obtenerCajaGeneral = (): Promise<ResumenCajaGeneral> =>
   pedirItem<ResumenCajaGeneral>('/api/caja/general');
@@ -228,12 +281,17 @@ export async function cambiarEstadoOrden(
   ordenId: number,
   estado: string,
   rindeReal?: number | null,
+  forzar?: boolean,
 ): Promise<string[]> {
   const ruta = `/api/produccion/ordenes/${ordenId}/estado`;
   const respuesta = await fetch(ruta, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(rindeReal === undefined ? { estado } : { estado, rindeReal }),
+    body: JSON.stringify({
+      estado,
+      ...(rindeReal === undefined ? {} : { rindeReal }),
+      ...(forzar === true ? { forzar: true } : {}),
+    }),
   });
   const cuerpo = await leerJson(respuesta, ruta);
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
@@ -269,6 +327,9 @@ export async function cambiarEstadoCheque(chequeId: number, estado: string): Pro
   const cuerpo = await leerJson(respuesta, ruta);
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
 }
+
+export const obtenerMediosPago = (): Promise<MedioPagoVista[]> =>
+  pedirLista<MedioPagoVista>('/api/medios-pago');
 
 export async function crearVenta(entrada: EntradaNuevaVenta): Promise<ResultadoVenta> {
   const respuesta = await fetch('/api/ventas', {
@@ -335,6 +396,22 @@ async function enviar<T>(ruta: string, metodo: 'POST' | 'PUT' | 'PATCH', cuerpo?
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, datos);
   return (datos as { datos: T }).datos;
 }
+
+/* --------------------------- Reservas de un pedido -------------------------- */
+
+export interface ResultadoCobertura {
+  pedidoId: number;
+  reservado: { articuloId: number; articuloNombre: string; cantidad: number; numeroLote: string | null }[];
+  faltante: { articuloId: number; articuloNombre: string; cantidad: number }[];
+}
+
+/** Aparta para el pedido lo que ya esta elaborado y todavia no tiene dueño. */
+export const cubrirPedidoConStock = (pedidoId: number): Promise<ResultadoCobertura> =>
+  enviar<ResultadoCobertura>(`/api/pedidos/${pedidoId}/cubrir-con-stock`, 'POST');
+
+/** Suelta lo apartado para el pedido y lo devuelve a la venta. */
+export const liberarReservasPedido = (pedidoId: number): Promise<{ pedidoId: number }> =>
+  enviar<{ pedidoId: number }>(`/api/pedidos/${pedidoId}/liberar-reservas`, 'POST');
 
 /* -------------------------------- Maestros -------------------------------- */
 
@@ -452,8 +529,57 @@ export const cambiarActivoUsuario = (id: number, activo: boolean): Promise<Usuar
 
 /* --------------------------------- Pedidos -------------------------------- */
 
-export const crearPedido = (entrada: EntradaNuevoPedido): Promise<PedidoVista> =>
-  enviar<PedidoVista>('/api/pedidos', 'POST', entrada);
+/** Orden de produccion que el pedido abrio solo al cargarse. */
+export interface OrdenAbiertaPorPedido {
+  ordenId: number;
+  articuloNombre: string;
+  cantidad: number;
+  /** true si la orden nacio sin insumos suficientes: queda en espera. */
+  esperaInsumos: boolean;
+  insumosFaltantes: string | null;
+}
+
+/**
+ * Respuesta completa del alta de pedido. Ademas del pedido persistido viajan
+ * `ordenes` y `cobertura` como hermanos de `datos`: es lo que le permite al
+ * formulario contarle al operador que paso DE VERDAD (cuanto se reservo de
+ * stock, cuanto se mando a elaborar y si algo quedo esperando insumos).
+ * Ambos pueden faltar si la clave de idempotencia ya se habia procesado.
+ */
+export interface ResultadoCrearPedido {
+  /** El pedido tal como quedo en la base. Aca alcanza con el id y el estado. */
+  datos: { id: number; estado: string };
+  ordenes?: {
+    creadas: OrdenAbiertaPorPedido[];
+    /** Productos que habia que elaborar pero no tienen receta: no abren orden. */
+    sinReceta: string[];
+  };
+  cobertura?: {
+    reservado: { articuloId: number; articuloNombre: string; cantidad: number; numeroLote: string | null }[];
+    faltante: { articuloId: number; articuloNombre: string; cantidad: number }[];
+    /** true si el stock cubrio todo y el pedido quedo LISTO sin elaborar nada. */
+    quedoListo: boolean;
+  };
+}
+
+/**
+ * No usa `enviar` porque ese helper devuelve solo `datos` y aca la informacion
+ * util del alta —ordenes y cobertura— viaja fuera de `datos`.
+ */
+export async function crearPedido(entrada: EntradaNuevoPedido): Promise<ResultadoCrearPedido> {
+  const ruta = '/api/pedidos';
+  const respuesta = await fetch(ruta, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(entrada),
+  });
+  const cuerpo = await leerJson(respuesta, ruta);
+  if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
+  if (!esRegistro(cuerpo) || !esRegistro(cuerpo['datos'])) {
+    throw new Error(`Respuesta inesperada en ${ruta}: se esperaba un objeto en "datos".`);
+  }
+  return cuerpo as unknown as ResultadoCrearPedido;
+}
 
 export const actualizarPedido = (id: number, entrada: EntradaNuevoPedido): Promise<{ id: number }> =>
   enviar<{ id: number }>(`/api/pedidos/${id}`, 'PUT', entrada);

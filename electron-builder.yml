@@ -7,9 +7,21 @@ directories:
   output: release
 
 # Solo viaja lo compilado. El codigo fuente TypeScript no entra al paquete.
+#
+# Los "!" de abajo son un arreglo de un bug real: electron-rebuild deja en
+# node_modules copias COMPILADAS PARA ESTA MAC (bcrypt/build, bcrypt/bin) y
+# node-gyp-build las prefiere por sobre los prebuilds oficiales. Como el
+# instalador de Windows se arma desde esta Mac, esas copias viajaban adentro y
+# la app moria al arrancar en Windows con "error de JavaScript" (require de un
+# binario Mach-O en Windows). Excluirlas obliga a cada plataforma a cargar SU
+# prebuild oficial (bcrypt/prebuilds/win32-x64, better-sqlite3/prebuilds/...),
+# que es exactamente lo que hacia la 1.1.0 que funcionaba.
 files:
   - dist/**/*
   - package.json
+  - "!node_modules/bcrypt/build/**"
+  - "!node_modules/bcrypt/bin/**"
+  - "!node_modules/better-sqlite3/build/**"
 
 # Las migraciones de Drizzle NO van dentro del asar: `rutas-db.ts` las busca
 # primero en process.resourcesPath/drizzle, que es exactamente donde caen aca.
@@ -18,6 +30,12 @@ extraResources:
     to: drizzle
     filter:
       - "**/*"
+  # La base de conocimiento del asistente: se lee en runtime (gotcha kbLoader
+  # de StockFlow: JSON grande jamas inlineado en el bundle del main).
+  - from: src/server/asistente/conocimiento
+    to: conocimiento
+    filter:
+      - "*.json"
 
 asar: true
 # Los modulos nativos tienen que quedar fuera del asar para poder cargarse.

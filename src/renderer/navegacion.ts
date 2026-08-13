@@ -19,6 +19,7 @@ export type ClaveModulo =
   | 'caja'
   | 'cuentas-corrientes'
   | 'clientes'
+  | 'vendedores'
   | 'proveedores'
   | 'listas-precio';
 
@@ -54,21 +55,18 @@ export const GRUPOS_NAVEGACION: readonly GrupoNavegacion[] = [
     modulos: [
       {
         clave: 'stock-insumos',
-        etiqueta: 'Insumos',
-        titulo: 'Stock de insumos',
+        etiqueta: 'Stock Insumos',
+        titulo: 'Stock Insumos',
         descripcion: 'Materias primas y pre-elaborados con su saldo calculado desde el ledger.',
       },
+      // "Articulos" se fusiono aca: era la union de Insumos y Productos, y dos
+      // modulos con las mismas funciones sobre los mismos datos confunden. La
+      // vista combinada vive como pestania dentro de Stock Productos.
       {
         clave: 'stock-productos',
-        etiqueta: 'Productos',
-        titulo: 'Stock de productos',
-        descripcion: 'Productos terminados listos para vender.',
-      },
-      {
-        clave: 'articulos',
-        etiqueta: 'Articulos',
-        titulo: 'Maestro de articulos',
-        descripcion: 'Todos los articulos con unidad, minimo, costo actual y stock.',
+        etiqueta: 'Stock Productos',
+        titulo: 'Stock Productos',
+        descripcion: 'Productos terminados listos para vender, con la pestania del catalogo completo.',
       },
     ],
   },
@@ -77,14 +75,14 @@ export const GRUPOS_NAVEGACION: readonly GrupoNavegacion[] = [
     modulos: [
       {
         clave: 'recetas',
-        etiqueta: 'Recetas',
-        titulo: 'Recetas',
+        etiqueta: 'Recetas y costos',
+        titulo: 'Recetas y costos',
         descripcion: 'Formulas de produccion con sus insumos, cantidades y merma esperada.',
       },
       {
         clave: 'ordenes',
-        etiqueta: 'Ordenes',
-        titulo: 'Ordenes de produccion',
+        etiqueta: 'Elaboracion',
+        titulo: 'Elaboracion',
         descripcion: 'Ordenes planificadas, en proceso y finalizadas.',
       },
     ],
@@ -103,6 +101,12 @@ export const GRUPOS_NAVEGACION: readonly GrupoNavegacion[] = [
         etiqueta: 'Ventas',
         titulo: 'Ventas',
         descripcion: 'Comprobantes de venta emitidos.',
+      },
+      {
+        clave: 'vendedores',
+        etiqueta: 'Vendedores',
+        titulo: 'Vendedores',
+        descripcion: 'Revendedores que traen pedidos: datos y clientes asignados.',
       },
       {
         clave: 'compras',
@@ -138,6 +142,7 @@ export const GRUPOS_NAVEGACION: readonly GrupoNavegacion[] = [
         titulo: 'Clientes',
         descripcion: 'Datos de contacto, lista de precios asignada y saldo en cuenta corriente.',
       },
+
       {
         clave: 'proveedores',
         etiqueta: 'Proveedores',

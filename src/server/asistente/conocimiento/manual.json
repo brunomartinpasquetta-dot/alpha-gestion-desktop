@@ -1,0 +1,92 @@
+{
+ "sections": [
+  {
+   "id": "circuito",
+   "title": "El circuito del pedido",
+   "overview": "Del pedido a la entrega: cargar, elaborar, vender.",
+   "subsections": [
+    {
+     "heading": "Circuito completo",
+     "paragraphs": [
+      "El pedido se carga con el talonario (cliente, producto, presentacion, variedades). Al cargarlo el sistema aparta el stock disponible y abre ordenes de produccion SOLO por lo que falta.",
+      "La elaboracion se maneja desde Ordenes (F7) o el monitor de la tablet: Elaborar chequea insumos y asigna lote; Finalizar mete lo producido a stock reservado para el cliente del pedido.",
+      "Cuando todo esta apartado el pedido queda LISTO. La UNICA forma de entregarlo es venderlo (Ventas F8): factura o remito, pago simple o mixto, y el pedido pasa a ENTREGADO."
+     ],
+     "steps": [],
+     "tips": [
+      "Un pedido nunca se entrega a mano: siempre a traves de la venta, para que no quede mercaderia entregada sin facturar."
+     ]
+    },
+    {
+     "heading": "Presentaciones y cajas armadas",
+     "paragraphs": [
+      "Alfajores: caja x36, docena (x12), bolsa x6 o unidad; las variedades (blanco, negro, frutilla blanco, frutilla negro) llenan la caja y la suma tiene que cerrar con el envase.",
+      "Cubanitos: caja x10 o x16, con los sabores adentro (dulce de leche, frutilla, mani, avellana, bananita); el precio es por caja.",
+      "Almendras: bolsa de 200 g por variedad de chocolate (c/leche, blanco, semiamargo).",
+      "Si la combinacion coincide con una del catalogo el sistema la reconoce; si no, viaja como armada a medida con su receta guardada."
+     ],
+     "steps": [],
+     "tips": []
+    }
+   ]
+  },
+  {
+   "id": "dinero",
+   "title": "Plata: ventas, caja, cheques, cuentas",
+   "overview": "Como entra y sale la plata del sistema.",
+   "subsections": [
+    {
+     "heading": "Pagos y arqueo",
+     "paragraphs": [
+      "Una venta puede cobrarse con varios medios a la vez (efectivo, transferencia, debito, credito, cheque) hasta cubrir el total exacto. Solo el efectivo fisico entra al arqueo de la caja diaria.",
+      "Los cheques recibidos entran solos a la cartera; anular la venta los saca. La Caja General muestra todo: efectivo, banco, tarjetas y cartera."
+     ],
+     "steps": [],
+     "tips": []
+    },
+    {
+     "heading": "Facturacion ARCA",
+     "paragraphs": [
+      "La factura pide el CAE antes de registrar nada: si ARCA falla, la venta no queda a medias. El remito X es entrega sin comprobante fiscal; un pedido puede partirse entre factura y remito en dos ventas."
+     ],
+     "steps": [],
+     "tips": []
+    }
+   ]
+  },
+  {
+   "id": "maestros",
+   "title": "Clientes, vendedores y precios",
+   "overview": "El padron y las listas.",
+   "subsections": [
+    {
+     "heading": "Padron y listas",
+     "paragraphs": [
+      "Cada cliente tiene lista de precios y vendedor habitual: el pedido los propone solos y se pueden pisar. Las listas derivadas (+ %) siguen solas a su base.",
+      "Los vendedores (revendedores) traen pedidos de otros clientes; pueden ser tambien clientes."
+     ],
+     "steps": [],
+     "tips": []
+    }
+   ]
+  },
+  {
+   "id": "alfi-datos",
+   "title": "Alfi responde con datos",
+   "overview": "El asistente contesta con numeros reales del sistema.",
+   "subsections": [
+    {
+     "heading": "Consultas con datos en vivo",
+     "paragraphs": [
+      "Alfi responde con los datos REALES del sistema cuando la pregunta es de numeros: ventas de hoy, pedidos pendientes, ordenes en curso con su lote, insumos bajo minimo u ordenes frenadas por insumos, stock de un producto (fisico, apartado y disponible), clientes que deben, cheques en cartera por fecha de cobro, y el precio de un producto por lista.",
+      "Si la pregunta no es de datos, Alfi explica como usar el sistema, como siempre."
+     ],
+     "steps": [],
+     "tips": [
+      "Los numeros salen del sistema en el momento: si cargas una venta y volves a preguntar, la respuesta cambia."
+     ]
+    }
+   ]
+  }
+ ]
+}

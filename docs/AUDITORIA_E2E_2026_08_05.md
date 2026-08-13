@@ -338,3 +338,151 @@ y la prueba a fondo en Windows.
   que se puede probar sin él: firma CMS real (ARCA la procesó y respondió),
   transporte contra los servidores reales, y el parseo de respuestas de ARCA
   aprobadas, observadas y rechazadas.
+
+---
+
+## Tanda 6 — Reservas de stock y órdenes automáticas (9/8/2026, v1.2.0)
+
+Circuito nuevo, verificado de punta a punta contra la app instalada, no contra
+tests: cada paso se hizo por la API real del servidor que corre dentro de la app.
+
+| # | Qué se probó | Resultado |
+|---|---|---|
+| 1 | Pedido de 60 u de maicena + 120 u de triple | Abrió sus **dos órdenes solas** (#8 y #9), una por producto |
+| 2 | Cubrir ese pedido con stock disponible | Apartó las 36 u de maicena que había; informó que faltaban 24 u y 120 u |
+| 3 | Efecto sobre el stock | maicena: físico 36, reservado 36, **disponible 0** |
+| 4 | La orden que quedó | Se **redujo sola a 24 u** ("Reducida: 36 salieron de stock ya elaborado") |
+| 5 | Pedido de 48 u de chocolate, cubierto entero | Repartió por lote: **35 u sin lote + 13 u del lote L-20260805-01** |
+| 6 | La orden de ese pedido | Se **canceló sola**: ya estaba cubierto, elaborarla sería tirar insumos |
+| 7 | Ejecutar y finalizar la orden del triple (120 u) | Lote L-20260809-01; entró **físico 120 / reservado 120 / disponible 0** |
+| 8 | Venta de mostrador de 10 triples (todo comprometido) | Registró y **avisó**: "solo hay 0 sin comprometer. El resto estaba reservado para un pedido" |
+| 9 | Venta del pedido 12 (110 triples + 36 maicena) | Consumió las reservas: los tres artículos quedaron en 0/0/0 |
+| 10 | Cancelar un pedido con 12 u apartadas | Chocolate volvió de disponible 22 a **disponible 34** |
+
+**Lo que se corrigió durante la auditoría.** La primera versión de "cubrir con
+stock" no tocaba la orden cuando no había nada disponible, así que un pedido
+parcialmente cubierto seguía teniendo una orden por la cantidad total: el que
+produce habría elaborado 60 cuando solo faltaban 24. Ahora el ajuste corre
+siempre, con lo que falte de verdad.
+
+**Verificación visual.** Botones de acción de las órdenes: 36×36 px cada uno,
+contenedor de 78×36 → cuadrados y en una sola fila. Columna "Docenas" en lugar de
+"Tanda". Columna "Para quién" con el pedido y el cliente. En el pedido, columna
+"Apartado" con estado Completo / parcial / a elaborar.
+
+---
+
+## Tanda 7 — Circuito comercial completo del diagrama de Bruno (10/8/2026, v1.3.0, solo Mac)
+
+Verificado contra la app instalada, por API y por pantalla (CDP).
+
+| # | Escenario | Resultado |
+|---|---|---|
+| 1 | Pedido con stock TOTAL (12 u, había 34 libres) | Reservó solo y pasó **directo a LISTO** sin tocar nada |
+| 2 | Pedido SIN stock ni insumos (24 u maicena, DDL en −1260) | Orden nació **"Espera insumos: faltan 2820 g de DDL"** — el número incluía lo comprometido por la tanda en curso (1080 g) |
+| 2b | Elaborar sin insumos | **Rechazado** con el faltante exacto y la opción de forzar |
+| 2c | Se cargó la compra de 5000 g de DDL | La orden **despertó sola** (espera → lista) sin ningún evento manual |
+| 2d | Elaborar → Finalizar | Lote L-20260810-01; pedido pasó solo a EN_PRODUCCION y luego a **LISTO**; el producto entró **físico 24 / reservado 24 / disponible 0** |
+| 3 | Pedido con stock PARCIAL (48 u, había 22) | Apartó 22 (lote L-20260805-01) y abrió la orden **por 26**, no por 48 |
+| 4 | Venta TOTAL desde pedido listo | Pedido → ENTREGADO, reservas consumidas |
+| 5 | Venta PARCIAL, resto MANTENER (12 de 24) | Pedido **siguió LISTO con 12 apartadas**; la segunda venta lo cerró ENTREGADO |
+| 6 | Venta PARCIAL, resto LIBERAR (6 de 10) | Aviso "4 vuelven a stock disponible"; pedido ENTREGADO; disponible subió de 0 a 42 (64−22) |
+
+**UI verificada:** botón "Vender / facturar" solo en pedidos listos y abre la venta
+precargada (pedido, cliente, cajas); pastilla "Espera insumos" con el detalle en
+el tooltip; "En elaboración" en lugar de "En proceso"; Stock Productos con
+pestañas Productos / Todos los artículos; menú Stock sin la entrada "Artículos"
+(F5 liberada); Stock Insumos renombrado.
+
+**Nota de diseño:** "espera de insumos" NO es un estado guardado sino calculado
+contra el stock del momento (descontando lo comprometido por tandas en curso).
+Por eso el "despertar" al cargar la compra no necesita ningún mecanismo: el
+cálculo cambia y la pantalla se refresca por el evento de maestros.
+
+**Publicación:** por pedido de Bruno, esta versión quedó SOLO en la Mac. Windows
+sigue en 1.2.2 hasta nueva orden.
+
+---
+
+## Tanda 8 — Correcciones de UX del pedido + bug de reducción (10/8/2026, v1.3.1, solo Mac)
+
+Origen: 8 quejas de Bruno tras probar la 1.3.0. Trabajo repartido: 2 agentes en
+paralelo (formulario de pedido / estilo global) + corrección del servidor a mano.
+
+| Queja | Resolución | Verificado |
+|---|---|---|
+| No se aclara DOCENAS al elegir items | Rótulo "DOCENAS" (o "CAJAS de N") arriba del incrementador, equivalencia legible | CDP: `docenas:true` |
+| No se sabe si reservó o hay que elaborar | Resumen en vivo "se reserva / se manda a elaborar" por producto + veredicto | CDP: tabla visible |
+| Botón debe ser "Cargar pedido" + confirmación SI/NO | Hecho, con `confirm` que detalla reserva y elaboración | CDP: botón presente |
+| Sin mensajes al cargar | Toast temporal (8 s) con el resultado real: reservado completo / parcial / a elaboración / EN ESPERA DE INSUMOS con el faltante | código + tipos |
+| Fecha estimada innecesaria | Eliminada del formulario | CDP: `fecha:false` |
+| Botones redondeados | Radios del sistema → 2px parejo (criterio copiado de StockFlow: botones y badges `rounded-md`, sin píldoras) | CDP: radios 0-2px |
+| Íconos del dock achicados | Tile 84→112px, ícono fijo 28×28 con `shrink-0`, etiqueta a 1 línea | CDP: medido 28×28, 1 línea |
+| **BUG: pedido 50→30 cobraba 50** | `liberarExceso`: al editar el pedido a la baja, el sobrante apartado se libera (de la reserva más nueva hacia atrás); la orden pendiente se reduce; la venta precarga y cobra lo real | E2E: pedido 48→24, orden 42→18, venta cobró $7.800 (6 u), no lo apartado original |
+
+Nota: el cobro NUNCA es requisito para elaborar; el pedido se carga sin plata y
+se cobra al retirar (o después por cuenta corriente).
+
+---
+
+## Tanda 9 — Pedidos muestra solo pedidos (10/8/2026, v1.3.2, solo Mac)
+
+- **"Estado del pedido"** bajo el encabezado: "reservado X docenas · en produccion Y docenas", por articulo.
+- **Entregar a mano: bloqueado.** Solo la venta entrega (probado: el PATCH manual responde "se entrega vendiendolo... boton Vender / facturar"). Antes dejaba pedidos sin factura y reservas colgadas (el pedido 21 de la prueba de Bruno quedo asi: evidencia del bug).
+- **Cantidades en docenas/cajas** en toda la pantalla de pedidos; columnas "Pedido / Apartado de stock / En produccion"; "hay N libres" eliminado (era dato de stock, no de pedidos).
+- **Botones "Cubrir con stock" y "Soltar lo apartado" eliminados**: reemplazados por el barrido automatico (`cubrirPedidosPendientes`): al liberarse stock (cancelacion, venta parcial, reduccion, tanda que rinde de mas) se aparta solo al pedido mas viejo que espera.
+- **Boton demo autosuficiente**: "cargar demo" ahora siembra el catalogo base si falta (tras "empezar de cero" moria).
+- Base de la Mac reiniciada a demo limpia (copia previa en `copias/`).
+
+---
+
+## Tanda 10 — Pagos mixtos, modelo StockFlow + cartera de cheques (10/8/2026, v1.4.0, solo Mac)
+
+Modelo extraído del código real de StockFlow por un agente (payment_methods /
+sale_payments) y replicado; extensión propia: el cheque dispara la cartera.
+
+| Prueba | Resultado |
+|---|---|
+| Migración siembra los 5 medios (Efectivo físico, Transferencia, TC, TD, Cheque) | ✓ verificado por API |
+| Pagos que no cubren el total | Rechazado: "Los pagos ($10.000) no cubren el total ($12.000). No hay vuelto" |
+| Venta mixta $7.000 efectivo + $5.000 transferencia (ref TRF 4482) | ✓ registrada, un ingreso de caja POR PAGO con su medio |
+| Pago con cheque sin número/fecha | Rechazado con mensaje claro |
+| Pago con cheque completo | ✓ el cheque 00412884 (Banco Nación, $4.000, vence 15/9) entró SOLO a la cartera en_cartera, a nombre del cliente, doc venta #8 |
+| Arqueo del cierre | Teórico $77.850 = apertura + SOLO efectivo físico; transferencia y cheque quedaron fuera del cajón (exacto al centavo) |
+| UI | Combo "Medio de pago", botón "Pago mixto" con fila por medio, atajo "Todo en Efectivo", indicador Restante/Completo/Excede, panel de cheque con ayuda |
+
+CC sin pagos (se cobra después) y venta rápida sin detalle = todo Efectivo:
+compatibilidad total con lo existente. Pendiente: ABM de medios de pago
+(agregar "Visa 3 cuotas" etc. con comisión), desglose por medio en el cierre.
+
+---
+
+## Publicación v1.4.0 a Windows (10/8/2026)
+
+Draft → subida (exe 113.520.326 bytes + blockmap + latest.yml) → publicada →
+verificada: /releases/latest sirve 1.4.0, exe con firma MZ y tamaño exacto al
+manifiesto, cero binarios Mach-O fuera de prebuilds/darwin. Primera prueba real
+del auto-update por red de Node en la PC del cliente (viene de 1.2.2).
+
+---
+
+## Tanda 11 — Revisión integral bajo pedido ("REVISA TODO") (10/8/2026, v1.4.1)
+
+Revisión profunda con la herramienta de code-review sobre los servicios y las
+pantallas tocadas hoy: **10 hallazgos confirmados, 10 corregidos**, con
+regresión E2E de los 4 críticos contra la app instalada:
+
+| # | Hallazgo | Arreglo | Regresión |
+|---|---|---|---|
+| 1 | Agrandar un pedido (10→50) nunca producía el extra: la orden vieja tapaba la creación | La orden planificada SE AMPLÍA (descontando lo que ya viene en camino) | Pedido 12→60: orden quedó en 60 ✓ |
+| 2 | Anular venta electrónica ensuciaba el arqueo (egreso total sin medio contra ingreso excluido) | Reverso POR PAGO con su medio | Venta $6.000 transferencia anulada → cierre con diferencia $0,00 ✓ |
+| 3 | El cheque de una venta anulada seguía como activo en cartera | Sale de cartera con nota "devuelto al cliente" + aviso | REV-777 ✓ |
+| 4 | Anular venta de pedido dejaba reservas entregadas y pedido entregado | Reservas vuelven a ACTIVAS, pedido vuelve a LISTO | Pedido 13 restaurado con 12 apartadas ✓ |
+| 5 | Precarga de venta con Math.round podía SOBREVENDER lo apartado de otro pedido | Math.floor: nunca de más | typecheck + código |
+| 6 | Validación de pagos corría DESPUÉS del CAE: un rechazo local quemaba numeración ARCA | Pre-validación (suma, medios, cheque) antes del pedido fiscal | código |
+| 7 | Reintento idempotente del celular dejaba pedidos sin órdenes para siempre | El retry re-corre cubrir+generar (idempotentes): auto-reparación | código |
+| 8 | Cancelar pedido en 2 transacciones podía dejar cancelado con reservas vivas | Una sola transacción: estado+órdenes+reservas | código |
+| 9 | Fórmula del "saldo apartado" copiada 4 veces con una variante distinta | Helper único `pendienteDeItem` en formato.ts | código |
+| 10 | El barrido recorría TODOS los pedidos contra el ledger entero en cada venta | Acotado a los artículos recién liberados | código |
+
+v1.4.1 instalada en Mac y publicada a Windows (draft→assets→publicar).

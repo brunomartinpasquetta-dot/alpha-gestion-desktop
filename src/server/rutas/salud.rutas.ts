@@ -49,6 +49,8 @@ export function registrarRutasSalud(app: FastifyInstance): void {
       entorno: config.esDesarrollo ? 'desarrollo' : 'produccion',
       db,
       urlPedidos: ip === null ? null : `http://${ip}:${config.puerto}/pedidos`,
+      urlElaboracion: ip === null ? null : `http://${ip}:${config.puerto}/elaboracion`,
+      pinConfigurado: config.pinPedidos !== undefined,
     };
 
     // Si la base no responde, el servidor esta arriba pero el sistema no sirve: 503.

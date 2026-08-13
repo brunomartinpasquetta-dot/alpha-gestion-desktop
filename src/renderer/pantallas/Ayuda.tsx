@@ -123,25 +123,42 @@ export function PantallaAyuda(): JSX.Element {
             <strong>Comercial → Pedidos → Nuevo pedido</strong>. Se pide en cajas cerradas. El
             pedido aparece solo en la pantalla de la fabrica, sin refrescar nada.
           </Paso>
-          <Paso n={2} titulo="Se planifica la produccion">
-            En <strong>Produccion → Ordenes → Planificar orden</strong>: elegis la receta y el
-            factor de escala. La cantidad sale del rinde de la receta, no se escribe a mano.
+          <Paso n={2} titulo="El pedido se atiende solo">
+            Al cargarse, el sistema aparta del stock disponible todo lo que ya este
+            elaborado (anotando de que tanda sale) y abre ordenes de produccion SOLO
+            por lo que falta. Si el stock cubria todo, el pedido queda LISTO sin que
+            nadie toque nada. Para elaborar sin pedido (hacer stock),{' '}
+            <strong>Produccion → Ordenes → Nueva orden</strong>; los alfajores se
+            cargan en DOCENAS.
           </Paso>
-          <Paso n={3} titulo="Se ejecuta la tanda">
-            El boton <strong>Ejecutar</strong> le asigna el numero de lote. Ese numero es lo que
-            despues permite rastrear que insumos se usaron y a que clientes fue.
+          <Paso n={3} titulo="Si faltan insumos, la orden espera">
+            Una orden sin insumos suficientes aparece como <strong>Espera insumos</strong>,
+            con el detalle de que comprar. No hay que hacerle nada: cuando se carga la
+            compra, pasa sola a lista para elaborar.
           </Paso>
-          <Paso n={4} titulo="Se finaliza">
+          <Paso n={4} titulo="Se elabora">
+            El boton <strong>Elaborar</strong> chequea los insumos en ese momento (descontando
+            lo que ya usan las tandas en curso) y asigna el numero de lote. Ese numero es lo
+            que despues permite rastrear que insumos se usaron y a que clientes fue. Se pueden
+            tener varias tandas en elaboracion a la vez.
+          </Paso>
+          <Paso n={5} titulo="Se finaliza">
             Al finalizar, el sistema descuenta los insumos segun la receta e ingresa el producto
-            terminado. Si algun insumo queda en negativo, avisa pero no bloquea: la tanda fisica ya
-            se hizo, y el aviso significa que faltan compras por cargar.
+            terminado. Si la tanda se elaboro para un pedido, lo producido entra al deposito
+            <strong> ya reservado para ese cliente</strong>: figura en el stock, pero no se le puede
+            vender a otro. Una orden interna, en cambio, entra disponible para cualquiera. Si algun
+            insumo queda en negativo, avisa pero no bloquea: la tanda fisica ya se hizo, y el aviso
+            significa que faltan compras por cargar.
           </Paso>
-          <Paso n={5} titulo="Se vende">
-            <strong>Comercial → Ventas → Nueva venta</strong>. En un solo acto descuenta el stock,
-            cobra (a la caja o a la cuenta corriente del cliente), marca el pedido como entregado y
-            emite el comprobante.
+          <Paso n={6} titulo="Se vende desde el pedido">
+            Cuando todo lo pedido esta apartado, el pedido pasa solo a LISTO y aparece el boton{' '}
+            <strong>Vender / facturar</strong>: abre la venta ya cargada con el cliente, sus cajas
+            y sus precios. Si se lleva menos de lo apartado, el sistema pregunta si el resto queda
+            apartado (lo busca despues) o vuelve al stock. En un solo acto descuenta el stock,
+            cobra (caja o cuenta corriente) y emite el comprobante. La venta suelta de mostrador
+            sigue en <strong>Comercial → Ventas → Nueva venta</strong>.
           </Paso>
-          <Paso n={6} titulo="Se entrega el papel">
+          <Paso n={7} titulo="Se entrega el papel">
             El boton <strong>Imprimir</strong> de la grilla de ventas saca el remito o la factura,
             con el CAE y el QR si es factura electronica.
           </Paso>
@@ -161,6 +178,22 @@ export function PantallaAyuda(): JSX.Element {
           formularios pero conserva su historia, porque hay ventas y compras que lo referencian.
           Anular una venta no la borra: escribe los movimientos inversos, asi queda el rastro de que
           existio y de que se anulo.
+        </p>
+        <p>
+          <strong>Una cosa es lo que hay y otra lo que se puede vender.</strong> El stock es lo que
+          esta en el deposito; el <strong>disponible</strong> es lo que todavia no le prometiste a
+          nadie. Cuando una tanda se elabora contra un pedido, sigue estando en el deposito pero ya
+          es de ese cliente. Por eso las pantallas muestran los dos numeros: sin esa diferencia, dos
+          vendedores prometen la misma tanda y uno de los dos clientes se queda esperando. Si el
+          pedido se cancela, lo apartado vuelve a estar a la venta solo.
+        </p>
+        <p>
+          <strong>La venta se cobra con los medios reales.</strong> Efectivo, transferencia,
+          tarjetas o cheque, y se pueden combinar en una misma venta (parte y parte). La suma
+          tiene que dar exacto: no hay vuelto, se carga lo cobrado en cada medio. Si un pago es
+          con cheque, el cheque entra solo a la cartera (Tesoreria) a nombre del cliente, con su
+          fecha de cobro. Al arqueo del cierre solo le importa el efectivo del cajon: lo
+          electronico queda en la caja, visible pero aparte.
         </p>
         <p>
           <strong>La caja tiene que estar abierta.</strong> Las ventas y compras de contado entran o

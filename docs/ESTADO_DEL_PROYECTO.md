@@ -27,7 +27,8 @@ Todo lo demás del alcance acordado está hecho y probado.
 | **Facturación ARCA** | ✅ Motor listo | Factura A/B con CAE, emitida DENTRO de la venta. Falta el certificado del cliente (ver §4) |
 | **Compras** | ✅ Operativo | Ingresa stock, genera deuda o egreso de caja, actualiza el costo. Anulable |
 | **Pedidos desde el celular** | ✅ Operativo | PWA con cola offline e idempotencia; la fábrica los ve en tiempo real |
-| **Producción y trazabilidad** | ✅ Operativo | Planificar → ejecutar (nace el lote) → finalizar (consume insumos, ingresa producto) |
+| **Producción y trazabilidad** | ✅ Operativo | La orden se abre sola con el pedido → ejecutar (nace el lote) → finalizar (consume insumos, ingresa producto). La cantidad se carga en DOCENAS, no en factor de escala |
+| **Reservas de stock** | ✅ Operativo | Lo elaborado contra un pedido entra al depósito reservado para ese cliente. Stock físico / reservado / disponible, con trazabilidad de lote |
 | **Caja diaria** | ✅ Operativo | Apertura, movimientos manuales, cierre con arqueo y diferencia |
 | **Cuentas corrientes** | ✅ Operativo | Cobros y pagos, con impacto en caja si son en efectivo |
 | **Cheques** | ✅ Operativo | Cartera de recibidos y emitidos con máquina de estados |
@@ -122,9 +123,19 @@ primero y después el código.
 | 6 | **Compras** → cualquier artículo, en la práctica insumos |
 | 7 | **Recetas** → producen un pre-elaborado o un terminado; consumen insumos |
 | 8 | **Precios** → hay 3 listas (General, Mayorista, Distribuidor) y cada cliente tiene la suya |
+| 9 | **Cada pedido abre su orden de producción** automáticamente, una por producto. El que elabora decide cuáles arranca y puede tener varias tandas en curso a la vez |
+| 10 | **Lo elaborado contra un pedido entra RESERVADO** para ese cliente: está en el depósito pero no se le puede vender a otro. La producción interna entra disponible |
+| 11 | **Disponible = físico − reservado.** Es el número que mira el que vende. Vender por encima del disponible avisa pero no bloquea |
+| 12 | **Si ya hay stock hecho, se puede cubrir el pedido con él** en vez de elaborar de nuevo: se aparta anotando de qué tanda sale, y la orden se reduce a la diferencia o se cancela |
 
 Verificado el 7/8 pantalla por pantalla: venta, pedido, compra, receta, ajuste de
-stock, fijar precio, actualización masiva y ficha de artículo respetan las 8.
+stock, fijar precio, actualización masiva y ficha de artículo respetan las 8
+primeras. Las reglas 9 a 12 se agregaron el 9/8 y se verificaron de punta a punta
+contra la app instalada: pedido de 60 u + 120 u abrió sus dos órdenes solas,
+cubrir con stock apartó 36 u repartidas por lote y dejó la orden en 24 u, la tanda
+finalizada entró reservada (físico 120 / disponible 0), la venta de mostrador
+avisó que estaba comprometido, la venta del pedido consumió las reservas y la
+cancelación de otro pedido devolvió lo apartado a disponible.
 
 ## 3-bis. Comparación módulo por módulo contra StockFlow
 
@@ -190,6 +201,33 @@ negocio de la fábrica y no tienen equivalente en StockFlow.
 | R6 | Órdenes viejas sin número de lote | Bajo | Correcto por diseño: el lote nace al ejecutar |
 
 ### Resueltos (quedan como referencia)
+
+- **La 1.2.1 moría al abrir en Windows con "error de JavaScript"** (v1.2.2). El
+  instalador de Windows se arma en la Mac, y electron-rebuild deja en
+  node_modules un bcrypt compilado PARA MAC (`bcrypt/build`, `bcrypt/bin`);
+  node-gyp-build prefiere `build/Release` por sobre los prebuilds oficiales, así
+  que la app de Windows intentaba cargar un binario Mach-O y moría antes de
+  arrancar. La 1.1.0 andaba porque en ese momento esas carpetas no existían.
+  Arreglo en `electron-builder.yml`: se excluyen del paquete, y cada plataforma
+  carga su prebuild oficial (verificado en Mac ejercitando bcrypt y la base por
+  esa misma vía). Además ahora el entry es `dist/main/arranque.js`: cualquier
+  error de carga futuro muestra un cartel en español y queda en
+  `%APPDATA%\alfajores-erp\errores.log`, en vez del cartel críptico de Electron.
+
+- **Las actualizaciones no llegaban a Windows: "internet disconnected" con internet
+  conectado** (v1.2.1). electron-updater descarga usando `electron.net`, que es la
+  pila de red de Chromium. En la PC del cliente, Chromium decidía por su cuenta
+  que la máquina estaba offline y ni siquiera intentaba la conexión, así que la
+  descarga fallaba siempre. La pista que lo delataba: la app **sí detectaba** que
+  había versión nueva —esa consulta va por `fetch` de Node— pero nunca la bajaba.
+  Se reemplazó la capa de red del actualizador por una sobre `node:https`
+  (`src/main/actualizador-red.ts`), que es la misma pila que usa el resto del
+  sistema, incluidas las llamadas a ARCA. Verificado contra la release real: baja
+  el manifiesto, resuelve el redirect de GitHub al CDN, descarga los 113 MB y el
+  sha512 coincide. Se agregaron además reintentos del primer chequeo (15 s, 1 min,
+  5 min), porque a los 5 segundos de arrancar Windows suele no tener red todavía.
+  **Ojo:** el actualizador roto no puede repararse a sí mismo — la 1.2.1 hay que
+  instalarla a mano una vez.
 
 - **TLS de ARCA:** sus servidores usan claves viejas que Node rechazaba. La
   facturación real **nunca habría funcionado**. Corregido con transporte propio.

@@ -24,6 +24,7 @@ import {
   type TipoCliente,
 } from '../../compartido/contratos';
 import { Pastilla } from '../componentes/comunes';
+import { BotonWhatsApp } from '../componentes/whatsapp';
 import { Aviso } from '../componentes/Formulario';
 import {
   actualizarCliente,
@@ -460,7 +461,12 @@ export function MaestroTerceros({ que }: { readonly que: 'clientes' | 'proveedor
                     <td className="px-3 py-1.5 text-masa-800">
                       {(esCliente ? c.localidad : p.localidad) ?? '—'}
                     </td>
-                    <td className="px-3 py-1.5 text-masa-800">{f.telefono ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-masa-800">
+                      <span className="inline-flex items-center gap-1">
+                        {f.telefono ?? f.celular ?? '—'}
+                        <BotonWhatsApp telefono={f.celular ?? f.telefono} />
+                      </span>
+                    </td>
                     {esCliente && <td className="px-3 py-1.5 text-masa-800">{c.listaPrecioNombre ?? 'General'}</td>}
                     <td className="px-3 py-1.5 text-right font-mono tabular-nums">
                       <span className={excedido ? 'font-semibold text-peligro-600' : ''}>

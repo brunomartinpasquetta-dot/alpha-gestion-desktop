@@ -27,12 +27,21 @@ import { app, BrowserWindow, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 
 import { REPO_GITHUB } from '../compartido/config';
+import { EjecutorHttpNode } from './actualizador-red';
 
 /** Poner en true recien cuando los builds de macOS salgan firmados y notarizados. */
 const MAC_TIENE_FIRMA = false;
 
 const MS_PRIMER_CHEQUEO = 5_000;
 const MS_ENTRE_CHEQUEOS = 4 * 60 * 60 * 1000;
+
+/**
+ * Reintentos del primer chequeo. Windows tarda en levantar la red: a los 5
+ * segundos de arrancar, la maquina del cliente muchas veces todavia no tiene
+ * conexion, y con un solo intento el programa se quedaba cuatro horas sin volver
+ * a probar. Se reintenta con esperas crecientes hasta el primer exito.
+ */
+const REINTENTOS_MS = [15_000, 60_000, 300_000] as const;
 
 const URL_RELEASE_LATEST = `https://api.github.com/repos/${REPO_GITHUB.owner}/${REPO_GITHUB.repo}/releases/latest`;
 const URL_RELEASES_WEB = `https://github.com/${REPO_GITHUB.owner}/${REPO_GITHUB.repo}/releases/latest`;
@@ -120,6 +129,14 @@ async function chequearManual(): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 function configurarAutoUpdate(): void {
+  // La red del actualizador pasa por Node, no por Chromium. Ver actualizador-red.ts:
+  // en la PC del cliente, Chromium contestaba "internet desconectado" con internet
+  // andando, asi que la descarga fallaba siempre. El campo no esta en los tipos
+  // publicos de electron-updater, pero es el punto de extension que usa la propia
+  // libreria para armarlo.
+  (autoUpdater as unknown as { httpExecutor: EjecutorHttpNode }).httpExecutor =
+    new EjecutorHttpNode();
+
   // Se baja sola en segundo plano. Se instala de dos maneras, y las dos hacen
   // falta: apenas termina de bajar aparece un cartel para reiniciar en el acto
   // (que es lo que espera el usuario), y si lo ignora se aplica igual al cerrar
@@ -179,18 +196,30 @@ export function iniciarActualizador(): void {
     registrar('macOS sin firma: auto-update desactivado, solo se avisa si hay version nueva.');
   }
 
-  const chequear = (): void => {
-    if (usaAutoUpdate) {
-      void autoUpdater.checkForUpdates().catch((error: unknown) => {
-        registrar(`No se pudo chequear: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    } else {
-      void chequearManual();
+  const chequear = async (): Promise<boolean> => {
+    try {
+      if (usaAutoUpdate) await autoUpdater.checkForUpdates();
+      else await chequearManual();
+      return true;
+    } catch (error) {
+      registrar(`No se pudo chequear: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
     }
   };
 
-  setTimeout(chequear, MS_PRIMER_CHEQUEO).unref();
-  setInterval(chequear, MS_ENTRE_CHEQUEOS).unref();
+  // Primer chequeo con reintentos; despues, el ritmo normal.
+  const arrancar = async (): Promise<void> => {
+    if (await chequear()) return;
+    for (const espera of REINTENTOS_MS) {
+      await new Promise((seguir) => setTimeout(seguir, espera).unref());
+      registrar('Reintentando el chequeo de actualizaciones...');
+      if (await chequear()) return;
+    }
+    registrar('No se pudo chequear al arrancar; se reintenta en el ciclo normal.');
+  };
+
+  setTimeout(() => void arrancar(), MS_PRIMER_CHEQUEO).unref();
+  setInterval(() => void chequear(), MS_ENTRE_CHEQUEOS).unref();
 }
 
 /**

@@ -8,11 +8,12 @@
  *    puede cargar (va a la cola offline).
  */
 
-import type { ArticuloConStock, ClienteVista, EntradaNuevoPedido } from '../../compartido/contratos';
+import type { ArticuloConStock, ClienteVista, EntradaNuevoPedido, PresentacionVista, VendedorVista } from '../../compartido/contratos';
 
 const CLAVE_PIN = 'alpha-pedidos-pin';
 const CLAVE_NOMBRE = 'alpha-pedidos-nombre';
-const CLAVE_CATALOGO = 'alpha-pedidos-catalogo';
+// v2: el catalogo ahora incluye presentaciones y vendedores (talonario movil).
+const CLAVE_CATALOGO = 'alpha-pedidos-catalogo-v2';
 
 /* ------------------------------- Preferencias ------------------------------ */
 
@@ -37,6 +38,10 @@ export function guardarNombre(nombre: string): void {
 export interface Catalogo {
   readonly productos: ArticuloConStock[];
   readonly clientes: ClienteVista[];
+  /** Catalogo de presentaciones para el talonario (cajas, docenas, bolsas). */
+  readonly presentaciones: PresentacionVista[];
+  /** Vendedores activos, para el desplegable del pedido. */
+  readonly vendedores: VendedorVista[];
   /** ISO de la ultima actualizacion exitosa. */
   readonly actualizadoEn: string;
 }
@@ -59,15 +64,27 @@ export async function obtenerCatalogo(): Promise<{ catalogo: Catalogo; desdeCach
   try {
     // El PIN viaja tambien en las LECTURAS: desde la red, la API entera lo pide.
     const cabeceras = { 'x-pin-pedidos': leerPin() };
-    const [rProductos, rClientes] = await Promise.all([
+    const [rProductos, rClientes, rPresentaciones, rVendedores] = await Promise.all([
       fetch('/api/articulos?grupo=productos&soloActivos=true', { headers: cabeceras }),
       fetch('/api/clientes', { headers: cabeceras }),
+      fetch('/api/presentaciones', { headers: cabeceras }),
+      fetch('/api/vendedores', { headers: cabeceras }),
     ]);
-    if (!rProductos.ok || !rClientes.ok) throw new Error('catalogo no disponible');
+    if (!rProductos.ok || !rClientes.ok || !rPresentaciones.ok || !rVendedores.ok) {
+      throw new Error('catalogo no disponible');
+    }
 
     const productos = ((await rProductos.json()) as { datos: ArticuloConStock[] }).datos;
     const clientes = ((await rClientes.json()) as { datos: ClienteVista[] }).datos;
-    const catalogo: Catalogo = { productos, clientes, actualizadoEn: new Date().toISOString() };
+    const presentaciones = ((await rPresentaciones.json()) as { datos: PresentacionVista[] }).datos;
+    const vendedores = ((await rVendedores.json()) as { datos: VendedorVista[] }).datos.filter((v) => v.activo);
+    const catalogo: Catalogo = {
+      productos,
+      clientes,
+      presentaciones,
+      vendedores,
+      actualizadoEn: new Date().toISOString(),
+    };
     localStorage.setItem(CLAVE_CATALOGO, JSON.stringify(catalogo));
     return { catalogo, desdeCache: false };
   } catch (error) {

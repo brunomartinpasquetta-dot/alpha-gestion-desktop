@@ -50,6 +50,18 @@ export interface ApiEventos {
   alCambiar(manejador: (tipo: string) => void): () => void;
 }
 
+export interface ApiSistema {
+  /** Cierra y vuelve a abrir el programa (tras restaurar un respaldo). */
+  reiniciar(): void;
+}
+
+export interface ApiWhatsApp {
+  /** Pide abrir el chat de un numero E.164 sin + (ej: 549342...). */
+  abrirChat(telefono: string): void;
+  /** El panel de la ventana principal escucha adonde navegar. */
+  alNavegar(manejador: (telefono: string) => void): () => void;
+}
+
 export interface ApiAlfajores {
   readonly version: string;
   readonly plataforma: string;
@@ -57,6 +69,8 @@ export interface ApiAlfajores {
   readonly archivos: ApiArchivos;
   readonly actualizaciones: ApiActualizaciones;
   readonly eventos: ApiEventos;
+  readonly whatsapp: ApiWhatsApp;
+  readonly sistema: ApiSistema;
 }
 
 declare global {

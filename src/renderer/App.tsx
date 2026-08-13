@@ -21,6 +21,8 @@ import {
   Escritorio,
 } from './componentes/chrome';
 import { BuscadorGlobal, PaletaComandos } from './componentes/PaletaComandos';
+import { BotonAsistente, PanelAsistente } from './componentes/asistente';
+import { PanelWhatsApp } from './componentes/whatsapp';
 import { usarRecurso } from './ganchos/usarRecurso';
 import { obtenerSalud } from './servicios/cliente';
 import type { DescriptorVentana } from './tipos-globales';
@@ -52,6 +54,15 @@ function VentanaPrincipal(): JSX.Element {
     abierta: false,
     consulta: '',
   });
+  const [alfiAbierto, setAlfiAbierto] = useState(false);
+  // El tablero fijado sobrevive al reinicio: es la pantalla de trabajo del dueño.
+  const [tableroFijado, setTableroFijado] = useState(
+    () => localStorage.getItem('alpha-tablero-fijado') === 'si',
+  );
+  const fijarTablero = (fijado: boolean): void => {
+    setTableroFijado(fijado);
+    localStorage.setItem('alpha-tablero-fijado', fijado ? 'si' : 'no');
+  };
 
   const puente = window.alfajores;
   const esMac = (puente?.plataforma ?? '') === 'darwin';
@@ -66,6 +77,12 @@ function VentanaPrincipal(): JSX.Element {
 
   const abrir = useCallback(
     (clave: ClaveModulo): void => {
+      // "Ver tablero" no abre ventana: fija el tablero en el panel principal.
+      if (clave === 'tablero') {
+        setTableroFijado(true);
+        localStorage.setItem('alpha-tablero-fijado', 'si');
+        return;
+      }
       const definicion = definicionDeModulo(clave);
       puente?.ventanas.abrir(clave, definicion.titulo, definicion.icono);
     },
@@ -104,15 +121,20 @@ function VentanaPrincipal(): JSX.Element {
       <BarraEstado
         salud={salud.datos}
         error={salud.error}
-        buscador={<BuscadorGlobal alAbrir={(consulta) => setPaleta({ abierta: true, consulta })} />}
+        buscador={
+          <div className="flex items-center gap-2">
+            <BuscadorGlobal alAbrir={(consulta) => setPaleta({ abierta: true, consulta })} />
+            <BotonAsistente abierto={alfiAbierto} alAlternar={() => setAlfiAbierto((v) => !v)} />
+          </div>
+        }
       />
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <Escritorio
-          ventanasAbiertas={ventanas.length}
-          alAbrir={abrir}
-          urlPedidos={salud.datos?.urlPedidos ?? null}
-        />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <Escritorio tableroFijado={tableroFijado} alCerrarTablero={() => fijarTablero(false)} />
+        </div>
+        <PanelWhatsApp />
+        <PanelAsistente abierto={alfiAbierto} alCerrar={() => setAlfiAbierto(false)} />
       </div>
 
       <BarraTareas

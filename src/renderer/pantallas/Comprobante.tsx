@@ -15,6 +15,7 @@ import QRCode from 'qrcode';
 
 import type { ComprobanteImprimible } from '../../compartido/contratos';
 import { obtenerComprobante } from '../servicios/cliente';
+import { leerPreferenciasImpresion } from './Sistema';
 import { formatearCantidad, formatearMoneda } from '../utiles/formato';
 
 function formatearFechaLarga(iso: string): string {
@@ -35,6 +36,7 @@ function formatearCuit(cuit: string | null): string {
 }
 
 export function Comprobante({ ventaId }: { readonly ventaId: number }): JSX.Element {
+  const prefs = leerPreferenciasImpresion();
   const [datos, setDatos] = useState<ComprobanteImprimible | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -96,7 +98,8 @@ export function Comprobante({ ventaId }: { readonly ventaId: number }): JSX.Elem
         </div>
       </div>
 
-      <article className="border border-masa-900">
+      {/* En papel ticket el comprobante se angosta a 80 mm al imprimir. */}
+      <article className={['border border-masa-900', prefs.papel === 'ticket' ? 'print:mx-auto print:w-[80mm] print:text-xs' : ''].join(' ')}>
         {/* Cabecera: emisor | letra | numeracion */}
         <header className="grid grid-cols-[1fr_auto_1fr] border-b border-masa-900">
           <div className="p-4">
@@ -253,6 +256,9 @@ export function Comprobante({ ventaId }: { readonly ventaId: number }): JSX.Elem
             </p>
           )}
         </footer>
+        {prefs.pie !== '' && (
+          <p className="border-t border-masa-900 px-4 py-2 text-center text-sm">{prefs.pie}</p>
+        )}
       </article>
 
       {/* Duplicado de firma: el reparto vuelve con la conformidad del cliente. */}

@@ -58,6 +58,8 @@ export default defineConfig({
         principal: path.resolve(__dirname, 'src/renderer/index.html'),
         // PWA del celular: la sirve Fastify en /pedidos.
         pedidos: path.resolve(__dirname, 'src/renderer/pedidos.html'),
+        // Monitor de elaboracion: tablet/notebook de la fabrica, en /elaboracion.
+        elaboracion: path.resolve(__dirname, 'src/renderer/elaboracion.html'),
       },
     },
   },

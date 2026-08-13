@@ -1,10 +1,10 @@
 {
   "name": "alfajores-erp",
-  "version": "1.1.0",
+  "version": "1.6.4",
   "description": "Alpha Gestion — ERP de escritorio para fabrica de alfajores (Electron + Fastify + SQLite)",
   "private": true,
   "type": "commonjs",
-  "main": "dist/main/index.js",
+  "main": "dist/main/arranque.js",
   "author": "Alpha Gestion",
   "license": "UNLICENSED",
   "scripts": {

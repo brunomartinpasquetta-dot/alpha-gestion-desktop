@@ -12,10 +12,12 @@
  * ultimas N filas: cortar la lista no cambia la historia previa.
  */
 
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { obtenerDb } from '../../db/conexion';
 import {
+  unidadesMedida,
+  articulos,
   movimientosStock,
   type TipoDocumentoStock,
   type TipoMovimientoStock,
@@ -64,6 +66,57 @@ export function listarMovimientosConAcumulado(
       })
       .from(movimientosStock)
       .where(eq(movimientosStock.articuloId, articuloId))
+      .orderBy(desc(movimientosStock.fecha), desc(movimientosStock.id))
+      .limit(limite)
+      .all(),
+  );
+}
+
+export interface FilaMovimientoGrupo {
+  id: number;
+  fecha: string;
+  articuloId: number;
+  articuloCodigo: string;
+  articuloNombre: string;
+  unidadAbreviatura: string;
+  tipo: TipoMovimientoStock;
+  cantidad: number;
+  documentoTipo: TipoDocumentoStock | null;
+  documentoId: number | null;
+  notas: string | null;
+}
+
+/**
+ * TODOS los movimientos de un grupo de stock (insumos o productos), del mas
+ * reciente al mas antiguo: la vista de auditoria de "que paso con el stock".
+ */
+export function listarMovimientosDeGrupo(
+  grupo: 'insumos' | 'productos',
+  limite: number,
+): FilaMovimientoGrupo[] {
+  const tipos =
+    grupo === 'productos'
+      ? (['producto_terminado'] as const)
+      : (['materia_prima', 'pre_elaborado'] as const);
+  return ejecutarSeguro('listar los movimientos de un grupo de stock', () =>
+    obtenerDb()
+      .select({
+        id: movimientosStock.id,
+        fecha: movimientosStock.fecha,
+        articuloId: movimientosStock.articuloId,
+        articuloCodigo: articulos.codigo,
+        articuloNombre: articulos.nombre,
+        unidadAbreviatura: unidadesMedida.abreviatura,
+        tipo: movimientosStock.tipo,
+        cantidad: movimientosStock.cantidad,
+        documentoTipo: movimientosStock.documentoTipo,
+        documentoId: movimientosStock.documentoId,
+        notas: movimientosStock.notas,
+      })
+      .from(movimientosStock)
+      .innerJoin(articulos, eq(articulos.id, movimientosStock.articuloId))
+      .innerJoin(unidadesMedida, eq(unidadesMedida.id, articulos.unidadBaseId))
+      .where(inArray(articulos.tipo, [...tipos]))
       .orderBy(desc(movimientosStock.fecha), desc(movimientosStock.id))
       .limit(limite)
       .all(),

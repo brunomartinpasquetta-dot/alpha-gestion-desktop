@@ -11,8 +11,11 @@
  * No conoce Fastify ni HTTP: las rutas lo consumen, no al reves.
  */
 
+import { asc } from 'drizzle-orm';
+
 import type {
   Estadisticas,
+  MedioPagoVista,
   ResumenCajaGeneral,
   UsuarioVista,
   CajaMovimientoVista,
@@ -29,6 +32,8 @@ import type {
   ResumenCuentaCorriente,
   ResumenGeneral,
   VentaVista,
+  VendedorVista,
+  MovimientoGrupoVista,
 } from '../../compartido/contratos';
 import { existe as existeArticulo } from '../repositorios/articulos.repositorio';
 import * as repoCaja from '../repositorios/lectura/caja.repositorio';
@@ -42,7 +47,9 @@ import * as repoResumen from '../repositorios/lectura/resumen.repositorio';
 import * as repoStock from '../repositorios/lectura/stock.repositorio';
 import * as repoTerceros from '../repositorios/lectura/terceros.repositorio';
 import * as repoVentas from '../repositorios/lectura/ventas.repositorio';
-import { ErrorNoEncontrado } from '../dominio/errores';
+import { obtenerDb } from '../db/conexion';
+import { mediosPago } from '../db/schema';
+import { ejecutarSeguro, ErrorNoEncontrado } from '../dominio/errores';
 
 /** Limites del ledger por articulo, para que una pantalla no traiga la historia entera. */
 export const LIMITE_MOVIMIENTOS_DEFAULT = 100;
@@ -98,6 +105,25 @@ export const consultasServicio = {
 
   /* ------------------------------ Produccion ----------------------------- */
 
+  listarMediosPago(): MedioPagoVista[] {
+    return ejecutarSeguro('listar medios de pago', () =>
+      obtenerDb()
+        .select()
+        .from(mediosPago)
+        .orderBy(asc(mediosPago.orden), asc(mediosPago.id))
+        .all()
+        .map((m) => ({
+          id: m.id,
+          nombre: m.nombre,
+          tipo: m.tipo,
+          esEfectivoFisico: m.esEfectivoFisico,
+          comisionPct: m.comisionPct,
+          activo: m.activo,
+          orden: m.orden,
+        })),
+    );
+  },
+
   listarOrdenesProduccion(): OrdenProduccionVista[] {
     return repoProduccion.listarOrdenes();
   },
@@ -110,6 +136,9 @@ export const consultasServicio = {
 
     const items = repoPedidos.listarItemsDePedidos(pedidos.map((p) => p.id));
     const porPedido = agruparPorPadre(items, (item) => item.pedidoId);
+    const renglones = repoPedidos.listarRenglonesDePedidos(pedidos.map((p) => p.id));
+    const renglonesPorPedido = agruparPorPadre(renglones, (r) => r.pedidoId);
+    const componentesAMedida = repoPedidos.listarComponentesDeRenglones(renglones.map((r) => r.id));
 
     return pedidos.map((pedido) => ({
       ...pedido,
@@ -122,6 +151,19 @@ export const consultasServicio = {
         unidadAbreviatura: item.unidadAbreviatura,
         unidadesPorCaja: item.unidadesPorCaja,
         notas: item.notas,
+        reservado: item.reservado,
+        disponible: item.disponible,
+      })),
+      renglones: (renglonesPorPedido.get(pedido.id) ?? []).map((r) => ({
+        id: r.id,
+        presentacionId: r.presentacionId,
+        presentacionCodigo: r.presentacionCodigo,
+        presentacionNombre: r.presentacionNombre,
+        descripcion: r.descripcion,
+        cantidad: r.cantidad,
+        componentes: componentesAMedida
+          .filter((c) => c.renglonId === r.id)
+          .map((c) => ({ articuloId: c.articuloId, articuloNombre: c.articuloNombre, unidades: c.unidades })),
       })),
     }));
   },
@@ -174,6 +216,10 @@ export const consultasServicio = {
     return repoTerceros.listarClientes();
   },
 
+  listarVendedores(): VendedorVista[] {
+    return repoTerceros.listarVendedores();
+  },
+
   listarProveedores(): ProveedorVista[] {
     return repoTerceros.listarProveedores();
   },
@@ -206,6 +252,10 @@ export const consultasServicio = {
    * Ledger de un articulo con saldo acumulado. Es la vista que demuestra que el
    * stock sale de sumar movimientos y no de un campo guardado.
    */
+  listarMovimientosDeGrupo(grupo: 'insumos' | 'productos', limite = 200): MovimientoGrupoVista[] {
+    return repoStock.listarMovimientosDeGrupo(grupo, Math.min(limite, 1000));
+  },
+
   listarMovimientosDeArticulo(articuloId: number, limite?: number): MovimientoStockVista[] {
     if (!existeArticulo(articuloId)) throw new ErrorNoEncontrado('articulo', articuloId);
 

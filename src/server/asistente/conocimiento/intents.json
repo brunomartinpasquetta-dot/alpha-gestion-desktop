@@ -1,0 +1,1005 @@
+{
+ "areas": [
+  {
+   "area": "meta",
+   "synonyms": [],
+   "intents": [
+    {
+     "id": "saludo",
+     "canonical": "Hola",
+     "patterns": [
+      "hola",
+      "buenas",
+      "buen dia"
+     ],
+     "answer": "¡Hola! Soy Alfi, tu asistente de Alpha Gestión 👋 Preguntame cómo se hace cualquier cosa del sistema: pedidos, elaboración, stock, ventas, caja, cheques, clientes…",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "agradecimiento",
+     "canonical": "Gracias",
+     "patterns": [
+      "gracias"
+     ],
+     "answer": "¡De nada! Si te surge otra duda, acá estoy 😊",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "despedida",
+     "canonical": "Chau",
+     "patterns": [
+      "chau",
+      "adios"
+     ],
+     "answer": "¡Listo! Cualquier cosa me abrís de nuevo. Éxitos con la fábrica 💪",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "quien-sos",
+     "canonical": "Quién sos",
+     "patterns": [
+      "quien sos",
+      "sos un robot"
+     ],
+     "answer": "Soy Alfi, el asistente de Alpha Gestión 🤖 Trabajo sin internet, acá adentro del sistema, y te enseño a usar cada parte paso a paso.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "que-podes-hacer",
+     "canonical": "Qué podés hacer",
+     "patterns": [
+      "que podes hacer",
+      "ayuda"
+     ],
+     "answer": "Te ayudo con todo el sistema: cargar y elaborar pedidos, el talonario, stock e insumos, ventas y facturación, pagos mixtos, cheques, caja, clientes y listas de precios. Preguntame lo que quieras, con tus palabras.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "pedir-humano",
+     "canonical": "Hablar con una persona",
+     "patterns": [
+      "hablar con una persona",
+      "un tecnico"
+     ],
+     "answer": "Puedo ayudarte con casi todo el uso del sistema. Si es algo que no logro resolver, anotá la duda y consultala con BPSG Sistemas, que te instaló Alpha Gestión.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "frustracion",
+     "canonical": "Estoy perdido",
+     "patterns": [
+      "estoy perdido",
+      "no funciona nada"
+     ],
+     "answer": "¡Tranqui, respirá que lo resolvemos juntos! Contame qué estabas haciendo y en qué momento se trabó, y lo vemos paso a paso.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "charla-fuera-de-tema",
+     "canonical": "Charla",
+     "patterns": [
+      "que hora es",
+      "contame un chiste"
+     ],
+     "answer": "¡Jaja! De eso no sé, yo soy para ayudarte con Alpha Gestión 😊 ¿Con qué parte del sistema te doy una mano?",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "no-entendi",
+     "canonical": "No entendí",
+     "patterns": [
+      "no entendi"
+     ],
+     "answer": "Perdoná, no te entendí. ¿Lo podés decir con otras palabras? O decime de qué parte del sistema es la duda (pedidos, elaboración, stock, ventas, caja…).",
+     "steps": [],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "pedidos",
+   "synonyms": [
+    {
+     "term": "pedido",
+     "aliases": [
+      "encargo",
+      "nota",
+      "talonario",
+      "carga"
+     ]
+    },
+    {
+     "term": "presentacion",
+     "aliases": [
+      "caja",
+      "docena",
+      "bolsa",
+      "unidad",
+      "surtida",
+      "mixta"
+     ]
+    },
+    {
+     "term": "variedad",
+     "aliases": [
+      "blanco",
+      "negro",
+      "frutilla",
+      "sabor",
+      "gusto"
+     ]
+    }
+   ],
+   "intents": [
+    {
+     "id": "cargar-pedido",
+     "canonical": "¿Cómo cargo un pedido?",
+     "patterns": [
+      "como cargo un pedido",
+      "como hago un pedido nuevo",
+      "cargar pedido",
+      "nuevo pedido",
+      "tomar un pedido",
+      "como anoto un pedido",
+      "donde cargo los pedidos",
+      "quiero cargar un pedido"
+     ],
+     "answer": "Los pedidos se cargan con el talonario: elegís cliente, producto y presentación, completás las unidades de cada variedad y cuántas cajas van. Al cargarlo, el sistema solo aparta el stock que haya y manda a elaborar lo que falte.",
+     "steps": [
+      "Presioná F2 o tocá 'Pedidos' en la barra de arriba.",
+      "Tocá el botón 'Nuevo pedido'.",
+      "Elegí el cliente (su lista de precios y su vendedor se completan solos).",
+      "Elegí PRODUCTO (alfajores, almendras, cubanitos o caja Anyulin) y PRESENTACIÓN (caja x36, docena, bolsa x6...).",
+      "Completá las unidades de cada variedad que lleva la caja (tienen que sumar lo que lleva el envase) y la cantidad de cajas.",
+      "Tocá 'Agregar al pedido'. Repetí para cada renglón.",
+      "Tocá 'Cargar pedido' y confirmá con Aceptar."
+     ],
+     "image": null
+    },
+    {
+     "id": "caja-a-medida",
+     "canonical": "¿Cómo cargo una caja surtida a medida?",
+     "patterns": [
+      "caja a medida",
+      "caja surtida",
+      "como armo una caja mixta",
+      "caja de 12 con 4 y 4 y 4",
+      "mezcla de variedades",
+      "surtido especial",
+      "caja con varios gustos",
+      "como cargo una caja combinada"
+     ],
+     "answer": "Cualquier caja puede llevar la mezcla que quieras: en el talonario completás las unidades de cada variedad y, si la combinación coincide con una del catálogo (36 de blanco, 12+12+12), el sistema la reconoce solo; si no, viaja como caja armada con su receta guardada, que es lo que después lee el que elabora.",
+     "steps": [
+      "En el talonario elegí ALFAJORES y la presentación (por ejemplo Caja x12 = docena).",
+      "Escribí las unidades por variedad: por ejemplo 4 en NEGRO, 4 en FRUTILLA BLANCO y 4 en FRUTILLA NEGRO.",
+      "Fijate que la suma cierre con la caja (el sistema avisa 'Van 11 de 12' si falta una).",
+      "Poné la cantidad de cajas así y tocá 'Agregar al pedido'."
+     ],
+     "image": null
+    },
+    {
+     "id": "editar-pedido",
+     "canonical": "¿Cómo edito un pedido ya cargado?",
+     "patterns": [
+      "editar pedido",
+      "cambiar un pedido",
+      "modificar pedido",
+      "el cliente cambio el pedido",
+      "agregar algo a un pedido",
+      "sacar un renglon",
+      "cambiar cantidades de un pedido"
+     ],
+     "answer": "Un pedido se puede corregir mientras no haya entrado a elaboración: se reabre el talonario con todos sus renglones, cambiás lo que haga falta y el sistema recalcula solo las reservas y las órdenes (si achicás de 50 a 30, los 20 se liberan).",
+     "steps": [
+      "En Pedidos (F2), buscá el pedido y tocá 'Editar'.",
+      "Cambiá cantidades directo en cada renglón, tocá 'Editar' en un renglón para rearmarlo, o 'Quitar' para sacarlo.",
+      "Tocá 'Guardar cambios'."
+     ],
+     "image": null
+    },
+    {
+     "id": "cancelar-pedido",
+     "canonical": "¿Cómo cancelo un pedido?",
+     "patterns": [
+      "cancelar pedido",
+      "anular pedido",
+      "el cliente se arrepintio",
+      "borrar un pedido",
+      "dar de baja un pedido"
+     ],
+     "answer": "Cancelar un pedido devuelve todo a su lugar: el stock apartado vuelve a estar disponible (y si otro pedido lo estaba esperando, se lo lleva solo) y las órdenes de elaboración que no arrancaron se cancelan.",
+     "steps": [
+      "En Pedidos (F2), buscá el pedido.",
+      "Tocá 'Cancelar' y confirmá."
+     ],
+     "image": null
+    },
+    {
+     "id": "estados-pedido",
+     "canonical": "¿Qué significan los estados del pedido?",
+     "patterns": [
+      "estados del pedido",
+      "que es pendiente",
+      "que es listo",
+      "pedido en produccion",
+      "cuando queda entregado",
+      "por que no puedo entregar el pedido"
+     ],
+     "answer": "Pendiente = recién cargado o esperando elaboración. En producción = hay tandas elaborándose para él. Listo = todo apartado, el cliente puede pasar a buscarlo. Entregado = SOLO se llega vendiéndolo (nunca a mano): así no queda mercadería entregada sin facturar. Cancelado = se devolvió todo.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "pedido-espera-insumos",
+     "canonical": "¿Qué es 'espera de insumos' en un pedido?",
+     "patterns": [
+      "espera de insumos",
+      "no hay insumos",
+      "falta dulce de leche",
+      "el pedido quedo esperando",
+      "cuando llegan los insumos que pasa"
+     ],
+     "answer": "Si al cargar un pedido no alcanzan los insumos para elaborarlo, la orden queda EN ESPERA DE INSUMOS con el detalle de lo que falta. No hay que hacer nada raro: cuando cargues la compra de ese insumo, la orden se despierta sola y ya se puede elaborar.",
+     "steps": [
+      "Cargá la compra del insumo en Compras (F9).",
+      "La orden deja sola el estado de espera: la ves lista para iniciar en Órdenes (F7) o en el monitor de elaboración."
+     ],
+     "image": null
+    },
+    {
+     "id": "pedidos-celular",
+     "canonical": "¿Cómo se cargan pedidos desde el celular?",
+     "patterns": [
+      "pedidos desde el celular",
+      "pwa de pedidos",
+      "cargar pedido con el telefono",
+      "la direccion del celular",
+      "pedidos remotos"
+     ],
+     "answer": "Hay una pantalla especial para el celular: en la pantalla de inicio del sistema aparece la dirección (http://IP-de-la-maquina:4600/pedidos). La abrís en el navegador del teléfono conectado al mismo WiFi y cargás pedidos que entran solos al sistema, incluso con cola offline si se corta la señal.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "vendedor-lista-pedido",
+     "canonical": "¿Cómo elijo vendedor y lista de precios en el pedido?",
+     "patterns": [
+      "vendedor del pedido",
+      "lista de precios del pedido",
+      "cambiar la lista",
+      "el pedido de un revendedor",
+      "elegir vendedor"
+     ],
+     "answer": "Debajo del cliente hay dos desplegables: VENDEDOR (quién trajo el pedido: Mauro Casal, Denipote, o venta directa) y LISTA DE PRECIO. Al elegir el cliente se proponen solos su lista y su vendedor habituales, pero los podés cambiar a mano para ese pedido puntual.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "estado-del-pedido-detalle",
+     "canonical": "¿Cómo veo cuánto hay reservado y cuánto en producción de un pedido?",
+     "patterns": [
+      "estado del pedido",
+      "cuanto esta reservado",
+      "que parte esta en produccion",
+      "detalle del pedido",
+      "apartado de stock"
+     ],
+     "answer": "Cada pedido muestra su línea 'ESTADO DEL PEDIDO': cuántas docenas están apartadas de stock y cuántas en producción. Cuando todo está apartado pasa a LISTO.",
+     "steps": [
+      "Abrí Pedidos (F2) y tocá 'ver detalle' en el pedido."
+     ],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "produccion",
+   "synonyms": [
+    {
+     "term": "orden",
+     "aliases": [
+      "tanda",
+      "orden de produccion",
+      "ordenes"
+     ]
+    },
+    {
+     "term": "monitor",
+     "aliases": [
+      "tablet",
+      "terminal",
+      "pantalla de fabrica"
+     ]
+    }
+   ],
+   "intents": [
+    {
+     "id": "elaborar-pedido",
+     "canonical": "¿Cómo elaboro un pedido?",
+     "patterns": [
+      "como elaboro un pedido",
+      "empezar a elaborar",
+      "iniciar elaboracion",
+      "elaborar orden",
+      "arrancar la produccion",
+      "como fabrico lo pedido"
+     ],
+     "answer": "Cada pedido genera solo su orden de producción por lo que falta. El empleado decide cuál arranca: al tocar 'Elaborar' el sistema re-chequea los insumos (descontando lo comprometido por otras tandas en curso), asigna el número de lote y la orden pasa a EN ELABORACIÓN.",
+     "steps": [
+      "Abrí Órdenes (F7) o el monitor de elaboración en la tablet.",
+      "Buscá la orden en Pendientes.",
+      "Tocá 'Elaborar' (o 'Iniciar elaboración' en el monitor).",
+      "Cuando terminás la tanda, tocá 'Finalizar': lo producido entra a stock."
+     ],
+     "image": null
+    },
+    {
+     "id": "finalizar-orden",
+     "canonical": "¿Qué pasa cuando finalizo una orden?",
+     "patterns": [
+      "finalizar orden",
+      "terminar elaboracion",
+      "que pasa al terminar",
+      "donde va lo elaborado",
+      "termine la tanda"
+     ],
+     "answer": "Al finalizar, lo producido entra a stock CON su lote: si la orden era de un pedido, entra RESERVADO para ese cliente (nadie más lo puede vender); si era interna, entra disponible. Si con eso el pedido queda cubierto, pasa solo a LISTO.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "monitor-elaboracion",
+     "canonical": "¿Cómo uso el monitor de elaboración en la tablet?",
+     "patterns": [
+      "monitor de elaboracion",
+      "tablet de fabrica",
+      "pantalla del empleado",
+      "terminal de elaboracion",
+      "ver pendientes de elaborar",
+      "elaboracion desde el navegador"
+     ],
+     "answer": "Es la pantalla del que elabora: muestra EN ELABORACIÓN, PENDIENTES (con el detalle de cada pedido, incluidas las cajas armadas) y TERMINADAS con su lote. Se abre desde cualquier tablet o notebook en el WiFi de la fábrica, sin instalar nada.",
+     "steps": [
+      "En la tablet, abrí el navegador.",
+      "Entrá a http://IP-de-la-maquina:4600/elaboracion (la IP es la de la computadora del sistema).",
+      "Tocá 'Iniciar elaboración' al arrancar una tanda y 'Terminar elaboración' al sacarla."
+     ],
+     "image": null
+    },
+    {
+     "id": "orden-sin-insumos-forzar",
+     "canonical": "¿Puedo elaborar aunque falten insumos?",
+     "patterns": [
+      "forzar elaboracion",
+      "elaborar sin insumos",
+      "iniciar igual",
+      "me falta insumo pero quiero arrancar"
+     ],
+     "answer": "Sí, con doble confirmación: si la orden está en espera de insumos, el botón dice 'Iniciar igual' y te muestra exactamente qué falta antes de confirmar. Queda registrado que se forzó.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "lote-trazabilidad",
+     "canonical": "¿Cómo funciona el número de lote y la trazabilidad?",
+     "patterns": [
+      "numero de lote",
+      "trazabilidad",
+      "de que tanda salio",
+      "rastrear un lote",
+      "que lleva un lote"
+     ],
+     "answer": "Cada tanda elaborada recibe su lote (L-fecha-numero). El sistema guarda qué insumos consumió, para qué pedido fue y en qué venta salió: desde Trazabilidad podés reconstruir el camino completo de un lote, del insumo al cliente.",
+     "steps": [
+      "Abrí el menú Producción → Trazabilidad.",
+      "Escribí el número de lote."
+     ],
+     "image": null
+    },
+    {
+     "id": "orden-interna",
+     "canonical": "¿Cómo elaboro para stock, sin pedido?",
+     "patterns": [
+      "elaborar para stock",
+      "orden interna",
+      "hacer mercaderia de mas",
+      "producir sin pedido",
+      "adelantar produccion"
+     ],
+     "answer": "Podés abrir una orden interna: elegís la receta y la cantidad, y lo elaborado entra DISPONIBLE (no queda reservado para nadie). Si después un pedido lo necesita, el sistema lo aparta solo.",
+     "steps": [
+      "Abrí Órdenes (F7).",
+      "Tocá 'Nueva orden', elegí la receta y la cantidad.",
+      "Elaborala y finalizala como cualquier tanda."
+     ],
+     "image": null
+    },
+    {
+     "id": "recetas",
+     "canonical": "¿Cómo veo o cambio la receta de un producto?",
+     "patterns": [
+      "recetas",
+      "que lleva un producto",
+      "cambiar receta",
+      "ingredientes",
+      "cuanto dulce lleva"
+     ],
+     "answer": "Cada producto tiene su receta (los insumos y cantidades por tanda). La ves y editás en Recetas (F6); el producto muestra su receta asignada en su ficha. Sin receta, el producto no puede abrir órdenes de elaboración.",
+     "steps": [
+      "Presioná F6 (Recetas).",
+      "Elegí la receta para ver o editar sus insumos."
+     ],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "stock",
+   "synonyms": [
+    {
+     "term": "insumo",
+     "aliases": [
+      "materia prima",
+      "harina",
+      "azucar"
+     ]
+    },
+    {
+     "term": "reservado",
+     "aliases": [
+      "apartado",
+      "comprometido"
+     ]
+    }
+   ],
+   "intents": [
+    {
+     "id": "ver-stock",
+     "canonical": "¿Cómo veo el stock?",
+     "patterns": [
+      "ver stock",
+      "cuanto stock tengo",
+      "stock de productos",
+      "stock de insumos",
+      "existencias",
+      "que hay en deposito"
+     ],
+     "answer": "El stock vive en dos pantallas: Stock Insumos (F3) para materias primas y Stock Productos (F4) para lo terminado. En productos ves tres números: físico (lo que hay), apartado (reservado para pedidos) y disponible (lo que se puede vender).",
+     "steps": [
+      "Presioná F3 para insumos o F4 para productos."
+     ],
+     "image": null
+    },
+    {
+     "id": "stock-reservado",
+     "canonical": "¿Qué es el stock apartado o reservado?",
+     "patterns": [
+      "stock reservado",
+      "que es apartado",
+      "por que no puedo vender si hay stock",
+      "stock disponible versus fisico"
+     ],
+     "answer": "Cuando un pedido se carga, el sistema aparta stock para ese cliente: sigue estando físicamente, pero no está disponible para otros. Se libera si el pedido se cancela o se achica, y ahí mismo el sistema se fija si otro pedido lo estaba esperando.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "ajuste-stock",
+     "canonical": "¿Cómo ajusto el stock si no coincide con lo real?",
+     "patterns": [
+      "ajustar stock",
+      "el stock esta mal",
+      "corregir inventario",
+      "sobra o falta mercaderia",
+      "conteo"
+     ],
+     "answer": "Con un ajuste de stock: registrás la diferencia (positiva o negativa) con su motivo y queda asentada en el historial del artículo, sin tocar ventas ni compras.",
+     "steps": [
+      "Abrí Stock Insumos (F3) o Stock Productos (F4).",
+      "Elegí el artículo y tocá 'Ajustar'.",
+      "Cargá la cantidad real contada y el motivo."
+     ],
+     "image": null
+    },
+    {
+     "id": "movimientos-articulo",
+     "canonical": "¿Cómo veo los movimientos de un artículo?",
+     "patterns": [
+      "movimientos de un articulo",
+      "historial de stock",
+      "quien movio el stock",
+      "por que bajo el stock"
+     ],
+     "answer": "Cada artículo tiene su historial completo: compras, consumos de elaboración, ventas, ajustes y reservas, con fecha y referencia. Es la verdad de por qué el número da lo que da.",
+     "steps": [
+      "En la pantalla de stock, tocá el artículo y mirá 'Movimientos'."
+     ],
+     "image": null
+    },
+    {
+     "id": "stock-bajo-minimo",
+     "canonical": "¿Cómo sé qué tengo que reponer?",
+     "patterns": [
+      "bajo minimo",
+      "que comprar",
+      "reposicion",
+      "me estoy quedando sin insumos",
+      "alerta de stock"
+     ],
+     "answer": "Cada artículo puede tener stock mínimo: cuando cae por debajo, aparece en 'Bajo mínimo' en el tablero y en la pantalla de reposición, que te arma la lista de lo que hay que comprar.",
+     "steps": [
+      "Mirá el tablero (F1) o abrí Comercial → Reposición."
+     ],
+     "image": null
+    },
+    {
+     "id": "compras-insumos",
+     "canonical": "¿Cómo cargo una compra de insumos?",
+     "patterns": [
+      "cargar compra",
+      "compre mercaderia",
+      "ingreso de insumos",
+      "factura de proveedor",
+      "entrada de mercaderia"
+     ],
+     "answer": "En Compras (F9): elegís el proveedor, cargás los renglones y al confirmar el stock entra solo. Si había órdenes esperando ese insumo, se despiertan solas.",
+     "steps": [
+      "Presioná F9 (Compras).",
+      "Tocá 'Nueva compra', elegí proveedor y cargá los ítems.",
+      "Confirmá: el stock y la cuenta corriente del proveedor se actualizan."
+     ],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "ventas",
+   "synonyms": [
+    {
+     "term": "factura",
+     "aliases": [
+      "fiscal",
+      "arca",
+      "afip",
+      "cae",
+      "en blanco"
+     ]
+    },
+    {
+     "term": "remito",
+     "aliases": [
+      "negro",
+      "x",
+      "sin factura"
+     ]
+    }
+   ],
+   "intents": [
+    {
+     "id": "vender-pedido",
+     "canonical": "¿Cómo vendo o facturo un pedido?",
+     "patterns": [
+      "vender un pedido",
+      "facturar pedido",
+      "el cliente vino a buscar el pedido",
+      "cobrar un pedido",
+      "entregar y facturar"
+     ],
+     "answer": "La venta es el ÚNICO camino para entregar un pedido. Desde Ventas (o desde el pedido LISTO) tocás 'Vender / facturar': el formulario ya viene cargado con lo apartado, elegís si va con factura o remito, la forma de pago, y al confirmar la mercadería sale de stock con su lote y el pedido pasa a ENTREGADO.",
+     "steps": [
+      "Abrí Ventas (F8): arriba están los 'Pedidos listos para vender'.",
+      "Tocá 'Vender / facturar' en el pedido.",
+      "Elegí comprobante (factura A o remito), la forma de pago y confirmá."
+     ],
+     "image": null
+    },
+    {
+     "id": "venta-parcial",
+     "canonical": "¿Puedo entregar una parte del pedido?",
+     "patterns": [
+      "venta parcial",
+      "entrega parcial",
+      "se lleva menos",
+      "pidio 50 y lleva 34",
+      "facturar una parte"
+     ],
+     "answer": "Sí: en la venta bajás la cantidad a lo que realmente se lleva y elegís qué hacer con el resto: 'mantener' (sigue apartado para otra entrega) o 'liberar' (vuelve a estar disponible para otros). Solo se cobra lo que se lleva.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "venta-mostrador",
+     "canonical": "¿Cómo hago una venta de mostrador, sin pedido?",
+     "patterns": [
+      "venta de mostrador",
+      "venta directa",
+      "vino alguien a comprar",
+      "vender sin pedido"
+     ],
+     "answer": "En Ventas (F8) tocás 'Nueva venta': elegís el cliente (o mostrador), cargás los productos del stock disponible, la forma de pago y listo. Descuenta stock por lote, del más viejo al más nuevo.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "factura-o-remito",
+     "canonical": "¿Cómo elijo entre factura (A) y remito (X)?",
+     "patterns": [
+      "factura o remito",
+      "vender en blanco o en negro",
+      "comprobante x",
+      "factura a",
+      "parte en blanco parte en negro"
+     ],
+     "answer": "En cada venta elegís el comprobante: FACTURA sale con CAE de ARCA (en blanco), REMITO X es entrega sin comprobante fiscal. Un mismo pedido se puede partir: facturás una parte y el resto va con remito, en dos ventas.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "pagos-mixtos",
+     "canonical": "¿Cómo cobro con varias formas de pago juntas?",
+     "patterns": [
+      "pago mixto",
+      "mitad efectivo mitad transferencia",
+      "tarjeta y efectivo",
+      "varias formas de pago",
+      "como cobro con tarjeta"
+     ],
+     "answer": "Toda venta puede cobrarse con UN medio o combinando varios: efectivo, transferencia, tarjeta de débito/crédito y cheque. Agregás las filas de pago hasta cubrir el total exacto; la comisión de tarjeta queda registrada y solo el efectivo físico entra al arqueo.",
+     "steps": [
+      "En la venta, elegí 'Pago mixto'.",
+      "Agregá cada medio con su importe hasta que la suma dé el total.",
+      "Si un pago es con cheque, cargá sus datos: entra solo a la cartera."
+     ],
+     "image": null
+    },
+    {
+     "id": "arca-cae",
+     "canonical": "¿Qué pasa si ARCA no responde al facturar?",
+     "patterns": [
+      "arca no anda",
+      "error de cae",
+      "no sale la factura",
+      "afip caido",
+      "problema al facturar"
+     ],
+     "answer": "La venta pide el CAE ANTES de escribir nada: si ARCA rechaza o no responde, la venta no se registra y te muestra el motivo real. Podés reintentar, o hacer la entrega con remito y facturar después.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "anular-venta",
+     "canonical": "¿Cómo anulo una venta?",
+     "patterns": [
+      "anular venta",
+      "me equivoque en la venta",
+      "cancelar una venta",
+      "devolver una venta"
+     ],
+     "answer": "Anular una venta deshace TODO: la mercadería vuelve apartada a su pedido (que regresa a LISTO), cada pago se revierte en la caja con su medio, y si había un cheque sale de la cartera. El arqueo cierra igual.",
+     "steps": [
+      "Abrí Ventas (F8), buscá la venta y tocá 'Anular'."
+     ],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "caja-tesoreria",
+   "synonyms": [
+    {
+     "term": "arqueo",
+     "aliases": [
+      "cierre",
+      "diferencia de caja",
+      "conteo de caja"
+     ]
+    }
+   ],
+   "intents": [
+    {
+     "id": "abrir-cerrar-caja",
+     "canonical": "¿Cómo abro y cierro la caja?",
+     "patterns": [
+      "abrir caja",
+      "cerrar caja",
+      "apertura de caja",
+      "cierre del dia",
+      "arqueo de caja"
+     ],
+     "answer": "La caja se abre con el monto inicial y se cierra contando el efectivo: el sistema compara lo contado contra lo teórico (inicial + ventas en efectivo − egresos) y muestra la diferencia. Solo el efectivo FÍSICO cuenta: transferencias y tarjetas no entran al arqueo.",
+     "steps": [
+      "Presioná F10 (Caja).",
+      "Tocá 'Abrir caja' con el efectivo inicial.",
+      "Al final del día, 'Cerrar caja': contá el efectivo y cargalo."
+     ],
+     "image": null
+    },
+    {
+     "id": "caja-general",
+     "canonical": "¿Qué es la Caja General?",
+     "patterns": [
+      "caja general",
+      "plata total",
+      "cuanta plata hay",
+      "resumen de tesoreria"
+     ],
+     "answer": "La Caja General (F11) es la foto completa de la plata: efectivo en caja, banco (transferencias), tarjetas y cheques en cartera, con todos los movimientos. La caja diaria es solo el efectivo del mostrador.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "cuentas-corrientes",
+     "canonical": "¿Cómo manejo la cuenta corriente de un cliente?",
+     "patterns": [
+      "cuenta corriente",
+      "fiado",
+      "el cliente debe",
+      "cobrar deuda",
+      "saldo del cliente"
+     ],
+     "answer": "Las ventas en cuenta corriente suman deuda al cliente; los cobros la bajan. En Ctas. Ctes. (F12) ves el saldo de cada uno, registrás cobros y pagos, y el sistema avisa si una venta supera el límite de crédito del cliente.",
+     "steps": [
+      "Presioná F12.",
+      "Elegí el cliente para ver su saldo y movimientos.",
+      "Tocá 'Registrar cobro' cuando te pague."
+     ],
+     "image": null
+    },
+    {
+     "id": "cheques-cartera",
+     "canonical": "¿Cómo funciona la cartera de cheques?",
+     "patterns": [
+      "cartera de cheques",
+      "recibi un cheque",
+      "cheques en mano",
+      "depositar cheque",
+      "cheque rechazado"
+     ],
+     "answer": "Todo cheque que recibís (en una venta o un cobro) entra solo a la cartera con sus datos y vencimiento. Desde Cheques la seguís: depositado, acreditado, usado para pagar o rechazado. Si anulás la venta que lo trajo, el cheque sale de la cartera.",
+     "steps": [
+      "Abrí Tesorería → Cheques.",
+      "Cambiá el estado del cheque a medida que avanza (depositado, acreditado, rechazado)."
+     ],
+     "image": null
+    },
+    {
+     "id": "egresos-caja",
+     "canonical": "¿Cómo registro un gasto o retiro de caja?",
+     "patterns": [
+      "gasto de caja",
+      "retiro de plata",
+      "pague algo en efectivo",
+      "egreso",
+      "saque plata de la caja"
+     ],
+     "answer": "Cualquier salida de efectivo se registra como egreso con su motivo, así el arqueo cierra: en Caja (F10), 'Registrar movimiento' → egreso.",
+     "steps": [],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "clientes-precios",
+   "synonyms": [
+    {
+     "term": "lista",
+     "aliases": [
+      "lista 1",
+      "lista 2",
+      "lista 3",
+      "lista 4",
+      "royal",
+      "empleados"
+     ]
+    }
+   ],
+   "intents": [
+    {
+     "id": "clientes-padron",
+     "canonical": "¿Dónde veo y edito los clientes?",
+     "patterns": [
+      "ver clientes",
+      "ficha del cliente",
+      "editar cliente",
+      "alta de cliente",
+      "donde estan los clientes"
+     ],
+     "answer": "En Clientes (F5) está el padrón completo: datos, condición de IVA, lista de precios asignada, vendedor habitual, límite de crédito y saldo. Desde ahí das de alta, editás y ves la deuda de cada uno.",
+     "steps": [
+      "Presioná F5 (Clientes).",
+      "Elegí el cliente de la lista para ver su ficha, o tocá 'Nuevo' para dar de alta."
+     ],
+     "image": null
+    },
+    {
+     "id": "listas-de-precio",
+     "canonical": "¿Cómo funcionan las listas de precios?",
+     "patterns": [
+      "listas de precios",
+      "lista 1 lista 2",
+      "precio segun cliente",
+      "cambiar precios",
+      "listas derivadas",
+      "mas veinte por ciento"
+     ],
+     "answer": "Hay listas base (LISTA 1 a 4, más las especiales como ROYAL y EMPLEADOS) y listas derivadas (LISTA 1 + % = la base más 20%: cambiás la base y la derivada se actualiza sola). Cada cliente tiene su lista asignada y el pedido la propone solo.",
+     "steps": [
+      "Abrí Maestros → Listas de precio para ver y editar los valores.",
+      "El precio de cubanitos, almendras y caja Anyulin es por caja/bolsa; el de alfajores, por unidad."
+     ],
+     "image": null
+    },
+    {
+     "id": "whatsapp-cliente",
+     "canonical": "¿Cómo le mando un WhatsApp a un cliente?",
+     "patterns": [
+      "whatsapp del cliente",
+      "mandar mensaje",
+      "abrir chat",
+      "escribirle al cliente",
+      "boton verde"
+     ],
+     "answer": "Cada cliente y proveedor tiene un botón verde de WhatsApp al lado de su teléfono: lo tocás y el panel de WhatsApp de la pantalla principal abre el chat de ese contacto. La primera vez tenés que vincular tu WhatsApp escaneando el QR (una sola vez).",
+     "steps": [
+      "Abrí el panel: la lengüeta verde 'WhatsApp' en el borde derecho de la pantalla principal.",
+      "La primera vez, escaneá el QR desde tu teléfono (WhatsApp → Dispositivos vinculados).",
+      "Después, desde Clientes (F5), tocá el botón verde del cliente y se abre su chat."
+     ],
+     "image": null
+    },
+    {
+     "id": "vendedores",
+     "canonical": "¿Qué son los vendedores y cómo se asignan?",
+     "patterns": [
+      "vendedores",
+      "revendedores",
+      "mauro casal",
+      "asignar vendedor",
+      "quien trajo el pedido"
+     ],
+     "answer": "Los vendedores (revendedores) son quienes traen pedidos de otros clientes. Cada cliente puede tener su vendedor habitual (se propone solo al cargarle un pedido) y en cada pedido podés elegirlo o dejar venta directa.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "proveedores",
+     "canonical": "¿Dónde manejo los proveedores?",
+     "patterns": [
+      "proveedores",
+      "alta de proveedor",
+      "a quien le compro",
+      "cuenta del proveedor"
+     ],
+     "answer": "En Maestros → Proveedores: datos, teléfono (con su botón de WhatsApp) y cuenta corriente. Las compras les suman deuda y los pagos la bajan.",
+     "steps": [],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "sistema",
+   "synonyms": [],
+   "intents": [
+    {
+     "id": "atajos-teclado",
+     "canonical": "¿Cuáles son los atajos de teclado?",
+     "patterns": [
+      "atajos",
+      "teclas rapidas",
+      "teclas f",
+      "como abro rapido un modulo",
+      "buscador de modulos"
+     ],
+     "answer": "Cada módulo tiene su tecla: F1 Tablero, F2 Pedidos, F3 Stock Insumos, F4 Stock Productos, F5 Clientes, F6 Recetas, F7 Órdenes, F8 Ventas, F9 Compras, F10 Caja, F11 Caja General, F12 Ctas. Ctes. Y con Cmd+K (o Ctrl+K) abrís el buscador de módulos.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "actualizaciones",
+     "canonical": "¿Cómo se actualiza el sistema?",
+     "patterns": [
+      "actualizar",
+      "nueva version",
+      "llego una actualizacion",
+      "el sistema esta viejo"
+     ],
+     "answer": "En Windows las actualizaciones llegan solas: aparece el aviso, se descarga y con un click se reinicia e instala. Si no aparece, en Ayuda podés buscar actualizaciones a mano.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "tablero",
+     "canonical": "¿Qué muestra el Tablero?",
+     "patterns": [
+      "tablero",
+      "pantalla de inicio",
+      "indicadores",
+      "resumen del negocio"
+     ],
+     "answer": "El Tablero (F1) es la foto del día: stock bajo mínimo, pedidos pendientes/en producción/listos, órdenes, ventas del día, caja y deudas. De un vistazo sabés dónde está el fuego.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "respaldo-datos",
+     "canonical": "¿Dónde están mis datos? ¿Se hace respaldo?",
+     "patterns": [
+      "respaldo",
+      "backup",
+      "donde estan los datos",
+      "copia de seguridad",
+      "si se rompe la compu"
+     ],
+     "answer": "Los datos viven en una base local en la computadora (carpeta del sistema, se ve en la barra de estado). Conviene respaldar esa carpeta seguido a un pendrive o a la nube; consultá con BPSG por el esquema de respaldo automático.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "monitor-y-pwa-urls",
+     "canonical": "¿Cuáles son las direcciones para tablet y celular?",
+     "patterns": [
+      "direccion de la tablet",
+      "url del monitor",
+      "direccion del celular",
+      "como conecto la tablet"
+     ],
+     "answer": "Desde cualquier dispositivo en el mismo WiFi: el celular carga pedidos en http://IP:4600/pedidos y la tablet de la fábrica usa el monitor en http://IP:4600/elaboracion. La IP de la máquina aparece en la pantalla de inicio del sistema.",
+     "steps": [],
+     "image": null
+    }
+   ]
+  },
+  {
+   "area": "consultas-datos",
+   "synonyms": [],
+   "intents": [
+    {
+     "id": "que-datos-responde",
+     "canonical": "¿Qué datos me podés dar vos directo?",
+     "patterns": [
+      "que datos me das",
+      "que me podes decir del negocio",
+      "podes darme numeros",
+      "respondes con datos",
+      "que consultas puedo hacer",
+      "dame informacion del sistema"
+     ],
+     "answer": "Puedo contestarte con los números reales del sistema, al momento. Preguntame por ejemplo: «¿cuánto vendí hoy?», «¿qué pedidos tengo pendientes?», «¿qué se está elaborando?», «¿qué insumos me faltan?», «¿cuánto stock hay de alfajor blanco?», «¿quién me debe?», «¿qué cheques vencen?» o «¿cuánto cuesta el alfajor negro?».",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "ejemplo-ventas-hoy",
+     "canonical": "¿Cuánto vendí hoy? (consulta con datos)",
+     "patterns": [
+      "como pregunto las ventas del dia",
+      "como se cuanto vendi"
+     ],
+     "answer": "Preguntame directo «¿cuánto vendí hoy?» y te contesto con la cantidad de ventas y el total en pesos del día, leído del sistema en ese momento.",
+     "steps": [],
+     "image": null
+    },
+    {
+     "id": "ejemplo-stock",
+     "canonical": "¿Cuánto stock hay de un producto? (consulta con datos)",
+     "patterns": [
+      "como pregunto el stock",
+      "como se cuanto stock tengo"
+     ],
+     "answer": "Preguntame «¿cuánto stock hay de [producto]?» — por ejemplo «stock de alfajor blanco» — y te digo el físico, lo apartado para pedidos y lo disponible, como lo lleva el sistema.",
+     "steps": [],
+     "image": null
+    }
+   ]
+  }
+ ]
+}

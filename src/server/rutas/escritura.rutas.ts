@@ -8,6 +8,10 @@
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { z } from 'zod';
 
 import {
@@ -18,7 +22,13 @@ import {
   TIPOS_ENTIDAD_CC,
   TIPOS_MOVIMIENTO_CAJA,
 } from '../db/schema';
-import { ErrorValidacion } from '../dominio/errores';
+import { cerrarDb, obtenerDb, obtenerRutaDb, obtenerSqlite } from '../db/conexion';
+import { eq } from 'drizzle-orm';
+
+import { mediosPago } from '../db/schema';
+import { ejecutarSeguro, ErrorNoEncontrado, ErrorValidacion } from '../dominio/errores';
+import { emitir } from '../eventos';
+import { sembrarAnyulin, sembrarPadronAnyulin } from '../../seed/anyulin';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { ajustesServicio } from '../servicios/ajustes.servicio';
 import { comprasServicio } from '../servicios/compras.servicio';
@@ -176,13 +186,92 @@ const esquemaActualizacionPrecios = z.object({
 
 const esquemaNuevaOrden = z.object({
   recetaId: z.number().int().positive(),
-  factorEscala: z.number().min(0.01).max(100),
+  cantidad: z.number().gt(0).max(1_000_000),
   pedidoId: z.number().int().positive().nullable().optional(),
   notas: textoOpcional(500),
 });
 
 export function registrarRutasEscritura(app: FastifyInstance): void {
   /* -------------------------------- Clientes ------------------------------- */
+
+  /* ----------------------------- Medios de pago ---------------------------- */
+
+  app.post('/api/medios-pago', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(
+      z.object({
+        nombre: z.string().min(2).max(60),
+        tipo: z.enum(['efectivo', 'transferencia', 'tarjeta_debito', 'tarjeta_credito', 'cheque', 'otro']),
+        esEfectivoFisico: z.boolean().default(false),
+        comisionPct: z.number().min(0).max(100).default(0),
+        orden: z.number().int().min(0).max(999).default(0),
+      }),
+      request.body,
+      'El medio de pago enviado no es valido.',
+    );
+    const fila = ejecutarSeguro('crear un medio de pago', () =>
+      obtenerDb().insert(mediosPago).values(entrada).returning({ id: mediosPago.id }).all()[0]!,
+    );
+    emitir('maestros:cambio');
+    return reply.status(201).send({ datos: fila });
+  });
+
+  app.put('/api/medios-pago/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador no es valido.');
+    const entrada = validarOFallar(
+      z.object({
+        nombre: z.string().min(2).max(60),
+        tipo: z.enum(['efectivo', 'transferencia', 'tarjeta_debito', 'tarjeta_credito', 'cheque', 'otro']),
+        esEfectivoFisico: z.boolean(),
+        comisionPct: z.number().min(0).max(100),
+        orden: z.number().int().min(0).max(999),
+        activo: z.boolean(),
+      }),
+      request.body,
+      'El medio de pago enviado no es valido.',
+    );
+    ejecutarSeguro('actualizar un medio de pago', () => {
+      const existente = obtenerDb().select().from(mediosPago).where(eq(mediosPago.id, id)).get();
+      if (!existente) throw new ErrorNoEncontrado('medio de pago', id);
+      obtenerDb().update(mediosPago).set(entrada).where(eq(mediosPago.id, id)).run();
+      return true;
+    });
+    emitir('maestros:cambio');
+    return reply.status(200).send({ datos: { id } });
+  });
+
+  /* ------------------------------- Vendedores ------------------------------ */
+
+  app.post('/api/vendedores', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(
+      z.object({
+        nombre: z.string().min(2).max(80),
+        telefono: z.string().max(40).nullable().optional(),
+        cuit: z.string().max(20).nullable().optional(),
+        clienteId: z.number().int().positive().nullable().optional(),
+        notas: z.string().max(300).nullable().optional(),
+      }),
+      request.body,
+      'El vendedor enviado no es valido.',
+    );
+    return reply.status(201).send({ datos: maestrosServicio.crearVendedor(entrada) });
+  });
+
+  app.put('/api/vendedores/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador no es valido.');
+    const entrada = validarOFallar(
+      z.object({
+        nombre: z.string().min(2).max(80),
+        telefono: z.string().max(40).nullable().optional(),
+        cuit: z.string().max(20).nullable().optional(),
+        clienteId: z.number().int().positive().nullable().optional(),
+        notas: z.string().max(300).nullable().optional(),
+        activo: z.boolean(),
+      }),
+      request.body,
+      'El vendedor enviado no es valido.',
+    );
+    return reply.status(200).send({ datos: maestrosServicio.actualizarVendedor(id, entrada) });
+  });
 
   app.post('/api/clientes', (request: FastifyRequest, reply: FastifyReply) => {
     const entrada = validarOFallar(esquemaCliente, request.body, 'El cliente enviado no es valido.');
@@ -339,8 +428,65 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply.status(200).send({ datos: inicializacionServicio.contarDatosExistentes() });
   });
 
+  // Catalogo REAL de Anyulin (variedades, surtidas, 10 listas, precios de la
+  // planilla del cliente). Idempotente: correrlo dos veces no duplica.
+  app.post('/api/sistema/cargar-anyulin', (_request: FastifyRequest, reply: FastifyReply) => {
+    const resumen = ejecutarSeguro('cargar el catalogo Anyulin', () => sembrarAnyulin(obtenerDb()));
+    emitir('maestros:cambio');
+    return reply.status(200).send({ datos: resumen });
+  });
+
+  // Padron REAL de clientes del Excel (51 clientes con lista y vendedor).
+  // Borra los clientes de demo; el que tenga historia se desactiva.
+  app.post('/api/sistema/cargar-padron', (_request: FastifyRequest, reply: FastifyReply) => {
+    const resumen = ejecutarSeguro('cargar el padron de clientes Anyulin', () =>
+      sembrarPadronAnyulin(obtenerDb()),
+    );
+    emitir('maestros:cambio');
+    return reply.status(200).send({ datos: resumen });
+  });
+
   app.post('/api/sistema/cargar-demo', (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.status(200).send({ datos: inicializacionServicio.cargarDemostracion() });
+  });
+
+  // Respaldo de la base con la API de backup de SQLite (consistente aun con
+  // la base en uso). Cae en Descargas con fecha y hora en el nombre.
+  app.post('/api/sistema/respaldar', async (_request: FastifyRequest, reply: FastifyReply) => {
+    const ahora = new Date();
+    const sello = `${ahora.getFullYear()}${String(ahora.getMonth() + 1).padStart(2, '0')}${String(ahora.getDate()).padStart(2, '0')}-${String(ahora.getHours()).padStart(2, '0')}${String(ahora.getMinutes()).padStart(2, '0')}`;
+    const destino = path.join(os.homedir(), 'Downloads', `alpha-gestion-respaldo-${sello}.db`);
+    await obtenerSqlite().backup(destino);
+    return reply.status(200).send({ datos: { ruta: destino } });
+  });
+
+  // Restauracion: reemplaza la base por el archivo elegido. El actual queda
+  // resguardado al lado. Despues hay que REINICIAR el programa (el renderer
+  // lo dispara): las migraciones corren al arrancar sobre la base restaurada.
+  app.post('/api/sistema/restaurar', (request: FastifyRequest, reply: FastifyReply) => {
+    const { ruta } = validarOFallar(
+      z.object({ ruta: z.string().min(3) }),
+      request.body,
+      'La ruta del respaldo no es valida.',
+    );
+    const encabezado = Buffer.alloc(16);
+    const fd = fs.openSync(ruta, 'r');
+    try {
+      fs.readSync(fd, encabezado, 0, 16, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+    if (!encabezado.toString('utf8').startsWith('SQLite format 3')) {
+      throw new ErrorValidacion('El archivo elegido no es una base de datos de Alpha Gestion.');
+    }
+    const rutaDb = obtenerRutaDb();
+    const sello = Date.now();
+    fs.copyFileSync(rutaDb, `${rutaDb}.antes-de-restaurar-${sello}`);
+    cerrarDb();
+    fs.copyFileSync(ruta, rutaDb);
+    fs.rmSync(`${rutaDb}-wal`, { force: true });
+    fs.rmSync(`${rutaDb}-shm`, { force: true });
+    return reply.status(200).send({ datos: { ok: true, resguardo: `${rutaDb}.antes-de-restaurar-${sello}` } });
   });
 
   app.post('/api/sistema/empezar-de-cero', (request: FastifyRequest, reply: FastifyReply) => {

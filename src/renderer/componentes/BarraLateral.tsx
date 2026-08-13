@@ -24,7 +24,8 @@ export function BarraLateral({ moduloActivo, alNavegar, salud, errorSalud }: Pro
       className="flex w-panel shrink-0 flex-col border-r border-masa-200 bg-masa-50"
     >
       <div className="flex h-barra items-center gap-2 border-b border-masa-200 px-4">
-        <span className="h-6 w-6 rounded-pastilla bg-dulce-500" aria-hidden="true" />
+        {/* shrink-0: la marca no se achica aunque el nombre ocupe todo el ancho. */}
+        <span className="h-6 w-6 shrink-0 rounded-pastilla bg-dulce-500" aria-hidden="true" />
         <span className="font-semibold tracking-tight text-masa-900">ALPHA GESTIÓN</span>
       </div>
 

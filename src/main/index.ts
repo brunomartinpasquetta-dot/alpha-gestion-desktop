@@ -225,6 +225,25 @@ function registrarCanalesDeVentanas(): void {
 
   ipcMain.handle('ventanas:listar', () => listarVentanas());
 
+  // WhatsApp (copiado de StockFlow): cualquier ventana pide abrir el chat de
+  // un numero ya normalizado; la principal se trae al frente y el panel
+  // embebido navega a esa conversacion.
+  // Reiniciar el programa (tras restaurar un respaldo): las migraciones y la
+  // conexion arrancan de cero sobre la base restaurada.
+  ipcMain.on('app:reiniciar', () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
+  ipcMain.on('whatsapp:abrir-chat', (_evento, telefono: unknown) => {
+    if (typeof telefono !== 'string' || telefono === '') return;
+    if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) return;
+    if (ventanaPrincipal.isMinimized()) ventanaPrincipal.restore();
+    ventanaPrincipal.show();
+    ventanaPrincipal.focus();
+    ventanaPrincipal.webContents.send('whatsapp:navegar', telefono);
+  });
+
   // Los eventos del negocio viajan por IPC, no por HTTP: ver eventos.ts.
   suscribirLocal((tipo) => {
     for (const ventana of BrowserWindow.getAllWindows()) {

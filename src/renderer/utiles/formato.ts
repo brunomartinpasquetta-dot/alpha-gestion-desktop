@@ -96,11 +96,6 @@ export function formatearPorcentaje(valor: number | null | undefined): string {
   return `${formateadorCantidad.format(valor)} %`;
 }
 
-/** Factor de escala de una orden de produccion (x1,5). */
-export function formatearFactor(valor: number | null | undefined): string {
-  if (!esNumeroUtil(valor)) return SIN_DATO;
-  return `x${formateadorCantidad.format(valor)}`;
-}
 
 function comoFecha(iso: string | null | undefined): Date | null {
   if (typeof iso !== 'string' || iso.trim() === '') return null;
@@ -149,4 +144,15 @@ export function formatearCajas(unidades: number, unidadesPorCaja: number | null)
 export function aCentavos(pesos: number): number {
   if (!Number.isFinite(pesos)) return 0;
   return Math.round(pesos * 100);
+}
+
+
+/**
+ * Saldo apartado que a un item de pedido le queda por entregar. Es UNA sola
+ * regla usada por el encabezado de Pedidos, la seccion de Ventas y la precarga
+ * de la venta: si divergieran, el vendedor veria un numero y cobraria otro.
+ * Un pedido listo sin reservas (caso legado) vale por lo pedido.
+ */
+export function pendienteDeItem(item: { reservado: number; cantidad: number }): number {
+  return Math.min(item.reservado > 0 ? item.reservado : item.cantidad, item.cantidad);
 }

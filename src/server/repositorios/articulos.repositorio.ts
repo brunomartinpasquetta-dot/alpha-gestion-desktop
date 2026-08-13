@@ -56,6 +56,14 @@ export interface FilaArticuloConStock {
   costoActual: number | null;
   activo: boolean;
   stock: number;
+  /** Del stock fisico, cuanto ya tiene dueño por un pedido. */
+  reservado: number;
+  /** Receta activa que produce este articulo. null = no se elabora, se compra. */
+  recetaId: number | null;
+  /** Cuanto rinde una tanda de esa receta, en unidad base del articulo. */
+  recetaRinde: number | null;
+  /** Cuantos insumos lleva la receta. Sirve para ver de un vistazo si esta cargada. */
+  recetaInsumos: number;
 }
 
 /**
@@ -89,6 +97,18 @@ const COLUMNAS_CON_STOCK = {
   costoActual: articulos.costoActual,
   activo: articulos.activo,
   stock: sql<number>`COALESCE(SUM(${movimientosStock.cantidad}), 0)`.mapWith(Number),
+  // Reservado y receta van por subconsulta: sumarlos al JOIN del ledger
+  // multiplicaria las filas del agregado y el stock saldria inflado.
+  reservado:
+    sql<number>`COALESCE((SELECT SUM(cantidad) FROM reservas_stock WHERE articulo_id = ${articulos.id} AND estado = 'activa'), 0)`.mapWith(
+      Number,
+    ),
+  recetaId: sql<number | null>`(SELECT id FROM recetas WHERE articulo_producido_id = ${articulos.id} AND activa = 1 ORDER BY id LIMIT 1)`,
+  recetaRinde: sql<number | null>`(SELECT rinde_cantidad FROM recetas WHERE articulo_producido_id = ${articulos.id} AND activa = 1 ORDER BY id LIMIT 1)`,
+  recetaInsumos:
+    sql<number>`COALESCE((SELECT COUNT(*) FROM receta_items WHERE receta_id = (SELECT id FROM recetas WHERE articulo_producido_id = ${articulos.id} AND activa = 1 ORDER BY id LIMIT 1)), 0)`.mapWith(
+      Number,
+    ),
 };
 
 /**
@@ -96,7 +116,11 @@ const COLUMNAS_CON_STOCK = {
  * (0.1 + 0.2 = 0.30000000000000004), asi que se redondea al salir de la base.
  */
 function normalizarFila(fila: FilaArticuloConStock): FilaArticuloConStock {
-  return { ...fila, stock: redondearCantidad(fila.stock) };
+  return {
+    ...fila,
+    stock: redondearCantidad(fila.stock),
+    reservado: redondearCantidad(fila.reservado),
+  };
 }
 
 /** Consulta base con los dos JOIN: unidad (obligatoria) y ledger (opcional). */

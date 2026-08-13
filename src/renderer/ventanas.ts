@@ -23,6 +23,7 @@ export type ClaveModulo =
   | 'caja'
   | 'cuentas-corrientes'
   | 'clientes'
+  | 'vendedores'
   | 'proveedores'
   | 'listas-precio'
   | 'caja-general'
@@ -35,6 +36,13 @@ export type ClaveModulo =
   | 'ayuda'
   | 'actualizacion-precios'
   | 'reposicion'
+  | 'configuracion-lan'
+  | 'respaldo'
+  | 'configuracion-impresion'
+  | 'medios-pago'
+  | 'ajustes-insumos'
+  | 'ajustes-productos'
+  | 'movimientos-stock'
   /** Ventana de un documento concreto: recibe ?ventaId=N. No va en los menus. */
   | 'comprobante';
 
@@ -53,43 +61,48 @@ export interface DefinicionModulo {
 export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
   tablero: {
     clave: 'tablero',
-    titulo: 'Tablero',
+    titulo: 'Ver tablero',
     etiqueta: 'Tablero',
     icono: 'tablero',
     descripcion: 'Indicadores del dia: stock, pedidos, produccion, ventas, caja y cuentas corrientes.',
   },
   'stock-insumos': {
     clave: 'stock-insumos',
-    titulo: 'Stock de insumos',
-    etiqueta: 'Insumos',
+    titulo: 'Stock Insumos',
+    etiqueta: 'Stock Insumos',
     icono: 'insumos',
     descripcion: 'Materias primas y pre-elaborados con su saldo calculado desde el ledger.',
   },
   'stock-productos': {
     clave: 'stock-productos',
-    titulo: 'Stock de productos',
-    etiqueta: 'Productos',
+    titulo: 'Stock Productos',
+    etiqueta: 'Stock Productos',
     icono: 'productos',
-    descripcion: 'Productos terminados listos para vender.',
+    descripcion: 'Productos terminados para vender, con pestania del catalogo completo.',
   },
+  /**
+   * FUSIONADO en Stock Productos (pestania "Todos los articulos"). La entrada
+   * queda solo para que las ventanas viejas con esta clave no mueran: abre lo
+   * mismo que Stock Productos. No aparece en menus ni atajos.
+   */
   articulos: {
     clave: 'articulos',
-    titulo: 'Maestro de articulos',
-    etiqueta: 'Articulos',
-    icono: 'articulos',
-    descripcion: 'Todos los articulos con unidad, minimo, costo actual y stock.',
+    titulo: 'Stock Productos',
+    etiqueta: 'Stock Productos',
+    icono: 'productos',
+    descripcion: 'Fusionado en Stock Productos.',
   },
   recetas: {
     clave: 'recetas',
-    titulo: 'Recetas',
-    etiqueta: 'Recetas',
+    titulo: 'Recetas y costos',
+    etiqueta: 'Recetas y costos',
     icono: 'recetas',
     descripcion: 'Formulas de produccion con sus insumos, cantidades y merma esperada.',
   },
   ordenes: {
     clave: 'ordenes',
-    titulo: 'Ordenes de produccion',
-    etiqueta: 'Ordenes',
+    titulo: 'Elaboracion',
+    etiqueta: 'Elaboracion',
     icono: 'ordenes',
     descripcion: 'Ordenes planificadas, en proceso y finalizadas.',
   },
@@ -134,6 +147,13 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     etiqueta: 'Clientes',
     icono: 'clientes',
     descripcion: 'Datos de contacto, lista de precios asignada y saldo en cuenta corriente.',
+  },
+  vendedores: {
+    clave: 'vendedores',
+    titulo: 'Vendedores',
+    etiqueta: 'Vendedores',
+    icono: 'clientes',
+    descripcion: 'Revendedores que traen pedidos: datos y clientes asignados.',
   },
   proveedores: {
     clave: 'proveedores',
@@ -200,8 +220,8 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
   },
   reposicion: {
     clave: 'reposicion',
-    titulo: 'Que comprar',
-    etiqueta: 'Que comprar',
+    titulo: 'Ver faltantes',
+    etiqueta: 'Ver faltantes',
     icono: 'compras',
     descripcion: 'Lo que falta para llegar al stock minimo o al ideal, agrupado por proveedor.',
   },
@@ -221,10 +241,59 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
   },
   facturacion: {
     clave: 'facturacion',
-    titulo: 'Facturacion electronica',
-    etiqueta: 'ARCA',
+    titulo: 'Mi Empresa',
+    etiqueta: 'Mi Empresa',
     icono: 'facturacion',
-    descripcion: 'Datos del emisor y certificado de ARCA. La factura se emite en la venta.',
+    descripcion: 'Datos de la empresa y facturacion electronica ARCA (emisor y certificado).',
+  },
+  'configuracion-lan': {
+    clave: 'configuracion-lan',
+    titulo: 'Configuracion LAN',
+    etiqueta: 'Configuracion LAN',
+    icono: 'configuracion',
+    descripcion: 'Direcciones para el celular y la tablet, y el PIN de acceso desde la red.',
+  },
+  respaldo: {
+    clave: 'respaldo',
+    titulo: 'Backup / Restaurar',
+    etiqueta: 'Backup / Restaurar',
+    icono: 'configuracion',
+    descripcion: 'Copia de seguridad de la base de datos y restauracion desde un archivo.',
+  },
+  'ajustes-insumos': {
+    clave: 'ajustes-insumos',
+    titulo: 'Ajustes de Stock Insumos',
+    etiqueta: 'Ajustes insumos',
+    icono: 'insumos',
+    descripcion: 'Toma de inventario de insumos: se cuenta lo fisico y se registran las diferencias.',
+  },
+  'ajustes-productos': {
+    clave: 'ajustes-productos',
+    titulo: 'Ajustes de Stock Productos',
+    etiqueta: 'Ajustes productos',
+    icono: 'productos',
+    descripcion: 'Toma de inventario de productos terminados, en unidades.',
+  },
+  'movimientos-stock': {
+    clave: 'movimientos-stock',
+    titulo: 'Movimientos de stock',
+    etiqueta: 'Movimientos',
+    icono: 'trazabilidad',
+    descripcion: 'Todos los ingresos, egresos y ajustes del stock, por grupo.',
+  },
+  'medios-pago': {
+    clave: 'medios-pago',
+    titulo: 'Medios de pago',
+    etiqueta: 'Medios de pago',
+    icono: 'caja',
+    descripcion: 'Formas de pago del cobro: tipo, comision/interes, arqueo y orden.',
+  },
+  'configuracion-impresion': {
+    clave: 'configuracion-impresion',
+    titulo: 'Configuracion de impresion',
+    etiqueta: 'Config. impresion',
+    icono: 'configuracion',
+    descripcion: 'Formato de los comprobantes impresos: papel, copias y encabezado.',
   },
 };
 
@@ -250,10 +319,28 @@ export interface MenuSuperior {
 }
 
 export const MENUS: readonly MenuSuperior[] = [
-  { nombre: 'Archivo', items: [{ clave: 'tablero' }, { clave: 'usuarios' }] },
+  // Archivo copia la estructura de StockFlow: la empresa, las configuraciones
+  // y el respaldo viven aca, no dispersos.
+  {
+    nombre: 'Archivo',
+    items: [
+      { clave: 'tablero' },
+      { clave: 'facturacion' },
+      { clave: 'configuracion-impresion' },
+      { clave: 'configuracion-lan' },
+      { clave: 'respaldo' },
+      { clave: 'usuarios' },
+    ],
+  },
   {
     nombre: 'Stock',
-    items: [{ clave: 'stock-insumos' }, { clave: 'stock-productos' }, { clave: 'articulos' }],
+    items: [
+      { clave: 'stock-insumos' },
+      { clave: 'stock-productos' },
+      { clave: 'ajustes-insumos' },
+      { clave: 'ajustes-productos' },
+      { clave: 'movimientos-stock' },
+    ],
   },
   {
     nombre: 'Produccion',
@@ -264,9 +351,15 @@ export const MENUS: readonly MenuSuperior[] = [
     items: [
       { clave: 'pedidos' },
       { clave: 'ventas' },
-      { clave: 'compras' },
-      { clave: 'reposicion' },
+      { clave: 'vendedores' },
+      { clave: 'clientes' },
+      { clave: 'listas-precio' },
+      { clave: 'actualizacion-precios' },
     ],
+  },
+  {
+    nombre: 'Compras',
+    items: [{ clave: 'compras' }, { clave: 'proveedores' }, { clave: 'reposicion' }],
   },
   {
     nombre: 'Tesoreria',
@@ -275,20 +368,12 @@ export const MENUS: readonly MenuSuperior[] = [
       { clave: 'caja-general' },
       { clave: 'cheques' },
       { clave: 'cuentas-corrientes' },
-    ],
-  },
-  {
-    nombre: 'Maestros',
-    items: [
-      { clave: 'clientes' },
-      { clave: 'proveedores' },
-      { clave: 'listas-precio' },
-      { clave: 'actualizacion-precios' },
+      { clave: 'medios-pago' },
     ],
   },
   {
     nombre: 'Consultas',
-    items: [{ clave: 'estadisticas' }, { clave: 'contabilidad' }, { clave: 'facturacion' }],
+    items: [{ clave: 'estadisticas' }, { clave: 'contabilidad' }],
   },
   // Ultimo por convencion: es donde todo el mundo busca la ayuda.
   { nombre: 'Ayuda', items: [{ clave: 'ayuda' }] },
@@ -314,7 +399,7 @@ export const ACCESOS_DIRECTOS: readonly AccesoDirecto[] = [
   { clave: 'pedidos', tecla: 'F2' },
   { clave: 'stock-insumos', tecla: 'F3' },
   { clave: 'stock-productos', tecla: 'F4' },
-  { clave: 'articulos', tecla: 'F5' },
+  { clave: 'clientes', tecla: 'F5' },
   { clave: 'recetas', tecla: 'F6' },
   { clave: 'ordenes', tecla: 'F7' },
   { clave: 'ventas', tecla: 'F8' },

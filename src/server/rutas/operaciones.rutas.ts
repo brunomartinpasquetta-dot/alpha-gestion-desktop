@@ -43,6 +43,8 @@ const esquemaId = z.object({ id: z.coerce.number().int().positive() });
 const esquemaCambioOrden = z.object({
   estado: z.enum(ESTADOS_ORDEN_PRODUCCION),
   rindeReal: z.number().positive().nullable().optional(),
+  /** Elaborar aunque el papel diga que faltan insumos (estan fisicamente). */
+  forzar: z.boolean().optional(),
 });
 
 const esquemaLote = z.object({
@@ -88,6 +90,29 @@ const esquemaNuevaVenta = z.object({
   notas: z.string().max(500).nullable().optional(),
   comprobante: z.enum(TIPOS_COMPROBANTE).optional(),
   condicionIvaReceptor: z.number().int().positive().max(20).optional(),
+  /** Destino del saldo no llevado en una entrega parcial de pedido. */
+  restoPedido: z.enum(['liberar', 'mantener']).nullable().optional(),
+  /** Pagos mixtos. Ausente = todo en Efectivo (venta rapida). */
+  pagos: z
+    .array(
+      z.object({
+        medioPagoId: z.number().int().positive(),
+        importe: z.number().int().positive(),
+        referencia: z.string().max(60).nullable().optional(),
+        cheque: z
+          .object({
+            numero: z.string().min(1).max(40),
+            banco: z.string().max(80).nullable().optional(),
+            fechaPago: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Formato AAAA-MM-DD'),
+            formato: z.enum(['fisico', 'echeq']).optional(),
+          })
+          .nullable()
+          .optional(),
+      }),
+    )
+    .max(10)
+    .nullable()
+    .optional(),
   items: z
     .array(
       z.object({
@@ -110,7 +135,7 @@ export function registrarRutasOperaciones(app: FastifyInstance): void {
       request.body,
       'El cambio de estado enviado no es valido.',
     );
-    const datos = produccionServicio.cambiarEstado(id, cuerpo.estado, cuerpo.rindeReal ?? null);
+    const datos = produccionServicio.cambiarEstado(id, cuerpo.estado, cuerpo.rindeReal ?? null, cuerpo.forzar ?? false);
     return reply.status(200).send({ datos });
   });
 

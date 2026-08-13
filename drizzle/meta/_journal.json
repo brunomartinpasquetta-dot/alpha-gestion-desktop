@@ -71,6 +71,62 @@
       "when": 1786068941109,
       "tag": "0009_lotes_precio",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786250685980,
+      "tag": "0010_reservas_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1786338337822,
+      "tag": "0011_medios_pago",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1786471733680,
+      "tag": "0012_presentaciones",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1786475975350,
+      "tag": "0013_pedido_renglones",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1786476164341,
+      "tag": "0014_renglones_a_medida",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1786486417157,
+      "tag": "0015_vendedores_y_lista_en_pedido",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1786489609929,
+      "tag": "0016_orden_pausada",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1786490627348,
+      "tag": "0017_vendedor_cuit_cliente",
+      "breakpoints": true
     }
   ]
 }

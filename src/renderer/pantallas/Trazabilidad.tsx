@@ -112,7 +112,9 @@ function Resultado({ datos }: { readonly datos: TrazabilidadLote }): JSX.Element
             <span className="font-mono text-xs text-masa-700"> · {orden.articuloProducidoCodigo}</span>
           </p>
           <p className="mt-1 text-xs text-masa-700">
-            Orden #{orden.id} · planificada {formatearCantidadConUnidad(orden.cantidadPlanificada, orden.unidadAbreviatura)} · tanda ×{orden.factorEscala}
+            Orden #{orden.id} · planificada{' '}
+            {formatearCantidadConUnidad(orden.cantidadPlanificada, orden.unidadAbreviatura)}
+            {orden.unidadesPorCaja === 12 && <> ({orden.cantidadPlanificada / 12} docenas)</>}
             {orden.pedidoId !== null && ` · contra pedido #${orden.pedidoId}`}
           </p>
         </div>

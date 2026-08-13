@@ -62,7 +62,10 @@ function abrirEnNavegadorDelSistema(url: string): void {
  *  - ninguna navegacion fuera del origen propio (evita que un link o un redirect
  *    convierta la ventana del ERP en un browser sin barra de direcciones).
  */
-function endurecerVentana(ventana: BrowserWindow): void {
+function endurecerVentana(
+  ventana: BrowserWindow,
+  opciones?: { readonly permitirWhatsApp?: boolean },
+): void {
   ventana.webContents.setWindowOpenHandler(({ url }) => {
     abrirEnNavegadorDelSistema(url);
     return { action: 'deny' };
@@ -74,8 +77,17 @@ function endurecerVentana(ventana: BrowserWindow): void {
     abrirEnNavegadorDelSistema(url);
   });
 
-  // Un webview embebido seria un agujero: no se usan en este producto.
-  ventana.webContents.on('will-attach-webview', (evento) => {
+  // Webviews embebidos: bloqueados, con UNA excepcion controlada. La ventana
+  // principal aloja el panel de WhatsApp Web (copiado de StockFlow); ese guest
+  // se deja adjuntar SOLO si apunta a web.whatsapp.com, sin preload y aislado.
+  ventana.webContents.on('will-attach-webview', (evento, webPreferences, params) => {
+    const src = String((params as { src?: unknown }).src ?? '');
+    if (opciones?.permitirWhatsApp === true && src.startsWith('https://web.whatsapp.com')) {
+      delete (webPreferences as { preload?: string }).preload;
+      webPreferences.nodeIntegration = false;
+      webPreferences.contextIsolation = true;
+      return;
+    }
     evento.preventDefault();
   });
 }
@@ -97,12 +109,15 @@ export function crearVentanaPrincipal(opciones: OpcionesVentana): BrowserWindow 
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // El panel de WhatsApp embebido (copiado de StockFlow) usa <webview> con
+      // sesion persistente. Solo la ventana principal lo necesita.
+      webviewTag: true,
       // El preload compilado queda al lado de este archivo dentro de dist/main.
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
-  endurecerVentana(ventana);
+  endurecerVentana(ventana, { permitirWhatsApp: true });
 
   ventana.once('ready-to-show', () => {
     ventana.show();

@@ -18,6 +18,9 @@ import {
   LIMITE_MOVIMIENTOS_DEFAULT,
   LIMITE_MOVIMIENTOS_MAXIMO,
 } from '../servicios/consultas.servicio';
+import { responderConDatos } from '../asistente/consultas';
+import { answerQuestion as responderPregunta } from '../asistente/motor';
+import { presentacionesServicio } from '../servicios/presentaciones.servicio';
 import { stockServicio } from '../servicios/stock.servicio';
 
 function validarOFallar<T>(esquema: z.ZodType<T>, datos: unknown, mensaje: string): T {
@@ -66,6 +69,16 @@ export function registrarRutasModulos(app: FastifyInstance): void {
     return reply.status(200).send({ datos: stockServicio.saldosPorGrupo(grupo) });
   });
 
+  // Ledger completo de un grupo (auditoria): ingresos, egresos y ajustes.
+  app.get('/api/stock/movimientos', (request: FastifyRequest, reply: FastifyReply) => {
+    const { grupo } = validarOFallar(
+      esquemaConsultaStock,
+      request.query,
+      "El grupo de stock debe ser 'insumos' o 'productos'.",
+    );
+    return reply.status(200).send({ datos: consultasServicio.listarMovimientosDeGrupo(grupo) });
+  });
+
   app.get('/api/articulos/:id/movimientos', (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = validarOFallar(
       esquemaParametrosArticulo,
@@ -97,6 +110,49 @@ export function registrarRutasModulos(app: FastifyInstance): void {
 
   app.get('/api/pedidos', (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.status(200).send({ datos: consultasServicio.listarPedidos() });
+  });
+
+  // Medios de pago activos, en el orden del PDV. El renderer arma con esto
+  // las filas del pago mixto.
+  // Catalogo de presentaciones para el talonario de pedidos.
+  app.get('/api/presentaciones', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: presentacionesServicio.listar() });
+  });
+
+  // Precio de UN renglon (presentacion x lista), resuelto por la unica fuente
+  // de verdad de la liquidacion (precio propio, componentes, listas derivadas).
+  app.get('/api/presentaciones/:id/precio/:listaId', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id, listaId } = request.params as { id: string; listaId: string };
+    const precio = presentacionesServicio.precioDeRenglon(Number(id), Number(listaId));
+    return reply.status(200).send({ datos: { precio } });
+  });
+
+  // Asistente virtual (Alfi). Primero intenta responder con DATOS REALES del
+  // sistema (ventas de hoy, stock, deudores...); si la pregunta no es de
+  // datos, sigue el motor de conocimiento de siempre.
+  app.post('/api/asistente', (request: FastifyRequest, reply: FastifyReply) => {
+    const { pregunta, sesion } = validarOFallar(
+      z.object({ pregunta: z.string().min(1).max(500), sesion: z.string().max(80).optional() }),
+      request.body,
+      'La pregunta del asistente no es valida.',
+    );
+    const dato = responderConDatos(pregunta);
+    if (dato !== null) {
+      return reply.status(200).send({ datos: { respuesta: dato, sugerencias: [] } });
+    }
+    const respuesta = responderPregunta(pregunta, sesion ?? 'principal');
+    return reply.status(200).send({
+      datos: { respuesta: respuesta.reply, sugerencias: respuesta.suggestions },
+    });
+  });
+
+  app.get('/api/medios-pago', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: consultasServicio.listarMediosPago() });
+  });
+
+  // Vendedores/revendedores activos, para el desplegable del pedido.
+  app.get('/api/vendedores', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: consultasServicio.listarVendedores() });
   });
 
   app.get('/api/ventas', (_request: FastifyRequest, reply: FastifyReply) => {

@@ -17,7 +17,10 @@ import {
   type EntradaItemCompra,
   type EntradaNuevoPedido,
   type FormaPago,
+  type ListaPrecioVista,
   type PedidoVista,
+  type PresentacionVista,
+  type VendedorVista,
   type MedioCobroPago,
   type ProveedorVista,
   type RecetaVista,
@@ -43,13 +46,17 @@ import {
   crearOrdenProduccion,
   obtenerArticulos,
   obtenerClientes,
+  obtenerListasPrecio,
+  obtenerPresentaciones,
   obtenerProveedores,
+  obtenerVendedores,
   obtenerRecetas,
   obtenerUnidades,
   registrarCobroPago,
   registrarMovimientoCaja,
+  type ResultadoCrearPedido,
 } from '../servicios/cliente';
-import { formatearCantidad, formatearMoneda } from '../utiles/formato';
+import { formatearCajas, formatearCantidad, formatearMoneda, pluralizar } from '../utiles/formato';
 
 function mensajeDeError(causa: unknown): string {
   return causa instanceof Error ? causa.message : String(causa);
@@ -568,28 +575,45 @@ export function FormularioNuevaOrden({
   readonly alGuardar: (mensaje: string) => void;
 }): JSX.Element {
   const [recetas, setRecetas] = useState<RecetaVista[]>([]);
+  const [articulos, setArticulos] = useState<ArticuloConStock[]>([]);
   const [recetaId, setRecetaId] = useState<number | ''>('');
-  const [factorEscala, setFactorEscala] = useState<number | ''>(1);
+  const [cantidad, setCantidad] = useState<number | ''>('');
   const [notas, setNotas] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
-    obtenerRecetas()
-      .then((r) => setRecetas(r.filter((x) => x.activa)))
+    Promise.all([obtenerRecetas(), obtenerArticulos()])
+      .then(([r, a]) => {
+        setRecetas(r.filter((x) => x.activa));
+        setArticulos(a);
+      })
       .catch((causa: unknown) => setError(mensajeDeError(causa)));
   }, []);
 
   const receta = recetas.find((r) => r.id === recetaId);
-  const cantidad =
-    receta === undefined ? 0 : receta.rindeCantidad * Number(factorEscala || 0);
+  const producto = articulos.find((a) => a.id === receta?.articuloProducidoId);
+
+  /**
+   * Los alfajores se cuentan en DOCENAS, no de a uno: es como se produce, como
+   * se embala y como los pide el cliente. Para lo que no va en caja —el dulce
+   * de leche, por ejemplo— se carga en su unidad, que es como se mide la olla.
+   */
+  const porDocenas = producto?.unidadesPorCaja === 12;
+  const unidadesPorLote = porDocenas ? 12 : 1;
+  const rotulo = porDocenas
+    ? 'Cantidad a producir (docenas)'
+    : `Cantidad a producir${receta !== undefined ? ` (${receta.rindeUnidadAbreviatura})` : ''}`;
+
+  // Lo que se manda al servidor va SIEMPRE en la unidad base del producto.
+  const cantidadBase = cantidad === '' ? 0 : Number(cantidad) * unidadesPorLote;
 
   const guardar = (): void => {
-    if (recetaId === '' || Number(factorEscala) <= 0) return;
+    if (recetaId === '' || cantidadBase <= 0) return;
     setGuardando(true);
     setError(null);
-    crearOrdenProduccion({ recetaId, factorEscala: Number(factorEscala), notas: notas.trim() || null })
-      .then((r) => alGuardar(`Orden #${r.id} planificada. Ejecutala para que salga el numero de lote.`))
+    crearOrdenProduccion({ recetaId, cantidad: cantidadBase, notas: notas.trim() || null })
+      .then((r) => alGuardar(`Orden #${r.id} creada. Ejecutala para que salga el numero de lote.`))
       .catch((causa: unknown) => {
         setError(mensajeDeError(causa));
         setGuardando(false);
@@ -598,46 +622,75 @@ export function FormularioNuevaOrden({
 
   return (
     <ModalFormulario
-      titulo="Planificar produccion"
-      descripcion="La cantidad sale del rinde de la receta por el factor de escala."
+      titulo="Nueva orden de produccion"
+      descripcion="Cuanto se va a elaborar. Los insumos se descuentan al finalizar la tanda."
       error={error}
       guardando={guardando}
-      puedeGuardar={recetaId !== '' && Number(factorEscala) > 0}
-      etiquetaGuardar="Planificar orden"
+      puedeGuardar={recetaId !== '' && cantidadBase > 0}
+      etiquetaGuardar="Crear orden"
       alCerrar={alCerrar}
       alGuardar={guardar}
       pieIzquierdo={
-        receta !== undefined ? (
+        receta !== undefined && cantidadBase > 0 ? (
           <span className="text-sm text-masa-800">
-            Se van a producir{' '}
             <strong className="font-mono">
-              {cantidad} {receta.rindeUnidadAbreviatura}
+              {formatearCantidad(cantidadBase)} {receta.rindeUnidadAbreviatura}
             </strong>{' '}
             de {receta.articuloProducidoNombre}
+            {porDocenas && (
+              <> · {formatearCantidad(Number(cantidad))} {Number(cantidad) === 1 ? 'docena' : 'docenas'}</>
+            )}
           </span>
         ) : undefined
       }
     >
       <CampoSelector
         id="op-receta"
-        rotulo="Receta"
+        rotulo="Que se va a elaborar"
         valor={recetaId}
         vacio="Elegi la receta"
         opciones={recetas.map((r) => ({
           valor: r.id,
-          etiqueta: `${r.articuloProducidoNombre} (rinde ${r.rindeCantidad} ${r.rindeUnidadAbreviatura})`,
+          etiqueta: `${r.articuloProducidoNombre} (una tanda rinde ${r.rindeCantidad} ${r.rindeUnidadAbreviatura})`,
         }))}
         alCambiar={(v) => setRecetaId(v === '' ? '' : Number(v))}
       />
+
       <CampoNumero
-        id="op-factor"
-        rotulo="Factor de escala"
-        valor={factorEscala}
-        alCambiar={setFactorEscala}
-        minimo={0.01}
-        paso="0.5"
-        ayuda="1 = una tanda, 0.5 = media tanda, 2 = tanda doble."
+        id="op-cantidad"
+        rotulo={rotulo}
+        valor={cantidad}
+        alCambiar={setCantidad}
+        minimo={0}
+        paso={porDocenas ? '1' : 'any'}
+        ayuda={
+          receta === undefined
+            ? undefined
+            : porDocenas
+              ? `Se cargan docenas: 1 docena = 12 unidades. La receta rinde ${formatearCantidad(receta.rindeCantidad / 12)} ${receta.rindeCantidad === 12 ? 'docena' : 'docenas'} por tanda.`
+              : `Una tanda completa da ${formatearCantidad(receta.rindeCantidad)} ${receta.rindeUnidadAbreviatura}.`
+        }
       />
+
+      {receta !== undefined && cantidadBase > 0 && (
+        <div className="rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2">
+          <p className="text-micro font-semibold uppercase tracking-wide text-masa-700">
+            Insumos que va a consumir
+          </p>
+          <ul className="mt-1 space-y-0.5 text-sm text-masa-900">
+            {receta.items.map((item) => (
+              <li key={item.id} className="flex justify-between gap-3">
+                <span className="truncate">{item.insumoNombre}</span>
+                <span className="shrink-0 font-mono tabular-nums">
+                  {formatearCantidad((item.cantidad * cantidadBase) / receta.rindeCantidad)}{' '}
+                  {item.unidadAbreviatura}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <CampoTexto id="op-notas" rotulo="Notas" valor={notas} alCambiar={setNotas} maximo={500} />
     </ModalFormulario>
   );
@@ -646,23 +699,99 @@ export function FormularioNuevaOrden({
 /* --------------------------------- Pedidos --------------------------------- */
 
 /**
+ * Como se carga cada producto: los alfajores van por DOCENA (unidadesPorCaja
+ * 12), otros por caja cerrada de N, y lo que no se encajona en su unidad.
+ * El rotulo va bien visible arriba del incrementador porque un contador solo,
+ * sin decir QUE cuenta, ya hizo cargar docenas creyendo cargar unidades.
+ */
+function unidadDeCarga(producto: ArticuloConStock): { rotulo: string; upc: number | null } {
+  if (producto.unidadesPorCaja === 12) return { rotulo: 'docenas', upc: 12 };
+  if (producto.unidadesPorCaja !== null) {
+    return { rotulo: `cajas de ${producto.unidadesPorCaja} u`, upc: producto.unidadesPorCaja };
+  }
+  return { rotulo: producto.unidadAbreviatura, upc: null };
+}
+
+/** Una cantidad en la unidad en que se carga: "3 docenas", "2 cajas + 4 u", "5 kg". */
+function enUnidadDeCarga(unidades: number, producto: ArticuloConStock): string {
+  if (producto.unidadesPorCaja === 12) {
+    const docenas = Math.floor(unidades / 12);
+    const resto = Math.round(unidades - docenas * 12);
+    if (docenas === 0) return `${resto} u`;
+    const base = pluralizar(docenas, 'docena', 'docenas');
+    return resto === 0 ? base : `${base} + ${resto} u`;
+  }
+  if (producto.unidadesPorCaja !== null) return formatearCajas(unidades, producto.unidadesPorCaja);
+  return `${formatearCantidad(unidades)} ${producto.unidadAbreviatura}`;
+}
+
+/**
+ * Traduce la respuesta del alta al mensaje del aviso. Es la respuesta directa
+ * a "hice un pedido y no se si lo reservo de stock o hay que producir": el
+ * mensaje cuenta lo que el servidor HIZO, no lo que el formulario esperaba.
+ */
+function mensajeDeAlta(r: ResultadoCrearPedido): { mensaje: string; tono: 'ok' | 'alerta' } {
+  const id = r.datos.id;
+  const { cobertura, ordenes } = r;
+  // Reintento idempotente: el servidor no repite cobertura ni ordenes.
+  if (cobertura === undefined || ordenes === undefined) {
+    return { mensaje: `Pedido #${id} cargado.`, tono: 'ok' };
+  }
+  const reservado = cobertura.reservado.reduce((suma, x) => suma + x.cantidad, 0);
+  const aElaborar = ordenes.creadas.reduce((suma, o) => suma + o.cantidad, 0);
+
+  let mensaje: string;
+  if (cobertura.quedoListo) {
+    mensaje = `Pedido #${id} cargado: reservado completo de stock. LISTO para entregar.`;
+  } else if (reservado > 0 && aElaborar > 0) {
+    mensaje = `Pedido #${id} cargado: ${formatearCantidad(reservado)} u reservadas de stock, ${formatearCantidad(aElaborar)} u enviadas a elaboracion.`;
+  } else if (aElaborar > 0) {
+    mensaje = `Pedido #${id} cargado: enviado a elaboracion.`;
+  } else if (reservado > 0) {
+    // Cubrio una parte pero lo que falta no abrio orden (producto sin receta).
+    mensaje = `Pedido #${id} cargado: ${formatearCantidad(reservado)} u reservadas de stock.`;
+  } else {
+    mensaje = `Pedido #${id} cargado.`;
+  }
+
+  // Lo que convierte el aviso en alerta: ordenes que nacieron sin insumos y
+  // partes que no se pueden elaborar porque el producto no tiene receta.
+  const avisos: string[] = [];
+  const enEspera = ordenes.creadas.filter((o) => o.esperaInsumos);
+  if (enEspera.length > 0) {
+    const faltantes = enEspera
+      .map((o) => o.insumosFaltantes)
+      .filter((f): f is string => f !== null && f !== '')
+      .join('; ');
+    avisos.push(
+      `ATENCION: la elaboracion queda EN ESPERA DE INSUMOS${faltantes === '' ? '' : ` (${faltantes})`}.`,
+    );
+  }
+  if (ordenes.sinReceta.length > 0) {
+    avisos.push(`Sin receta para ${ordenes.sinReceta.join(', ')}: esa parte no abrio orden.`);
+  }
+  if (avisos.length === 0) return { mensaje, tono: 'ok' };
+  return { mensaje: `${mensaje} ${avisos.join(' ')}`, tono: 'alerta' };
+}
+
+/**
  * Alta y edicion de pedidos desde el mostrador. Es el mismo formulario que usa
  * la PWA del celular pero sin la cola offline: aca hay conexion garantizada.
- * Las cantidades se cargan en CAJAS, como pide el cliente.
+ * Las cantidades se cargan en la unidad en que se venden (docenas o cajas) y
+ * el resumen de abajo anticipa que se reserva de stock y que se elabora.
  */
-export function FormularioPedido({
+function FormularioPedidoClasico({
   pedido,
   alCerrar,
   alGuardar,
 }: {
   readonly pedido: PedidoVista | null;
   readonly alCerrar: () => void;
-  readonly alGuardar: (mensaje: string) => void;
+  readonly alGuardar: (mensaje: string, tono: 'ok' | 'alerta') => void;
 }): JSX.Element {
   const [productos, setProductos] = useState<ArticuloConStock[]>([]);
   const [clientes, setClientes] = useState<ClienteVista[]>([]);
   const [clienteId, setClienteId] = useState<number | ''>(pedido?.clienteId ?? '');
-  const [fechaEntrega, setFechaEntrega] = useState(pedido?.fechaEntregaEstimada?.slice(0, 10) ?? '');
   const [notas, setNotas] = useState(pedido?.notas ?? '');
   const [seleccion, setSeleccion] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
@@ -674,7 +803,7 @@ export function FormularioPedido({
         const activos = a.filter((x) => x.tipo === 'producto_terminado' && x.activo);
         setProductos(activos);
         setClientes(c.filter((x) => x.activo));
-        // Al editar, las cantidades guardadas (en unidades) vuelven a cajas.
+        // Al editar, las cantidades guardadas (en unidades) vuelven a docenas o cajas.
         if (pedido !== null) {
           const inicial: Record<number, number> = {};
           for (const item of pedido.items) {
@@ -687,43 +816,727 @@ export function FormularioPedido({
       .catch((causa: unknown) => setError(mensajeDeError(causa)));
   }, [pedido]);
 
+  // Lo que viaja al servidor va SIEMPRE en unidades base.
   const items = Object.entries(seleccion)
-    .map(([id, cajas]) => {
+    .map(([id, cargado]) => {
       const articuloId = Number(id);
       const upc = productos.find((p) => p.id === articuloId)?.unidadesPorCaja ?? null;
-      return { articuloId, cantidad: upc === null ? cajas : cajas * upc };
+      return { articuloId, cantidad: upc === null ? cargado : cargado * upc };
     })
     .filter((i) => i.cantidad > 0);
 
+  // Resumen en vivo: con el `disponible` que ya manda el servidor se anticipa
+  // que parte se cubre con stock y que parte abre una orden, ANTES de cargar.
+  const resumen = items.flatMap((item) => {
+    const producto = productos.find((p) => p.id === item.articuloId);
+    if (producto === undefined) return [];
+    const disponible = Math.max(producto.disponible, 0);
+    const reserva = Math.min(item.cantidad, disponible);
+    return [{ producto, reserva, elabora: item.cantidad - reserva }];
+  });
+  const todoDeStock = resumen.length > 0 && resumen.every((l) => l.elabora === 0);
+  const nadaDeStock = resumen.length > 0 && resumen.every((l) => l.reserva === 0);
+
   const guardar = (): void => {
     if (items.length === 0) return;
+    // La confirmacion es solo del alta, que es lo que reserva stock y abre
+    // ordenes. La edicion no dispara nada de eso: confirmar seria ruido.
+    if (pedido === null) {
+      const detalleReserva =
+        resumen
+          .filter((l) => l.reserva > 0)
+          .map((l) => `${enUnidadDeCarga(l.reserva, l.producto)} de ${l.producto.nombre}`)
+          .join(', ') || 'nada';
+      const detalleElaborar =
+        resumen
+          .filter((l) => l.elabora > 0)
+          .map((l) => `${enUnidadDeCarga(l.elabora, l.producto)} de ${l.producto.nombre}`)
+          .join(', ') || 'nada';
+      const confirmado = window.confirm(
+        `Confirmas el pedido?\n\n• Se reservan de stock: ${detalleReserva}\n• Se manda a elaborar: ${detalleElaborar}\n\nAceptar = cargar`,
+      );
+      if (!confirmado) return;
+    }
     setGuardando(true);
     setError(null);
     const entrada: EntradaNuevoPedido = {
       clienteId: clienteId === '' ? null : clienteId,
       origen: 'mostrador',
-      fechaEntregaEstimada: fechaEntrega || null,
+      // La fecha estimada de entrega se saco del formulario: no se usaba y
+      // solo sumaba ruido. El servidor la acepta en null.
+      fechaEntregaEstimada: null,
       notas: notas.trim() || null,
       items,
     };
-    const operacion =
-      pedido === null ? crearPedido(entrada) : actualizarPedido(pedido.id, entrada);
-    operacion
-      .then(() => alGuardar(`Pedido ${pedido === null ? 'cargado' : 'actualizado'}.`))
-      .catch((causa: unknown) => {
-        setError(mensajeDeError(causa));
-        setGuardando(false);
-      });
+    if (pedido === null) {
+      crearPedido(entrada)
+        .then((r) => {
+          const resultado = mensajeDeAlta(r);
+          alGuardar(resultado.mensaje, resultado.tono);
+        })
+        .catch((causa: unknown) => {
+          setError(mensajeDeError(causa));
+          setGuardando(false);
+        });
+    } else {
+      actualizarPedido(pedido.id, entrada)
+        .then(() => alGuardar(`Pedido #${pedido.id} actualizado.`, 'ok'))
+        .catch((causa: unknown) => {
+          setError(mensajeDeError(causa));
+          setGuardando(false);
+        });
+    }
   };
 
   return (
     <ModalFormulario
       titulo={pedido === null ? 'Nuevo pedido' : `Editar pedido #${pedido.id}`}
-      descripcion="Las cantidades van en cajas cerradas, como las pide el cliente."
+      descripcion="Elegi cuanto lleva de cada producto. Abajo se ve que sale de stock y que se elabora."
       ancho="max-w-2xl"
       error={error}
       guardando={guardando}
       puedeGuardar={items.length > 0}
+      etiquetaGuardar={pedido === null ? 'Cargar pedido' : 'Guardar cambios'}
+      alCerrar={alCerrar}
+      alGuardar={guardar}
+    >
+      <CampoSelector
+        id="pe-cliente"
+        rotulo="Cliente"
+        valor={clienteId}
+        vacio="Mostrador / sin cliente"
+        opciones={clientes.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
+        alCambiar={(v) => setClienteId(v === '' ? '' : Number(v))}
+      />
+
+      <div>
+        <p className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
+          Productos
+        </p>
+        <div className="overflow-hidden rounded-ficha border border-masa-200">
+          {productos.map((producto, indice) => {
+            const carga = unidadDeCarga(producto);
+            const cantidadCargada = seleccion[producto.id] ?? 0;
+            const unidades = carga.upc === null ? cantidadCargada : cantidadCargada * carga.upc;
+            const disponible = Math.max(producto.disponible, 0);
+            return (
+              <div
+                key={producto.id}
+                className={['flex items-center gap-4 px-3 py-2.5', indice > 0 ? 'border-t border-masa-100' : ''].join(' ')}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-masa-900">{producto.nombre}</p>
+                  {disponible > 0 ? (
+                    <p className="text-xs font-medium text-menta-700">
+                      {producto.unidadesPorCaja === null
+                        ? `Hay ${enUnidadDeCarga(disponible, producto)} en stock`
+                        : `Hay ${enUnidadDeCarga(disponible, producto)} listas en stock`}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-masa-700">Sin stock listo: se elabora al cargarlo</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-center">
+                  <span className="mb-0.5 text-xs font-bold uppercase tracking-wide text-masa-800">
+                    {carga.rotulo}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label={`Sacar ${producto.nombre}`}
+                      onClick={() => setSeleccion((s) => ({ ...s, [producto.id]: Math.max(cantidadCargada - 1, 0) }))}
+                      disabled={cantidadCargada === 0}
+                      className="h-9 w-9 rounded-none border border-masa-300 bg-masa-50 font-bold text-masa-900 disabled:opacity-30"
+                    >
+                      −
+                    </button>
+                    <span className="w-10 text-center font-mono text-base font-bold tabular-nums text-masa-900">
+                      {cantidadCargada}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Agregar ${producto.nombre}`}
+                      onClick={() => setSeleccion((s) => ({ ...s, [producto.id]: cantidadCargada + 1 }))}
+                      className="h-9 w-9 rounded-none border border-dulce-400 bg-dulce-500 font-bold text-white"
+                    >
+                      +
+                    </button>
+                  </div>
+                  {/* Altura fija para que la fila no salte cuando aparece la equivalencia. */}
+                  <span className="mt-0.5 h-4 text-xs font-medium text-masa-800">
+                    {carga.upc !== null && cantidadCargada > 0 ? `= ${unidades} unidades` : ''}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {resumen.length > 0 && (
+        <div className="rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2">
+          <p className="text-micro font-semibold uppercase tracking-wide text-masa-700">
+            Envio a elaboracion
+          </p>
+          <table className="mt-1 w-full text-sm">
+            <thead>
+              <tr className="text-micro uppercase tracking-wide text-masa-700">
+                <th scope="col" className="pb-0.5 text-left font-semibold">Producto</th>
+                <th scope="col" className="pb-0.5 text-right font-semibold">Se reserva de stock</th>
+                <th scope="col" className="pb-0.5 text-right font-semibold">Se manda a elaborar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resumen.map((l) => (
+                <tr key={l.producto.id} className="border-t border-masa-200">
+                  <td className="py-1 text-masa-900">{l.producto.nombre}</td>
+                  <td className="py-1 text-right font-mono tabular-nums text-masa-900">
+                    {l.reserva > 0 ? enUnidadDeCarga(l.reserva, l.producto) : '—'}
+                  </td>
+                  <td className="py-1 text-right font-mono tabular-nums text-masa-900">
+                    {l.elabora > 0 ? enUnidadDeCarga(l.elabora, l.producto) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className={['mt-1.5 text-xs font-medium', todoDeStock ? 'text-menta-700' : 'text-alerta-700'].join(' ')}>
+            {todoDeStock
+              ? 'Hay stock para todo: se reserva completo y queda listo para entregar.'
+              : nadaDeStock
+                ? 'No hay stock listo: todo se manda a elaborar.'
+                : 'Hay stock para una parte: se reserva eso y el resto se manda a elaborar.'}
+          </p>
+        </div>
+      )}
+
+      <CampoTexto id="pe-notas" rotulo="Notas" valor={notas} alCambiar={setNotas} maximo={500} />
+    </ModalFormulario>
+  );
+}
+
+/* --------------------- Talonario de pedidos (Anyulin) ---------------------- */
+
+/**
+ * El talonario replica la planilla real del cliente: primero se elige el
+ * PRODUCTO (alfajores, almendras, cubanitos, caja Anyulin), despues la
+ * PRESENTACION, y ahi se completan las cantidades POR VARIEDAD: blanco, negro,
+ * frutilla blanco y frutilla negro. Cada "Agregar" suma renglones al pedido.
+ * Los renglones son la verdad comercial (lo que se imprime y se factura); el
+ * servidor los explota a unidades para el stock y la produccion.
+ */
+
+const VARIEDADES_ALFAJOR = [
+  { codigo: 'ALF-B', etiqueta: 'BLANCO' },
+  { codigo: 'ALF-N', etiqueta: 'NEGRO' },
+  { codigo: 'ALF-FB', etiqueta: 'FRUTILLA BLANCO' },
+  { codigo: 'ALF-FN', etiqueta: 'FRUTILLA NEGRO' },
+] as const;
+
+const TIPOS_ALFAJOR = [
+  { prefijo: 'CAJA', etiqueta: 'Caja x36', unidades: 36 },
+  { prefijo: 'DOC', etiqueta: 'Docena', unidades: 12 },
+  { prefijo: 'BOL', etiqueta: 'Bolsa x6', unidades: 6 },
+  { prefijo: 'UNI', etiqueta: 'Unidad suelta', unidades: 1 },
+] as const;
+
+const VARIEDADES_ALMENDRA = [
+  { codigo: 'ALM-CL', etiqueta: 'CHOC C/LECHE' },
+  { codigo: 'ALM-B', etiqueta: 'CHOC BLANCO' },
+  { codigo: 'ALM-SA', etiqueta: 'CHOC SEMIAMARGO' },
+] as const;
+
+const VARIEDADES_CUBANITO = [
+  { codigo: 'CUB-DDL', etiqueta: 'DULCE DE LECHE' },
+  { codigo: 'CUB-FRU', etiqueta: 'FRUTILLA' },
+  { codigo: 'CUB-MANI', etiqueta: 'MANI' },
+  { codigo: 'CUB-AVE', etiqueta: 'AVELLANA' },
+  { codigo: 'CUB-BAN', etiqueta: 'BANANITA' },
+] as const;
+
+/** Cajas de cubanitos: los sabores se eligen adentro, el precio es de la caja. */
+const TIPOS_CUBANITO = [
+  { sel: 'CUB10', codigoPres: 'CAJA-CUB-10', etiqueta: 'Caja x10', unidades: 10 },
+  { sel: 'CUB16', codigoPres: 'CAJA-CUB-16', etiqueta: 'Caja x16', unidades: 16 },
+] as const;
+
+const PRODUCTOS_TALONARIO = [
+  { valor: 'ALFAJORES', etiqueta: 'ALFAJORES' },
+  { valor: 'ALMENDRAS', etiqueta: 'ALMENDRAS' },
+  { valor: 'CUBANITOS', etiqueta: 'CUBANITOS' },
+  { valor: 'ANYULIN', etiqueta: 'CAJA ANYULIN' },
+] as const;
+
+type ProductoTalonario = (typeof PRODUCTOS_TALONARIO)[number]['valor'];
+
+/** Un renglon ya cargado en el talonario, con lo minimo para mostrar y enviar. */
+interface RenglonTalonario {
+  clave: string;
+  presentacionId: number | null;
+  descripcion: string | null;
+  etiqueta: string;
+  cantidad: number;
+  unidadesPorUnidad: number;
+  componentes: { articuloId: number; unidades: number }[];
+}
+
+function renglonDeCatalogo(pres: PresentacionVista, cantidad: number): RenglonTalonario {
+  return {
+    clave: `P${pres.id}`,
+    presentacionId: pres.id,
+    descripcion: null,
+    etiqueta: pres.nombre,
+    cantidad,
+    unidadesPorUnidad: pres.unidadesTotales,
+    componentes: pres.componentes.map((c) => ({ articuloId: c.articuloId, unidades: c.unidades })),
+  };
+}
+
+function FormularioPedidoTalonario({
+  pedido,
+  presentaciones,
+  alCerrar,
+  alGuardar,
+}: {
+  readonly pedido: PedidoVista | null;
+  readonly presentaciones: PresentacionVista[];
+  readonly alCerrar: () => void;
+  readonly alGuardar: (mensaje: string, tono: 'ok' | 'alerta') => void;
+}): JSX.Element {
+  const porCodigo = useMemo(
+    () => new Map(presentaciones.map((p) => [p.codigo, p])),
+    [presentaciones],
+  );
+  const porId = useMemo(() => new Map(presentaciones.map((p) => [p.id, p])), [presentaciones]);
+
+  const [productos, setProductos] = useState<ArticuloConStock[]>([]);
+  const [clientes, setClientes] = useState<ClienteVista[]>([]);
+  const [clienteId, setClienteId] = useState<number | ''>(pedido?.clienteId ?? '');
+  const [vendedores, setVendedores] = useState<VendedorVista[]>([]);
+  const [listas, setListas] = useState<ListaPrecioVista[]>([]);
+  const [vendedorId, setVendedorId] = useState<number | ''>(pedido?.vendedorId ?? '');
+  const [listaPrecioId, setListaPrecioId] = useState<number | ''>(pedido?.listaPrecioId ?? '');
+  const [notas, setNotas] = useState(pedido?.notas ?? '');
+  const [renglones, setRenglones] = useState<RenglonTalonario[]>(() =>
+    (pedido?.renglones ?? []).map((r, indice) => {
+      if (r.presentacionId !== null && r.componentes.length === 0) {
+        const pres = porId.get(r.presentacionId);
+        if (pres !== undefined) return renglonDeCatalogo(pres, r.cantidad);
+        return {
+          clave: `P${r.presentacionId}`,
+          presentacionId: r.presentacionId,
+          descripcion: null,
+          etiqueta: r.presentacionNombre ?? r.presentacionCodigo ?? `Presentacion #${r.presentacionId}`,
+          cantidad: r.cantidad,
+          unidadesPorUnidad: 0,
+          componentes: [],
+        };
+      }
+      if (r.presentacionId !== null) {
+        // Caja de catalogo con contenido elegido (cubanitos con sus sabores).
+        return {
+          clave: `M${indice}`,
+          presentacionId: r.presentacionId,
+          descripcion: r.descripcion,
+          etiqueta: r.descripcion ?? r.presentacionNombre ?? `Presentacion #${r.presentacionId}`,
+          cantidad: r.cantidad,
+          unidadesPorUnidad: r.componentes.reduce((suma, c) => suma + c.unidades, 0),
+          componentes: r.componentes.map((c) => ({ articuloId: c.articuloId, unidades: c.unidades })),
+        };
+      }
+      return {
+        clave: `M${indice}`,
+        presentacionId: null,
+        descripcion: r.descripcion,
+        etiqueta: r.descripcion ?? 'Armada a medida',
+        cantidad: r.cantidad,
+        unidadesPorUnidad: r.componentes.reduce((suma, c) => suma + c.unidades, 0),
+        componentes: r.componentes.map((c) => ({ articuloId: c.articuloId, unidades: c.unidades })),
+      };
+    }),
+  );
+  const [producto, setProducto] = useState<ProductoTalonario>('ALFAJORES');
+  const [presentacionSel, setPresentacionSel] = useState<string>('CAJA');
+  const [cantidades, setCantidades] = useState<Record<string, number | ''>>({});
+  const [cantidadCajas, setCantidadCajas] = useState<number | ''>(1);
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    Promise.all([obtenerArticulos(), obtenerClientes(), obtenerVendedores(), obtenerListasPrecio()])
+      .then(([a, c, v, l]) => {
+        setProductos(a.filter((x) => x.tipo === 'producto_terminado' && x.activo));
+        setClientes(c.filter((x) => x.activo));
+        setVendedores(v.filter((x) => x.activo));
+        setListas(l.filter((x) => x.activa));
+      })
+      .catch((causa: unknown) => setError(mensajeDeError(causa)));
+  }, []);
+
+  // Al elegir cliente se proponen SU lista y SU vendedor habituales; ambos se
+  // pueden pisar a mano (el desplegable queda editable).
+  const elegirCliente = (id: number | ''): void => {
+    setClienteId(id);
+    if (id === '') return;
+    const cliente = clientes.find((c) => c.id === id);
+    if (cliente === undefined) return;
+    if (cliente.listaPrecioId !== null) setListaPrecioId(cliente.listaPrecioId);
+    if (cliente.vendedorId !== null) setVendedorId(cliente.vendedorId);
+  };
+
+  // El articulo de cada variedad sale de las composiciones del catalogo Y del
+  // maestro de articulos: los sabores de cubanito no figuran en ninguna
+  // composicion fija (la caja arranca toda de dulce de leche).
+  const articuloPorCodigo = useMemo(() => {
+    const mapa = new Map<string, { articuloId: number; nombre: string }>();
+    for (const pres of presentaciones) {
+      for (const c of pres.componentes) {
+        if (!mapa.has(c.articuloCodigo)) {
+          mapa.set(c.articuloCodigo, { articuloId: c.articuloId, nombre: c.articuloNombre });
+        }
+      }
+    }
+    for (const articulo of productos) {
+      if (!mapa.has(articulo.codigo)) {
+        mapa.set(articulo.codigo, { articuloId: articulo.id, nombre: articulo.nombre });
+      }
+    }
+    return mapa;
+  }, [presentaciones, productos]);
+
+
+  // Opciones de presentacion segun el producto elegido.
+  const opcionesPresentacion = useMemo(() => {
+    if (producto === 'ALFAJORES') {
+      return TIPOS_ALFAJOR.filter((tipo) => porCodigo.has(`${tipo.prefijo}-ALF-B`)).map((tipo) => ({
+        valor: tipo.prefijo as string,
+        etiqueta: tipo.etiqueta,
+      }));
+    }
+    if (producto === 'CUBANITOS') {
+      return TIPOS_CUBANITO.filter((tipo) => porCodigo.has(tipo.codigoPres)).map((tipo) => ({
+        valor: tipo.sel as string,
+        etiqueta: tipo.etiqueta,
+      }));
+    }
+    if (producto === 'ALMENDRAS') {
+      return [{ valor: 'VAR', etiqueta: 'Bolsa 200 g' }];
+    }
+    // Caja Anyulin: las presentaciones con envase propio.
+    return presentaciones
+      .filter((p) => p.activo && p.componentes.some((c) => c.articuloCodigo === 'ENV-ANY'))
+      .map((p) => ({ valor: `P${p.id}`, etiqueta: p.nombre }));
+  }, [producto, porCodigo, presentaciones]);
+
+  const cambiarProducto = (nuevo: ProductoTalonario): void => {
+    setProducto(nuevo);
+    setCantidades({});
+    setCantidadCajas(1);
+    if (nuevo === 'ALFAJORES') setPresentacionSel('CAJA');
+    else if (nuevo === 'CUBANITOS') setPresentacionSel('CUB10');
+    else if (nuevo === 'ALMENDRAS') setPresentacionSel('VAR');
+    else setPresentacionSel('');
+  };
+
+  // Que variedades se completan y que significa el numero en cada modo.
+  const variedades =
+    producto === 'ALMENDRAS'
+      ? VARIEDADES_ALMENDRA
+      : producto === 'CUBANITOS'
+        ? VARIEDADES_CUBANITO
+        : VARIEDADES_ALFAJOR;
+  const tipoAlfajor =
+    producto === 'ALFAJORES'
+      ? TIPOS_ALFAJOR.find((t) => t.prefijo === presentacionSel)
+      : undefined;
+  const tipoCubanito =
+    producto === 'CUBANITOS'
+      ? TIPOS_CUBANITO.find((t) => t.sel === presentacionSel)
+      : undefined;
+  // Caja cerrada (caja/docena/bolsa de alfajores, caja de cubanitos): las
+  // variedades LLENAN la caja (la suma tiene que dar lo que lleva el envase)
+  // y aparte se dice CUANTAS cajas asi van.
+  const envaseCerrado =
+    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1
+      ? { unidades: tipoAlfajor.unidades, etiqueta: tipoAlfajor.etiqueta }
+      : tipoCubanito !== undefined
+        ? { unidades: tipoCubanito.unidades, etiqueta: tipoCubanito.etiqueta }
+        : undefined;
+  const esCajaCerrada = envaseCerrado !== undefined;
+  const esUnidadSuelta = tipoAlfajor !== undefined && tipoAlfajor.unidades === 1;
+  const esPorUnidades = esUnidadSuelta || producto === 'ALMENDRAS';
+  const esCatalogoDirecto = presentacionSel.startsWith('P');
+
+  const numero = (clave: string): number => {
+    const valor = cantidades[clave];
+    return typeof valor === 'number' && Number.isFinite(valor) && valor > 0 ? valor : 0;
+  };
+  const sumaVariedades = variedades.reduce((suma, v) => suma + numero(v.codigo), 0);
+  const cantidadDirecta = numero('CANT');
+  const cajas = typeof cantidadCajas === 'number' && cantidadCajas > 0 ? cantidadCajas : 0;
+
+  const esAlmendras = producto === 'ALMENDRAS';
+  const puedeAgregar = esCajaCerrada
+    ? sumaVariedades === (envaseCerrado?.unidades ?? 0) && cajas > 0
+    : esCatalogoDirecto
+      ? cantidadDirecta > 0
+      : variedades.some((v) => numero(v.codigo) > 0) && (!esAlmendras || cajas > 0);
+
+  // Si el contenido cargado coincide con una presentacion del catalogo (36 de
+  // blanco = la caja de blanco; 12+12+12 = la surtida), el renglon sale con
+  // nombre y precio de catalogo. Si no, viaja armado a medida con su receta.
+  const buscarEnCatalogo = (
+    componentes: { articuloId: number; unidades: number }[],
+  ): PresentacionVista | undefined =>
+    presentaciones.find(
+      (p) =>
+        p.activo &&
+        p.componentes.length === componentes.length &&
+        componentes.every((c) =>
+          p.componentes.some((pc) => pc.articuloId === c.articuloId && pc.unidades === c.unidades),
+        ),
+    );
+
+  const agregar = (): void => {
+    const nuevos: RenglonTalonario[] = [];
+    if (esCajaCerrada && envaseCerrado !== undefined) {
+      const partes = variedades.filter((v) => numero(v.codigo) > 0);
+      const componentes = partes.flatMap((v) => {
+        const articulo = articuloPorCodigo.get(v.codigo);
+        return articulo === undefined
+          ? []
+          : [{ articuloId: articulo.articuloId, unidades: numero(v.codigo) }];
+      });
+      if (componentes.length !== partes.length) {
+        setError('Falta una variedad en el catalogo: recarga el catalogo Anyulin.');
+        return;
+      }
+      const enCatalogo = buscarEnCatalogo(componentes);
+      const detalle = partes.map((v) => `${numero(v.codigo)} ${v.etiqueta}`).join(' + ');
+      const presCaja =
+        tipoCubanito !== undefined ? porCodigo.get(tipoCubanito.codigoPres) : undefined;
+      if (enCatalogo !== undefined) {
+        nuevos.push(renglonDeCatalogo(enCatalogo, cajas));
+      } else if (presCaja !== undefined) {
+        // Caja de cubanitos con sabores elegidos: el precio y el nombre son de
+        // la caja; la composicion viaja propia.
+        const rotulo = `${presCaja.nombre}: ${detalle}`;
+        nuevos.push({
+          clave: `M${Date.now()}`,
+          presentacionId: presCaja.id,
+          descripcion: rotulo,
+          etiqueta: rotulo,
+          cantidad: cajas,
+          unidadesPorUnidad: envaseCerrado.unidades,
+          componentes,
+        });
+      } else {
+        const rotulo = `${envaseCerrado.etiqueta} surtida: ${detalle}`;
+        nuevos.push({
+          clave: `M${Date.now()}`,
+          presentacionId: null,
+          descripcion: rotulo,
+          etiqueta: rotulo,
+          cantidad: cajas,
+          unidadesPorUnidad: envaseCerrado.unidades,
+          componentes,
+        });
+      }
+    } else if (esCatalogoDirecto) {
+      const pres = porId.get(Number(presentacionSel.slice(1)));
+      if (pres !== undefined && cantidadDirecta > 0) nuevos.push(renglonDeCatalogo(pres, cantidadDirecta));
+    } else {
+      // Unidades sueltas (alfajores por unidad) y bolsas de almendras. En
+      // almendras el campo naranja multiplica: 1 C/LECHE x 3 bolsas = 3.
+      const factor = esAlmendras ? cajas : 1;
+      for (const v of variedades) {
+        const cantidad = numero(v.codigo) * factor;
+        if (cantidad === 0) continue;
+        const pres = porCodigo.get(esUnidadSuelta ? `UNI-${v.codigo}` : v.codigo);
+        if (pres !== undefined) nuevos.push(renglonDeCatalogo(pres, cantidad));
+      }
+    }
+    if (nuevos.length === 0) return;
+    // Mismo renglon de catalogo dos veces: se suma, no se duplica.
+    setRenglones((actuales) => {
+      let resultado = [...actuales];
+      for (const nuevo of nuevos) {
+        const esCatalogoPuro = nuevo.presentacionId !== null && nuevo.descripcion === null;
+        const yaEsta =
+          esCatalogoPuro &&
+          resultado.some(
+            (r) => r.presentacionId === nuevo.presentacionId && r.descripcion === null,
+          );
+        resultado = yaEsta
+          ? resultado.map((r) =>
+              r.presentacionId === nuevo.presentacionId && r.descripcion === null
+                ? { ...r, cantidad: r.cantidad + nuevo.cantidad }
+                : r,
+            )
+          : [...resultado, nuevo];
+      }
+      return resultado;
+    });
+    setCantidades({});
+    setCantidadCajas(1);
+    setError(null);
+  };
+
+  const quitar = (clave: string): void =>
+    setRenglones((actuales) => actuales.filter((r) => r.clave !== clave));
+
+  const codigoPorArticulo = useMemo(() => {
+    const mapa = new Map<number, string>();
+    for (const [codigo, dato] of articuloPorCodigo) mapa.set(dato.articuloId, codigo);
+    return mapa;
+  }, [articuloPorCodigo]);
+
+  // Un renglon con caja armable (alfajores: caja/docena/bolsa; cubanitos:
+  // caja x10/x16) se puede REABRIR en el armador para tocar su composicion:
+  // vuelve a los campos, se ajusta y se agrega de nuevo.
+  const productoDeRenglon = (r: RenglonTalonario): 'ALFAJORES' | 'CUBANITOS' | null => {
+    if (r.componentes.length === 0) return null;
+    const codigos = r.componentes.map((c) => codigoPorArticulo.get(c.articuloId) ?? '');
+    if (codigos.every((c) => c.startsWith('ALF-'))) return 'ALFAJORES';
+    if (codigos.every((c) => c.startsWith('CUB-'))) return 'CUBANITOS';
+    return null;
+  };
+
+  const editableEnArmador = (r: RenglonTalonario): boolean => {
+    const cual = productoDeRenglon(r);
+    if (cual === 'ALFAJORES') {
+      return TIPOS_ALFAJOR.some((x) => x.unidades === r.unidadesPorUnidad && x.unidades > 1);
+    }
+    if (cual === 'CUBANITOS') {
+      return TIPOS_CUBANITO.some((x) => x.unidades === r.unidadesPorUnidad);
+    }
+    return false;
+  };
+
+  const editarRenglon = (r: RenglonTalonario): void => {
+    const cual = productoDeRenglon(r);
+    const sel =
+      cual === 'ALFAJORES'
+        ? TIPOS_ALFAJOR.find((x) => x.unidades === r.unidadesPorUnidad)?.prefijo
+        : cual === 'CUBANITOS'
+          ? TIPOS_CUBANITO.find((x) => x.unidades === r.unidadesPorUnidad)?.sel
+          : undefined;
+    if (cual === null || sel === undefined) return;
+    const valores: Record<string, number | ''> = {};
+    for (const c of r.componentes) {
+      const codigo = codigoPorArticulo.get(c.articuloId);
+      if (codigo !== undefined) valores[codigo] = c.unidades;
+    }
+    setProducto(cual);
+    setPresentacionSel(sel);
+    setCantidades(valores);
+    setCantidadCajas(r.cantidad);
+    quitar(r.clave);
+  };
+
+  const cambiarCantidad = (clave: string, cantidad: number): void =>
+    setRenglones((actuales) =>
+      actuales.map((r) => (r.clave === clave ? { ...r, cantidad } : r)),
+    );
+
+  // Explosion en vivo: unidades por articulo, para anticipar reserva/elaboracion.
+  const explosion = useMemo(() => {
+    const mapa = new Map<number, number>();
+    for (const renglon of renglones) {
+      if (renglon.cantidad <= 0) continue;
+      for (const c of renglon.componentes) {
+        mapa.set(c.articuloId, (mapa.get(c.articuloId) ?? 0) + c.unidades * renglon.cantidad);
+      }
+    }
+    return mapa;
+  }, [renglones]);
+
+  const resumen = [...explosion.entries()].flatMap(([articuloId, cantidad]) => {
+    const articulo = productos.find((p) => p.id === articuloId);
+    if (articulo === undefined) return [];
+    const disponible = Math.max(articulo.disponible, 0);
+    const reserva = Math.min(cantidad, disponible);
+    return [{ producto: articulo, reserva, elabora: cantidad - reserva }];
+  });
+  const todoDeStock = resumen.length > 0 && resumen.every((l) => l.elabora === 0);
+  const nadaDeStock = resumen.length > 0 && resumen.every((l) => l.reserva === 0);
+  const renglonesValidos = renglones.length > 0 && renglones.every((r) => r.cantidad > 0);
+
+  const guardar = (): void => {
+    if (!renglonesValidos) return;
+    if (pedido === null) {
+      const detalleReserva =
+        resumen
+          .filter((l) => l.reserva > 0)
+          .map((l) => `${enUnidadDeCarga(l.reserva, l.producto)} de ${l.producto.nombre}`)
+          .join(', ') || 'nada';
+      const detalleElaborar =
+        resumen
+          .filter((l) => l.elabora > 0)
+          .map((l) => `${enUnidadDeCarga(l.elabora, l.producto)} de ${l.producto.nombre}`)
+          .join(', ') || 'nada';
+      const confirmado = window.confirm(
+        `Confirmas el pedido?\n\n• Se reservan de stock: ${detalleReserva}\n• Se manda a elaborar: ${detalleElaborar}\n\nAceptar = cargar`,
+      );
+      if (!confirmado) return;
+    }
+    setGuardando(true);
+    setError(null);
+    const entrada: EntradaNuevoPedido = {
+      clienteId: clienteId === '' ? null : clienteId,
+      vendedorId: vendedorId === '' ? null : vendedorId,
+      listaPrecioId: listaPrecioId === '' ? null : listaPrecioId,
+      origen: 'mostrador',
+      fechaEntregaEstimada: null,
+      notas: notas.trim() || null,
+      items: [],
+      renglones: renglones.map((r) => {
+        if (r.presentacionId !== null && r.descripcion === null) {
+          return { presentacionId: r.presentacionId, cantidad: r.cantidad };
+        }
+        if (r.presentacionId !== null) {
+          return {
+            presentacionId: r.presentacionId,
+            cantidad: r.cantidad,
+            descripcion: r.descripcion,
+            componentes: r.componentes,
+          };
+        }
+        return { cantidad: r.cantidad, descripcion: r.descripcion, componentes: r.componentes };
+      }),
+    };
+    if (pedido === null) {
+      crearPedido(entrada)
+        .then((r) => {
+          const resultado = mensajeDeAlta(r);
+          alGuardar(resultado.mensaje, resultado.tono);
+        })
+        .catch((causa: unknown) => {
+          setError(mensajeDeError(causa));
+          setGuardando(false);
+        });
+    } else {
+      actualizarPedido(pedido.id, entrada)
+        .then(() => alGuardar(`Pedido #${pedido.id} actualizado.`, 'ok'))
+        .catch((causa: unknown) => {
+          setError(mensajeDeError(causa));
+          setGuardando(false);
+        });
+    }
+  };
+
+  const claseCampo =
+    'h-10 w-24 rounded-none border border-masa-300 bg-white px-2 text-center font-mono text-base font-bold tabular-nums text-masa-900';
+
+  return (
+    <ModalFormulario
+      titulo={pedido === null ? 'Nuevo pedido' : `Editar pedido #${pedido.id}`}
+      descripcion="Elegi producto y presentacion, completa las unidades que lleva la caja y cuantas cajas van. Abajo queda el detalle del pedido."
+      ancho="max-w-3xl"
+      error={error}
+      guardando={guardando}
+      puedeGuardar={renglonesValidos}
+      etiquetaGuardar={pedido === null ? 'Cargar pedido' : 'Guardar cambios'}
       alCerrar={alCerrar}
       alGuardar={guardar}
     >
@@ -734,72 +1547,277 @@ export function FormularioPedido({
           valor={clienteId}
           vacio="Mostrador / sin cliente"
           opciones={clientes.map((c) => ({ valor: c.id, etiqueta: c.nombre }))}
-          alCambiar={(v) => setClienteId(v === '' ? '' : Number(v))}
+          alCambiar={(v) => elegirCliente(v === '' ? '' : Number(v))}
         />
-        <div>
-          <label htmlFor="pe-fecha" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
-            Entrega estimada
-          </label>
-          <input
-            id="pe-fecha"
-            type="date"
-            value={fechaEntrega}
-            onChange={(e) => setFechaEntrega(e.target.value)}
-            className="h-10 w-full rounded-ficha border border-masa-300 bg-white px-3 text-sm text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400"
-          />
-        </div>
+        <CampoSelector
+          id="pe-lista"
+          rotulo="Lista de precios"
+          valor={listaPrecioId}
+          vacio="La lista del cliente"
+          opciones={listas.map((l) => ({ valor: l.id, etiqueta: l.nombre }))}
+          alCambiar={(v) => setListaPrecioId(v === '' ? '' : Number(v))}
+        />
       </Fila>
 
-      <div>
-        <p className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
-          Productos · cantidades en cajas
-        </p>
-        <div className="overflow-hidden rounded-ficha border border-masa-200">
-          {productos.map((producto, indice) => {
-            const cajas = seleccion[producto.id] ?? 0;
-            return (
-              <div
-                key={producto.id}
-                className={['flex items-center gap-3 px-3 py-2', indice > 0 ? 'border-t border-masa-100' : ''].join(' ')}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-masa-900">{producto.nombre}</p>
-                  <p className="text-xs text-masa-700">
-                    Stock: {formatearCantidad(producto.stock)} {producto.unidadAbreviatura}
-                    {producto.unidadesPorCaja !== null && cajas > 0
-                      ? ` · pide ${cajas * producto.unidadesPorCaja} u`
-                      : ''}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label={`Sacar ${producto.nombre}`}
-                    onClick={() => setSeleccion((s) => ({ ...s, [producto.id]: Math.max(cajas - 1, 0) }))}
-                    disabled={cajas === 0}
-                    className="h-9 w-9 rounded-ficha border border-masa-300 bg-masa-50 font-bold text-masa-900 disabled:opacity-30"
-                  >
-                    −
-                  </button>
-                  <span className="w-10 text-center font-mono text-base font-bold tabular-nums text-masa-900">
-                    {cajas}
+      <CampoSelector
+        id="pe-vendedor"
+        rotulo="Vendedor"
+        valor={vendedorId}
+        vacio="Venta directa / sin vendedor"
+        opciones={vendedores.map((v) => ({ valor: v.id, etiqueta: v.nombre }))}
+        alCambiar={(v) => setVendedorId(v === '' ? '' : Number(v))}
+      />
+
+      {/* ------------------------ Carga de renglones ------------------------ */}
+      <div className="rounded-ficha border border-masa-200 bg-masa-50 p-3">
+        <Fila>
+          <CampoSelector
+            id="pe-producto"
+            rotulo="Producto"
+            valor={producto}
+            opciones={PRODUCTOS_TALONARIO.map((p) => ({ valor: p.valor, etiqueta: p.etiqueta }))}
+            alCambiar={(v) => cambiarProducto(v as ProductoTalonario)}
+          />
+          <CampoSelector
+            id="pe-presentacion"
+            rotulo="Presentacion"
+            valor={presentacionSel}
+            opciones={opcionesPresentacion}
+            alCambiar={(v) => {
+              setPresentacionSel(String(v));
+              setCantidades({});
+              setCantidadCajas(1);
+            }}
+          />
+        </Fila>
+
+        {(esCajaCerrada || esPorUnidades) && (
+          <div className="mt-3">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-masa-700">
+              {esCajaCerrada
+                ? `Unidades de cada variedad que lleva la caja (suman ${envaseCerrado?.unidades ?? 0})`
+                : producto === 'ALMENDRAS'
+                  ? 'Cantidad de bolsas de cada variedad'
+                  : 'Cantidad de unidades de cada variedad'}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {variedades.map((v) => (
+                <label key={v.codigo} className="flex flex-col gap-0.5">
+                  <span className="text-micro font-bold uppercase tracking-wide text-masa-800">
+                    {v.etiqueta}
                   </span>
-                  <button
-                    type="button"
-                    aria-label={`Agregar ${producto.nombre}`}
-                    onClick={() => setSeleccion((s) => ({ ...s, [producto.id]: cajas + 1 }))}
-                    className="h-9 w-9 rounded-ficha border border-dulce-400 bg-dulce-500 font-bold text-white"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={cantidades[v.codigo] ?? ''}
+                    onChange={(e) =>
+                      setCantidades((s) => ({
+                        ...s,
+                        [v.codigo]: e.target.value === '' ? '' : Number(e.target.value),
+                      }))
+                    }
+                    className={claseCampo}
+                  />
+                </label>
+              ))}
+              {(esCajaCerrada || esAlmendras) && (
+                <label className="flex flex-col gap-0.5">
+                  <span className="text-micro font-bold uppercase tracking-wide text-dulce-700">
+                    {esAlmendras ? 'Cantidad de bolsas' : 'Cantidad de cajas'}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={cantidadCajas}
+                    onChange={(e) =>
+                      setCantidadCajas(e.target.value === '' ? '' : Number(e.target.value))
+                    }
+                    className={claseCampo}
+                  />
+                </label>
+              )}
+            </div>
+            {esAlmendras && (
+              <p className="mt-1.5 text-xs text-masa-700">
+                Marca las variedades y deci cuantas bolsas van: 1 en C/LECHE y cantidad 3 = 3 bolsas de c/leche.
+              </p>
+            )}
+            {esCajaCerrada && sumaVariedades !== (envaseCerrado?.unidades ?? 0) && (
+              <p className="mt-1.5 text-xs font-medium text-alerta-700">
+                {sumaVariedades === 0
+                  ? 'Completa las unidades de cada variedad.'
+                  : `Van ${sumaVariedades} de ${envaseCerrado?.unidades ?? 0} unidades: ajusta para que la caja cierre.`}
+              </p>
+            )}
+          </div>
+        )}
+
+        {esCatalogoDirecto && (
+          <div className="mt-3 flex items-end gap-3">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-micro font-bold uppercase tracking-wide text-masa-800">
+                Cantidad
+              </span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={cantidades['CANT'] ?? ''}
+                onChange={(e) =>
+                  setCantidades((s) => ({
+                    ...s,
+                    CANT: e.target.value === '' ? '' : Number(e.target.value),
+                  }))
+                }
+                className={claseCampo}
+              />
+            </label>
+            <p className="pb-2 text-xs text-masa-700">
+              {porId.get(Number(presentacionSel.slice(1)))?.componentes
+                .map((c) => `${c.unidades} ${c.articuloNombre}`)
+                .join(' + ') ?? ''}
+            </p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={agregar}
+          disabled={!puedeAgregar}
+          className="mt-3 h-10 rounded-none border border-dulce-400 bg-dulce-500 px-5 text-sm font-bold uppercase tracking-wide text-white disabled:opacity-30"
+        >
+          Agregar al pedido
+        </button>
       </div>
+
+      {/* ------------------------- Detalle del pedido ----------------------- */}
+      {renglones.length > 0 && (
+        <div className="overflow-hidden rounded-ficha border border-masa-200">
+          {renglones.map((r, indice) => (
+            <div
+              key={r.clave}
+              className={[
+                'flex items-center gap-3 px-3 py-2',
+                indice > 0 ? 'border-t border-masa-100' : '',
+              ].join(' ')}
+            >
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={r.cantidad}
+                onChange={(e) => cambiarCantidad(r.clave, Number(e.target.value))}
+                aria-label={`Cantidad de ${r.etiqueta}`}
+                className="h-9 w-16 shrink-0 rounded-none border border-masa-300 bg-white px-1 text-center font-mono text-base font-bold tabular-nums text-masa-900"
+              />
+              <span className="shrink-0 text-sm font-bold text-masa-700">×</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-masa-900">
+                {r.etiqueta}
+              </span>
+              <span className="shrink-0 font-mono text-xs tabular-nums text-masa-700">
+                {r.unidadesPorUnidad > 0 && r.cantidad > 0
+                  ? /bolsa 200/i.test(r.etiqueta)
+                    ? `= ${formatearCantidad(r.cantidad)} ${r.cantidad === 1 ? 'bolsa' : 'bolsas'}`
+                    : `= ${formatearCantidad(r.unidadesPorUnidad * r.cantidad)} u`
+                  : ''}
+              </span>
+              {editableEnArmador(r) && (
+                <button
+                  type="button"
+                  onClick={() => editarRenglon(r)}
+                  className="h-8 shrink-0 rounded-none border border-masa-300 bg-white px-3 text-xs font-bold uppercase text-masa-800"
+                >
+                  Editar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => quitar(r.clave)}
+                className="h-8 shrink-0 rounded-none border border-peligro-300 bg-white px-3 text-xs font-bold uppercase text-peligro-700"
+              >
+                Quitar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {resumen.length > 0 && (
+        <div className="rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2">
+          <p className="text-micro font-semibold uppercase tracking-wide text-masa-700">
+            Envio a elaboracion
+          </p>
+          <table className="mt-1 w-full text-sm">
+            <thead>
+              <tr className="text-micro uppercase tracking-wide text-masa-700">
+                <th scope="col" className="pb-0.5 text-left font-semibold">Producto</th>
+                <th scope="col" className="pb-0.5 text-right font-semibold">Se reserva de stock</th>
+                <th scope="col" className="pb-0.5 text-right font-semibold">Se manda a elaborar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {resumen.map((l) => (
+                <tr key={l.producto.id} className="border-t border-masa-200">
+                  <td className="py-1 text-masa-900">{l.producto.nombre}</td>
+                  <td className="py-1 text-right font-mono tabular-nums text-masa-900">
+                    {l.reserva > 0 ? enUnidadDeCarga(l.reserva, l.producto) : '—'}
+                  </td>
+                  <td className="py-1 text-right font-mono tabular-nums text-masa-900">
+                    {l.elabora > 0 ? enUnidadDeCarga(l.elabora, l.producto) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className={['mt-1.5 text-xs font-medium', todoDeStock ? 'text-menta-700' : 'text-alerta-700'].join(' ')}>
+            {todoDeStock
+              ? 'Hay stock para todo: se reserva completo y queda listo para entregar.'
+              : nadaDeStock
+                ? 'No hay stock listo: todo se manda a elaborar.'
+                : 'Hay stock para una parte: se reserva eso y el resto se manda a elaborar.'}
+          </p>
+        </div>
+      )}
 
       <CampoTexto id="pe-notas" rotulo="Notas" valor={notas} alCambiar={setNotas} maximo={500} />
     </ModalFormulario>
+  );
+}
+
+/**
+ * Alta y edicion de pedidos. Si hay catalogo de presentaciones cargado se usa
+ * el talonario (la forma real de pedir del cliente); si no, o al editar un
+ * pedido viejo cargado por articulo, se cae al formulario clasico.
+ */
+export function FormularioPedido({
+  pedido,
+  alCerrar,
+  alGuardar,
+}: {
+  readonly pedido: PedidoVista | null;
+  readonly alCerrar: () => void;
+  readonly alGuardar: (mensaje: string, tono: 'ok' | 'alerta') => void;
+}): JSX.Element | null {
+  const [presentaciones, setPresentaciones] = useState<PresentacionVista[] | null>(null);
+  useEffect(() => {
+    obtenerPresentaciones()
+      .then(setPresentaciones)
+      .catch(() => setPresentaciones([]));
+  }, []);
+  if (presentaciones === null) return null;
+  const usaTalonario =
+    presentaciones.length > 0 &&
+    (pedido === null || pedido.renglones.length > 0 || pedido.items.length === 0);
+  return usaTalonario ? (
+    <FormularioPedidoTalonario
+      pedido={pedido}
+      presentaciones={presentaciones}
+      alCerrar={alCerrar}
+      alGuardar={alGuardar}
+    />
+  ) : (
+    <FormularioPedidoClasico pedido={pedido} alCerrar={alCerrar} alGuardar={alGuardar} />
   );
 }

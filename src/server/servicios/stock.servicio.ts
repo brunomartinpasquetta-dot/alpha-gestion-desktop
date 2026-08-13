@@ -126,6 +126,11 @@ function aArticuloConStock(fila: FilaArticuloConStock): ArticuloConStock {
     costoActual: fila.costoActual,
     activo: fila.activo,
     stock: fila.stock,
+    reservado: fila.reservado,
+    disponible: redondearCantidad(Math.max(0, fila.stock - fila.reservado)),
+    recetaId: fila.recetaId,
+    recetaRinde: fila.recetaRinde,
+    recetaInsumos: fila.recetaInsumos,
     bajoMinimo: estaBajoMinimo(fila.stock, fila.stockMin),
     aReponer: calcularAReponer(fila.stock, fila.stockIdeal),
   };

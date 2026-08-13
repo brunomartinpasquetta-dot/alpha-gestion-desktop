@@ -5,7 +5,7 @@
  * despues disparan produccion. Por eso los de origen "celular" se destacan.
  */
 
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 
 
@@ -39,12 +39,11 @@ import {
 import { FormularioVenta } from './FormularioVenta';
 import { FormularioCompra, FormularioPedido } from './FormulariosOperacion';
 import {
-  formatearCajas,
-  formatearCantidadConUnidad,
   formatearFecha,
   formatearMoneda,
   formatearTexto,
   pluralizar,
+  pendienteDeItem,
 } from '../utiles/formato';
 
 /* --------------------------------- Pedidos --------------------------------- */
@@ -109,15 +108,69 @@ function AccionesPedido({
   );
 }
 
-export function PantallaPedidos(): JSX.Element {
+/**
+ * Boton de accion de la fila de un pedido. Todos comparten altura y viven en
+ * UNA sola fila a la derecha del encabezado: antes cada accion flotaba en su
+ * propia linea y la tarjeta parecia un tablero de parches.
+ */
+function BotonAccionPedido({
+  primario = false,
+  onClick,
+  children,
+}: {
+  readonly primario?: boolean;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'h-8 shrink-0 rounded-none px-3 text-xs font-medium outline-none transition-colors focus-visible:ring-2',
+        primario
+          ? 'bg-dulce-600 text-white hover:bg-dulce-700 focus-visible:ring-dulce-400'
+          : 'border border-masa-300 bg-white text-masa-800 hover:bg-masa-100 focus-visible:ring-dulce-400',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * "16 que?" — toda cantidad de pedido se expresa como se vende: docenas para
+ * los productos de a 12, cajas para otros empaques, y la unidad del articulo
+ * cuando no hay caja. Nunca un numero pelado.
+ */
+function enUnidadVenta(cantidad: number, upc: number | null, abreviatura: string): string {
+  if (upc === null || upc <= 0) return `${cantidad} ${abreviatura}`;
+  const nombre = upc === 12 ? 'docena' : 'caja';
+  const enteras = Math.floor(cantidad / upc);
+  const resto = cantidad % upc;
+  if (enteras === 0) return `${resto} u`;
+  const base = `${enteras} ${nombre}${enteras === 1 ? '' : 's'}`;
+  return resto === 0 ? base : `${base} y ${resto} u`;
+}
+
+function PestanaPedidos(): JSX.Element {
   const estado = usarRecurso(() => obtenerPedidos(), []);
   const [expandido, setExpandido] = useState<number | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [enEdicion, setEnEdicion] = useState<PedidoVista | null | undefined>(undefined);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [vendiendo, setVendiendo] = useState<number | null>(null);
+  const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta'; texto: string } | null>(null);
 
   // Tiempo real: un pedido cargado desde el celular aparece solo, sin refrescar.
   usarEventos('pedidos:cambio', estado.recargar);
+
+  // El aviso es un toast temporal: a los 8 segundos se va solo, asi cargar
+  // varios pedidos seguidos no deja una pila de mensajes viejos mintiendo.
+  useEffect(() => {
+    if (aviso === null) return undefined;
+    const temporizador = window.setTimeout(() => setAviso(null), 8000);
+    return () => window.clearTimeout(temporizador);
+  }, [aviso]);
 
   const aplicarTransicion = (pedidoId: number, destino: EstadoPedido): void => {
     setErrorAccion(null);
@@ -127,6 +180,7 @@ export function PantallaPedidos(): JSX.Element {
         setErrorAccion(causa instanceof Error ? causa.message : String(causa)),
       );
   };
+
 
   return (
     <div className="space-y-4">
@@ -140,7 +194,27 @@ export function PantallaPedidos(): JSX.Element {
         </BotonPrimario>
       </div>
 
-      {aviso !== null && <Aviso tono="ok" texto={aviso} />}
+      {aviso !== null && (
+        <div
+          role="status"
+          className={[
+            'flex items-start justify-between gap-3 rounded-ficha border px-3 py-2 text-sm',
+            aviso.tono === 'ok'
+              ? 'border-menta-200 bg-menta-50 text-menta-700'
+              : 'border-alerta-200 bg-alerta-50 text-alerta-700',
+          ].join(' ')}
+        >
+          <span className="min-w-0">{aviso.texto}</span>
+          <button
+            type="button"
+            aria-label="Cerrar aviso"
+            onClick={() => setAviso(null)}
+            className="shrink-0 rounded-none px-1 font-bold outline-none hover:opacity-70 focus-visible:ring-2 focus-visible:ring-dulce-400"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <Vista
       estado={estado}
@@ -159,6 +233,28 @@ export function PantallaPedidos(): JSX.Element {
           {pedidos.map((pedido) => {
             const abierto = expandido === pedido.id;
             const desdeCelular = pedido.origen === 'celular';
+            // Que acciones aplican se decide aca arriba: el render de abajo es
+            // una sola fila, siempre en el mismo orden.
+            const activo = pedido.estado !== 'entregado' && pedido.estado !== 'cancelado';
+            const puedeVender = pedido.estado === 'listo';
+            const puedeEditar = pedido.estado === 'pendiente' || pedido.estado === 'confirmado' || pedido.estado === 'listo';
+            // Resumen para el encabezado: cuanto esta apartado y cuanto en
+            // produccion, en la unidad de venta de cada articulo.
+            const resumenEstado = activo
+              ? pedido.items
+                  .map((i) => {
+                    const partes: string[] = [];
+                    if (i.reservado > 0)
+                      partes.push(`reservado ${enUnidadVenta(pendienteDeItem(i), i.unidadesPorCaja, i.unidadAbreviatura)}`);
+                    const enProduccion = Math.max(0, i.cantidad - i.reservado);
+                    if (enProduccion > 0)
+                      partes.push(`en produccion ${enUnidadVenta(enProduccion, i.unidadesPorCaja, i.unidadAbreviatura)}`);
+                    const detalle = partes.join(', ');
+                    return pedido.items.length > 1 ? `${i.nombre}: ${detalle}` : detalle;
+                  })
+                  .filter((x) => x !== '')
+                  .join(' · ')
+              : null;
 
             return (
               <div
@@ -168,45 +264,69 @@ export function PantallaPedidos(): JSX.Element {
                   desdeCelular ? 'border-dulce-300' : 'border-masa-200',
                 ].join(' ')}
               >
-                <button
-                  type="button"
-                  aria-expanded={abierto}
-                  onClick={() => setExpandido(abierto ? null : pedido.id)}
-                  className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left outline-none hover:bg-masa-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dulce-500"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-masa-700">#{pedido.id}</span>
-                      <span className="font-medium text-masa-900">
-                        {pedido.clienteNombre ?? 'Mostrador'}
-                      </span>
-                      <Pastilla
-                        texto={ETIQUETA_ESTADO_PEDIDO[pedido.estado]}
-                        tono={tonoDePedido(pedido.estado)}
-                      />
-                      <Pastilla
-                        texto={ETIQUETA_ORIGEN_PEDIDO[pedido.origen]}
-                        tono={desdeCelular ? 'info' : 'neutro'}
-                      />
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={abierto}
+                    onClick={() => setExpandido(abierto ? null : pedido.id)}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3 text-left outline-none hover:bg-masa-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dulce-500"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs text-masa-700">#{pedido.id}</span>
+                        <span className="font-medium text-masa-900">
+                          {pedido.clienteNombre ?? 'Mostrador'}
+                        </span>
+                        <Pastilla
+                          texto={ETIQUETA_ESTADO_PEDIDO[pedido.estado]}
+                          tono={tonoDePedido(pedido.estado)}
+                        />
+                        <Pastilla
+                          texto={ETIQUETA_ORIGEN_PEDIDO[pedido.origen]}
+                          tono={desdeCelular ? 'info' : 'neutro'}
+                        />
+                      </div>
+                      <p className="mt-0.5 text-xs text-masa-700">
+                        Pedido {formatearFecha(pedido.fechaPedido)}
+                        {pedido.cargadoPor !== null && ` · cargado por ${pedido.cargadoPor}`}
+                      </p>
+                      {resumenEstado !== null && resumenEstado !== '' && (
+                        <p className="mt-1 text-xs">
+                          <span className="font-semibold uppercase tracking-wide text-masa-700">
+                            Estado del pedido:{' '}
+                          </span>
+                          <span className="text-masa-900">{resumenEstado}</span>
+                        </p>
+                      )}
                     </div>
-                    <p className="mt-0.5 text-xs text-masa-700">
-                      Pedido {formatearFecha(pedido.fechaPedido)}
-                      {pedido.fechaEntregaEstimada !== null &&
-                        ` · entrega estimada ${formatearFecha(pedido.fechaEntregaEstimada)}`}
-                      {pedido.cargadoPor !== null && ` · cargado por ${pedido.cargadoPor}`}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-mono tabular-nums text-masa-900">
-                      {pluralizar(pedido.items.length, 'articulo', 'articulos')}
-                    </p>
-                    <p className="text-micro text-masa-700">{abierto ? 'ocultar' : 'ver detalle'}</p>
-                  </div>
-                </button>
+                    <div className="shrink-0 text-right">
+                      <p className="font-mono tabular-nums text-masa-900">
+                        {pluralizar(pedido.items.length, 'articulo', 'articulos')}
+                      </p>
+                      <p className="text-micro text-masa-700">{abierto ? 'ocultar' : 'ver detalle'}</p>
+                    </div>
+                  </button>
 
-                {(pedido.estado === 'pendiente' || pedido.estado === 'confirmado') && (
-                  <BotonFila onClick={() => setEnEdicion(pedido)}>Editar</BotonFila>
-                )}
+                  {/* Todas las acciones del pedido en una sola fila a la derecha
+                      del encabezado, con la misma altura y siempre en el mismo
+                      orden. "Vender / facturar" cierra el circuito: abre la
+                      venta YA cargada con sus cajas y sus precios. */}
+                  {(puedeVender || puedeEditar) && (
+                    <div className="flex shrink-0 items-center gap-1.5 pr-4">
+                      {puedeVender && (
+                        <BotonAccionPedido primario onClick={() => setVendiendo(pedido.id)}>
+                          Vender / facturar
+                        </BotonAccionPedido>
+                      )}
+                      {puedeEditar && (
+                        <BotonAccionPedido onClick={() => setEnEdicion(pedido)}>
+                          Editar
+                        </BotonAccionPedido>
+                      )}
+
+                    </div>
+                  )}
+                </div>
                 <AccionesPedido
                   pedido={pedido}
                   alCambiar={(destino) => aplicarTransicion(pedido.id, destino)}
@@ -214,29 +334,60 @@ export function PantallaPedidos(): JSX.Element {
 
                 {abierto && (
                   <div className="border-t border-masa-200 bg-masa-50 px-4 py-3">
+                    {/* Solo lo que compete al PEDIDO: que pidio, que esta
+                        apartado y que esta en produccion. La gestion de la
+                        elaboracion (Elaborar, Finalizar) vive en Produccion. */}
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-micro uppercase tracking-wide text-masa-700">
                           <th scope="col" className="pb-1 text-left">Articulo</th>
-                          <th scope="col" className="pb-1 text-right">Cantidad</th>
-                          <th scope="col" className="pb-1 text-left">Notas</th>
+                          <th scope="col" className="pb-1 text-right">Pedido</th>
+                          <th scope="col" className="pb-1 text-right">Apartado de stock</th>
+                          <th scope="col" className="pb-1 text-right">En produccion</th>
+                          {pedido.items.some((i) => i.notas !== null) && (
+                            <th scope="col" className="pb-1 text-left">Notas</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
-                        {pedido.items.map((item) => (
-                          <tr key={item.id} className="border-t border-masa-200">
-                            <td className="py-1.5 text-masa-900">
-                              <span className="font-mono text-xs text-masa-700">{item.codigo}</span>{' '}
-                              {item.nombre}
-                            </td>
-                            <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
-                              {item.unidadesPorCaja === null
-                                ? formatearCantidadConUnidad(item.cantidad, item.unidadAbreviatura)
-                                : `${formatearCajas(item.cantidad, item.unidadesPorCaja)} (${item.cantidad} u)`}
-                            </td>
-                            <td className="py-1.5 text-masa-700">{formatearTexto(item.notas)}</td>
-                          </tr>
-                        ))}
+                        {pedido.items.map((item) => {
+                          const apartado = Math.min(item.reservado, item.cantidad);
+                          const enProduccion = Math.max(0, item.cantidad - item.reservado);
+                          return (
+                            <tr key={item.id} className="border-t border-masa-200">
+                              <td className="py-1.5 text-masa-900">
+                                <span className="font-mono text-xs text-masa-700">{item.codigo}</span>{' '}
+                                {item.nombre}
+                              </td>
+                              <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
+                                {enUnidadVenta(item.cantidad, item.unidadesPorCaja, item.unidadAbreviatura)}
+                              </td>
+                              <td className="py-1.5 text-right">
+                                {apartado >= item.cantidad ? (
+                                  <Pastilla texto="Completo" tono="positivo" />
+                                ) : apartado > 0 ? (
+                                  <span className="font-mono tabular-nums text-masa-900">
+                                    {enUnidadVenta(apartado, item.unidadesPorCaja, item.unidadAbreviatura)}
+                                  </span>
+                                ) : (
+                                  <span className="text-masa-700">—</span>
+                                )}
+                              </td>
+                              <td className="py-1.5 text-right">
+                                {enProduccion > 0 ? (
+                                  <span className="font-mono tabular-nums text-alerta-700">
+                                    {enUnidadVenta(enProduccion, item.unidadesPorCaja, item.unidadAbreviatura)}
+                                  </span>
+                                ) : (
+                                  <span className="text-masa-700">—</span>
+                                )}
+                              </td>
+                              {pedido.items.some((i) => i.notas !== null) && (
+                                <td className="py-1.5 text-masa-700">{formatearTexto(item.notas)}</td>
+                              )}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                     {pedido.notas !== null && (
@@ -251,14 +402,36 @@ export function PantallaPedidos(): JSX.Element {
       )}
       </Vista>
 
+      {vendiendo !== null && (
+        <FormularioVenta
+          pedidoInicial={vendiendo}
+          alCerrar={() => setVendiendo(null)}
+          alConfirmar={(resultado) => {
+            setVendiendo(null);
+            estado.recargar();
+            setAviso(
+              resultado.advertencias.length > 0
+                ? {
+                    tono: 'alerta',
+                    texto: `Venta #${resultado.venta.id} registrada. ${resultado.advertencias.join(' ')}`,
+                  }
+                : {
+                    tono: 'ok',
+                    texto: `Venta #${resultado.venta.id} registrada: el pedido quedo entregado.`,
+                  },
+            );
+          }}
+        />
+      )}
+
       {enEdicion !== undefined && (
         <FormularioPedido
           pedido={enEdicion}
           alCerrar={() => setEnEdicion(undefined)}
-          alGuardar={(mensaje) => {
+          alGuardar={(mensaje, tono) => {
             setEnEdicion(undefined);
             estado.recargar();
-            setAviso(mensaje);
+            setAviso({ tono, texto: mensaje });
           }}
         />
       )}
@@ -312,10 +485,22 @@ const COLUMNAS_VENTAS: readonly Columna<VentaVista>[] = [
 
 export function PantallaVentas(): JSX.Element {
   const estado = usarRecurso(() => obtenerVentas(), []);
+  const pedidos = usarRecurso(() => obtenerPedidos(), []);
   const [modalVenta, setModalVenta] = useState(false);
+  // El atajo "Vender / facturar" de un pedido listo reutiliza el MISMO modal de
+  // la venta suelta: solo cambia con que pedido entra precargado.
+  const [pedidoParaVender, setPedidoParaVender] = useState<number | null>(null);
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
 
   usarEventos('ventas:cambio', estado.recargar);
+  usarEventos('pedidos:cambio', pedidos.recargar);
+
+  // La venta casi siempre nace de un pedido listo de un CLIENTE cargado: aca se
+  // ven sin ir al modulo Pedidos. Los de mostrador no aparecen porque no hay
+  // saldo apartado a nombre de nadie que venir a buscar.
+  const pedidosListos = (pedidos.datos ?? []).filter(
+    (p) => p.estado === 'listo' && p.clienteId !== null,
+  );
 
   const anular = (venta: VentaVista): void => {
     if (!window.confirm(`¿Anular la venta #${venta.id}? Se revierte el stock y el cobro.`)) return;
@@ -394,6 +579,46 @@ export function PantallaVentas(): JSX.Element {
         </p>
       )}
 
+      {/* Atajo compacto, no la pantalla principal: si esta vacio no se muestra
+          nada, porque una caja vacia solo agregaria ruido. */}
+      {pedidosListos.length > 0 && (
+        <div className="overflow-hidden rounded-ficha border border-masa-200 bg-white shadow-ficha">
+          <p className="border-b border-masa-200 px-4 py-2 text-micro font-semibold uppercase tracking-wide text-masa-700">
+            Pedidos listos para vender
+          </p>
+          {pedidosListos.map((pedido, indice) => {
+            // El detalle muestra el SALDO apartado (no lo pedido original):
+            // tras una entrega parcial es lo que de verdad queda por vender.
+            const detalle = pedido.items
+              .map((item) => {
+                const saldo = pendienteDeItem(item);
+                return enUnidadVenta(saldo, item.unidadesPorCaja, item.unidadAbreviatura);
+              })
+              .join(' + ');
+            return (
+              <div
+                key={pedido.id}
+                className={[
+                  'flex items-center justify-between gap-3 px-4 py-2',
+                  indice > 0 ? 'border-t border-masa-100' : '',
+                ].join(' ')}
+              >
+                <p className="min-w-0 flex-1 truncate text-sm text-masa-900">
+                  <span className="font-mono text-xs text-masa-700">#{pedido.id}</span>{' '}
+                  <span className="font-medium">{pedido.clienteNombre}</span>
+                  <span className="text-masa-700">
+                    {' '}· {pluralizar(pedido.items.length, 'articulo', 'articulos')} · {detalle}
+                  </span>
+                </p>
+                <BotonAccionPedido primario onClick={() => setPedidoParaVender(pedido.id)}>
+                  Vender / facturar
+                </BotonAccionPedido>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <Vista
         estado={estado}
         que="las ventas"
@@ -404,12 +629,20 @@ export function PantallaVentas(): JSX.Element {
         {(filas) => <Tabla columnas={columnas} filas={filas} claveDeFila={(v) => v.id} />}
       </Vista>
 
-      {modalVenta && (
+      {(modalVenta || pedidoParaVender !== null) && (
         <FormularioVenta
-          alCerrar={() => setModalVenta(false)}
+          pedidoInicial={pedidoParaVender}
+          alCerrar={() => {
+            setModalVenta(false);
+            setPedidoParaVender(null);
+          }}
           alConfirmar={(resultado) => {
             setModalVenta(false);
+            setPedidoParaVender(null);
             estado.recargar();
+            // El pedido vendido cambia de estado: sin recargar quedaria listado
+            // como vendible cuando ya no lo es.
+            pedidos.recargar();
             setAviso(
               resultado.advertencias.length > 0
                 ? { tono: 'alerta', texto: `Venta #${resultado.venta.id} registrada. ${resultado.advertencias.join(' ')}` }
@@ -524,3 +757,275 @@ export function PantallaCompras(): JSX.Element {
     </div>
   );
 }
+
+/* --------------------------- Gestion de pedidos ---------------------------- */
+
+/**
+ * Pestania GESTION DE PEDIDOS: la vista administrativa. Primero los pedidos de
+ * HOY, despues los anteriores; cada fila muestra cliente, vendedor y estado, el
+ * click abre el detalle, y las acciones son Editar, Cancelar y Facturar (que
+ * dispara el formulario de venta con el pedido ya cargado: cliente, lista,
+ * saldo, comprobante y formas de pago).
+ */
+function PestanaGestionPedidos(): JSX.Element {
+  const estado = usarRecurso(() => obtenerPedidos(), []);
+  const [expandido, setExpandido] = useState<number | null>(null);
+  const [enEdicion, setEnEdicion] = useState<PedidoVista | null | undefined>(undefined);
+  const [vendiendo, setVendiendo] = useState<number | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  usarEventos('pedidos:cambio', estado.recargar);
+
+  useEffect(() => {
+    if (aviso === null) return undefined;
+    const temporizador = window.setTimeout(() => setAviso(null), 8000);
+    return () => window.clearTimeout(temporizador);
+  }, [aviso]);
+
+  const cancelar = (pedido: PedidoVista): void => {
+    if (!window.confirm(`¿Cancelar el pedido #${pedido.id}${pedido.clienteNombre !== null ? ` de ${pedido.clienteNombre}` : ''}?`)) return;
+    setErrorAccion(null);
+    cambiarEstadoPedido(pedido.id, 'cancelado')
+      .then(estado.recargar)
+      .catch((causa: unknown) => setErrorAccion(causa instanceof Error ? causa.message : String(causa)));
+  };
+
+  const esDeHoy = (p: PedidoVista): boolean =>
+    new Date(p.fechaPedido).toDateString() === new Date().toDateString();
+
+  return (
+    <div className="space-y-3">
+      {aviso !== null && (
+        <p role="status" className="rounded-ficha border border-menta-200 bg-menta-50 px-3 py-2 text-sm text-menta-700">
+          {aviso}
+        </p>
+      )}
+      {errorAccion !== null && (
+        <p role="alert" className="rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
+          {errorAccion}
+        </p>
+      )}
+      <Vista
+        estado={estado}
+        que="los pedidos"
+        tituloVacio="Sin pedidos"
+        detalleVacio="Carga el primero desde la pestania Pedidos."
+        comandoVacio={COMANDO_SEED_DEMO}
+      >
+        {(todos) => {
+          const activos = todos.filter((p) => p.estado !== 'cancelado');
+          const deHoy = activos.filter(esDeHoy);
+          const anteriores = activos.filter((p) => !esDeHoy(p));
+          const grupos: [string, PedidoVista[]][] = [
+            ['Pedidos de hoy', deHoy],
+            ['Anteriores', anteriores],
+          ];
+          return (
+            <div className="space-y-4">
+              {grupos.map(([titulo, lista]) => (
+                <div key={titulo}>
+                  <p className="mb-1.5 text-micro font-bold uppercase tracking-wide text-masa-700">
+                    {titulo} ({lista.length})
+                  </p>
+                  {lista.length === 0 ? (
+                    <p className="rounded-ficha border border-masa-200 bg-white px-3 py-3 text-sm text-masa-700">
+                      {titulo === 'Pedidos de hoy' ? 'Todavia no entraron pedidos hoy.' : 'Nada anterior pendiente.'}
+                    </p>
+                  ) : (
+                    <div className="overflow-hidden rounded-ficha border border-masa-200 bg-white">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-masa-200 text-left text-micro uppercase tracking-wide text-masa-700">
+                            <th className="px-3 py-2 font-semibold">Pedido</th>
+                            <th className="px-3 py-2 font-semibold">Cliente</th>
+                            <th className="px-3 py-2 font-semibold">Vendedor</th>
+                            <th className="px-3 py-2 font-semibold">Estado</th>
+                            <th className="px-3 py-2 text-right font-semibold">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lista.map((pedido) => {
+                            const abierto = expandido === pedido.id;
+                            const puedeEditar = pedido.estado === 'pendiente' || pedido.estado === 'confirmado' || pedido.estado === 'listo';
+                            const puedeFacturar =
+                              pedido.estado === 'listo' || pedido.items.some((i) => i.reservado > 0);
+                            const activo = pedido.estado !== 'entregado';
+                            const claseBoton =
+                              'h-8 rounded-none border px-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-30';
+                            return (
+                              <FilaConDetalle key={pedido.id} abierto={abierto} pedido={pedido}>
+                                <tr
+                                  onClick={() => setExpandido(abierto ? null : pedido.id)}
+                                  className={['cursor-pointer border-b border-masa-100', abierto ? 'bg-dulce-50' : 'hover:bg-masa-50'].join(' ')}
+                                >
+                                  <td className="px-3 py-2">
+                                    <span className="font-mono font-bold text-masa-900">#{pedido.id}</span>
+                                    <span className="block text-xs text-masa-700">
+                                      {new Date(pedido.fechaPedido).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                      {esDeHoy(pedido) ? '' : ` · ${new Date(pedido.fechaPedido).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-masa-900">{pedido.clienteNombre ?? 'Mostrador'}</td>
+                                  <td className="px-3 py-2 text-masa-800">{pedido.vendedorNombre ?? 'Venta directa'}</td>
+                                  <td className="px-3 py-2">
+                                    <Pastilla
+                                      texto={ETIQUETA_ESTADO_PEDIDO[pedido.estado]}
+                                      tono={tonoDePedido(pedido.estado)}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        disabled={!puedeEditar}
+                                        onClick={() => setEnEdicion(pedido)}
+                                        className={`${claseBoton} border-masa-300 bg-white text-masa-800`}
+                                      >
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={!puedeFacturar}
+                                        title={puedeFacturar ? 'Abre la venta con el pedido cargado' : 'Todavia no hay nada apartado para facturar'}
+                                        onClick={() => setVendiendo(pedido.id)}
+                                        className={`${claseBoton} border-dulce-400 bg-dulce-500 text-white`}
+                                      >
+                                        Facturar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={!activo}
+                                        onClick={() => cancelar(pedido)}
+                                        className={`${claseBoton} border-peligro-300 bg-white text-peligro-700`}
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </FilaConDetalle>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        }}
+      </Vista>
+
+      {enEdicion !== undefined && (
+        <FormularioPedido
+          pedido={enEdicion}
+          alCerrar={() => setEnEdicion(undefined)}
+          alGuardar={(mensaje) => {
+            setEnEdicion(undefined);
+            estado.recargar();
+            setAviso(mensaje);
+          }}
+        />
+      )}
+
+      {vendiendo !== null && (
+        <FormularioVenta
+          pedidoInicial={vendiendo}
+          alCerrar={() => setVendiendo(null)}
+          alConfirmar={() => {
+            setVendiendo(null);
+            estado.recargar();
+            setAviso('Venta registrada.');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** La fila y, si esta abierta, el detalle del pedido debajo. */
+function FilaConDetalle({
+  abierto,
+  pedido,
+  children,
+}: {
+  readonly abierto: boolean;
+  readonly pedido: PedidoVista;
+  readonly children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <>
+      {children}
+      {abierto && (
+        <tr className="border-b border-masa-100 bg-masa-50">
+          <td colSpan={5} className="px-4 py-3">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div>
+                <p className="mb-1 text-micro font-bold uppercase tracking-wide text-masa-700">Detalle del pedido</p>
+                {pedido.renglones.length > 0 ? (
+                  <ul className="space-y-1">
+                    {pedido.renglones.map((r) => (
+                      <li key={r.id} className="rounded-ficha border border-masa-200 bg-white px-2.5 py-1.5 text-sm text-masa-900">
+                        <span className="font-mono font-bold tabular-nums">{r.cantidad} ×</span>{' '}
+                        {r.descripcion ?? r.presentacionNombre ?? 'renglon'}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="space-y-1">
+                    {pedido.items.map((item) => (
+                      <li key={item.id} className="rounded-ficha border border-masa-200 bg-white px-2.5 py-1.5 text-sm text-masa-900">
+                        <span className="font-mono font-bold tabular-nums">{item.cantidad} u</span> {item.nombre}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="mb-1 text-micro font-bold uppercase tracking-wide text-masa-700">Estado del pedido</p>
+                <ul className="space-y-1">
+                  {pedido.items.map((item) => (
+                    <li key={item.id} className="rounded-ficha border border-masa-200 bg-white px-2.5 py-1.5 text-sm text-masa-900">
+                      {item.nombre}: <span className="font-mono tabular-nums">{item.reservado} u</span> apartadas de{' '}
+                      <span className="font-mono tabular-nums">{item.cantidad} u</span>
+                    </li>
+                  ))}
+                </ul>
+                {pedido.notas !== null && pedido.notas !== '' && (
+                  <p className="mt-1.5 text-xs text-masa-700">Notas: {pedido.notas}</p>
+                )}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/* --------------------------- Pantalla con pestanias ------------------------ */
+
+export function PantallaPedidos(): JSX.Element {
+  const [pestania, setPestania] = useState<'pedidos' | 'gestion'>('pedidos');
+  const claseTab = (activa: boolean): string =>
+    [
+      'h-10 rounded-none border-b-2 px-4 text-sm font-bold uppercase tracking-wide',
+      activa ? 'border-dulce-500 text-dulce-700' : 'border-transparent text-masa-700 hover:text-masa-900',
+    ].join(' ');
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 border-b border-masa-200">
+        <button type="button" className={claseTab(pestania === 'pedidos')} onClick={() => setPestania('pedidos')}>
+          Pedidos
+        </button>
+        <button type="button" className={claseTab(pestania === 'gestion')} onClick={() => setPestania('gestion')}>
+          Gestion de pedidos
+        </button>
+      </div>
+      {pestania === 'pedidos' ? <PestanaPedidos /> : <PestanaGestionPedidos />}
+    </div>
+  );
+}
+

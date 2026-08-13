@@ -33,6 +33,7 @@ import {
   Truck,
   UserCog,
   Users,
+  Settings,
   Wheat,
   type LucideIcon,
 } from 'lucide-react';
@@ -71,6 +72,7 @@ const ICONOS: Readonly<Record<string, LucideIcon>> = {
   ayuda: CircleHelp,
   contabilidad: BookText,
   usuarios: UserCog,
+  configuracion: Settings,
 };
 
 interface Props {

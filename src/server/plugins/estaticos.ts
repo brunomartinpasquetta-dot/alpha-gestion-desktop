@@ -9,6 +9,7 @@
  * Dos aplicaciones salen de la misma carpeta compilada:
  *   - `/` y el fallback SPA -> index.html (escritorio, ventanas de modulo)
  *   - `/pedidos`            -> pedidos.html (la PWA del celular)
+ *   - `/elaboracion`        -> elaboracion.html (el monitor de la fabrica)
  */
 
 import fs from 'node:fs';
@@ -103,6 +104,7 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
 
   const rutaIndex = path.join(carpetaBase, 'index.html');
   const rutaPedidos = path.join(carpetaBase, 'pedidos.html');
+  const rutaElaboracion = path.join(carpetaBase, 'elaboracion.html');
   app.log.info({ carpeta: carpetaBase }, 'Sirviendo el renderer compilado desde disco.');
 
   app.get('/*', (request: FastifyRequest, reply: FastifyReply) => {
@@ -130,6 +132,20 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
       return reply.callNotFound();
     }
 
+    // El monitor de elaboracion de la fabrica (tablet/notebook en red).
+    if (pedida === '/elaboracion' || pedida.startsWith('/elaboracion/')) {
+      if (esArchivoExistente(rutaElaboracion)) return enviarArchivo(reply, rutaElaboracion);
+      return reply.callNotFound();
+    }
+
+    // El escritorio (la SPA completa) es SOLO de la maquina local: un celular
+    // o una tablet que pide "/" va derecho a la pantalla de pedidos. Desde la
+    // red solo existen /pedidos y /elaboracion.
+    const esLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.ip);
+    if (!esLocal) {
+      return reply.redirect('/pedidos');
+    }
+
     // Fallback SPA: el ruteo del renderer resuelve la pantalla del lado del cliente.
     if (esArchivoExistente(rutaIndex)) return enviarArchivo(reply, rutaIndex);
 
@@ -140,7 +156,11 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
 /** Envia el archivo por stream: nunca cargamos el bundle entero en memoria. */
 function enviarArchivo(reply: FastifyReply, rutaArchivo: string): FastifyReply {
   const nombre = path.basename(rutaArchivo);
-  const esIndex = nombre === 'index.html' || nombre === 'pedidos.html' || nombre === 'pedidos-sw.js';
+  const esIndex =
+    nombre === 'index.html' ||
+    nombre === 'pedidos.html' ||
+    nombre === 'elaboracion.html' ||
+    nombre === 'pedidos-sw.js';
   reply.header('Content-Type', tipoContenidoDe(rutaArchivo));
   // Los shells y el service worker nunca se cachean: son los que traen los
   // nombres con hash del resto y la logica de actualizacion.

@@ -19,6 +19,7 @@ import {
   listasPrecio,
   precios,
   proveedores,
+  vendedores,
 } from '../../db/schema';
 import { ejecutarSeguro } from '../../dominio/errores';
 
@@ -72,6 +73,7 @@ export function listarClientes(): FilaCliente[] {
         tipo: clientes.tipo,
         listaPrecioId: clientes.listaPrecioId,
         listaPrecioNombre: listasPrecio.nombre,
+        vendedorId: clientes.vendedorId,
         activo: clientes.activo,
         saldoCc: SALDO_CC.mapWith(Number),
       })
@@ -146,6 +148,34 @@ export function listarPreciosDeTodasLasListas(): FilaPrecio[] {
       .from(precios)
       .innerJoin(articulos, eq(articulos.id, precios.articuloId))
       .orderBy(asc(articulos.nombre))
+      .all(),
+  );
+}
+
+export interface FilaVendedor {
+  id: number;
+  nombre: string;
+  telefono: string | null;
+  cuit: string | null;
+  clienteId: number | null;
+  notas: string | null;
+  activo: boolean;
+}
+
+export function listarVendedores(): FilaVendedor[] {
+  return ejecutarSeguro('listar vendedores', () =>
+    obtenerDb()
+      .select({
+        id: vendedores.id,
+        nombre: vendedores.nombre,
+        telefono: vendedores.telefono,
+        cuit: vendedores.cuit,
+        clienteId: vendedores.clienteId,
+        notas: vendedores.notas,
+        activo: vendedores.activo,
+      })
+      .from(vendedores)
+      .orderBy(asc(vendedores.nombre))
       .all(),
   );
 }

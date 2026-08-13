@@ -19,6 +19,7 @@ import { cerrarConexiones, suscribir } from '../eventos';
 import { leerConfig } from '../config';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
 import { pedidosServicio } from '../servicios/pedidos.servicio';
+import { reservasServicio } from '../servicios/reservas.servicio';
 
 function validarOFallar<T>(esquema: z.ZodType<T>, datos: unknown, mensaje: string): T {
   const resultado = esquema.safeParse(datos);
@@ -27,11 +28,39 @@ function validarOFallar<T>(esquema: z.ZodType<T>, datos: unknown, mensaje: strin
 }
 
 const esquemaNuevoPedido = z.object({
+  renglones: z
+    .array(
+      z
+        .object({
+          presentacionId: z.number().int().positive().nullable().optional(),
+          cantidad: z.number().gt(0).max(100000),
+          descripcion: z.string().max(200).nullable().optional(),
+          componentes: z
+            .array(z.object({ articuloId: z.number().int().positive(), unidades: z.number().gt(0).max(10000) }))
+            .max(12)
+            .nullable()
+            .optional(),
+        })
+        // A medida exige descripcion y composicion; de catalogo, ninguna.
+        .refine(
+          (renglon) =>
+            renglon.presentacionId != null ||
+            ((renglon.componentes?.length ?? 0) > 0 && !!renglon.descripcion?.trim()),
+          { message: 'El renglon a medida necesita descripcion y composicion.' },
+        ),
+    )
+    .max(60)
+    .nullable()
+    .optional(),
   clienteId: z.number().int().positive().nullable().optional(),
+  vendedorId: z.number().int().positive().nullable().optional(),
+  listaPrecioId: z.number().int().positive().nullable().optional(),
   origen: z.enum(ORIGENES_PEDIDO),
   fechaEntregaEstimada: z.string().max(40).nullable().optional(),
   cargadoPor: z.string().max(80).nullable().optional(),
   notas: z.string().max(500).nullable().optional(),
+  // El talonario manda renglones y cero items (se derivan); el celular manda
+  // items directos. Al menos UNO de los dos tiene que venir con contenido.
   items: z
     .array(
       z.object({
@@ -41,9 +70,12 @@ const esquemaNuevoPedido = z.object({
         notas: z.string().max(200).nullable().optional(),
       }),
     )
-    .min(1),
+    .default([]),
   claveIdempotencia: z.string().min(8).max(80).nullable().optional(),
-});
+}).refine(
+  (pedido) => (pedido.items?.length ?? 0) > 0 || (pedido.renglones?.length ?? 0) > 0,
+  { message: 'El pedido tiene que tener al menos un renglon o un articulo.' },
+);
 
 const esquemaParametrosPedido = z.object({
   id: z.coerce.number().int().positive(),
@@ -85,7 +117,11 @@ export function registrarRutasPedidos(app: FastifyInstance): void {
     );
     const resultado = pedidosServicio.crearPedido(entrada);
     // 200 si la clave de idempotencia ya se habia procesado; 201 si es nuevo.
-    return reply.status(resultado.existente ? 200 : 201).send({ datos: resultado.pedido });
+    // Las ordenes que el pedido abrio solo viajan aparte del pedido: quien
+    // carga desde el mostrador quiere ver que trabajo genero.
+    return reply
+      .status(resultado.existente ? 200 : 201)
+      .send({ datos: resultado.pedido, ordenes: resultado.ordenes, cobertura: resultado.cobertura });
   });
 
   app.put('/api/pedidos/:id', (request: FastifyRequest, reply: FastifyReply) => {
@@ -96,6 +132,32 @@ export function registrarRutasPedidos(app: FastifyInstance): void {
     );
     const entrada = validarOFallar(esquemaNuevoPedido, request.body, 'El pedido enviado no es valido.');
     return reply.status(200).send({ datos: pedidosServicio.actualizarPedido(id, entrada) });
+  });
+
+  /**
+   * Aparta para este pedido lo que ya esta elaborado y sin dueño.
+   *
+   * Es lo que evita elaborar de nuevo algo que esta en el deposito: si hay
+   * stock, se le asigna al cliente —anotando de que tanda sale— y la fabrica
+   * solo tiene que elaborar la diferencia.
+   */
+  app.post('/api/pedidos/:id/cubrir-con-stock', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(
+      esquemaParametrosPedido,
+      request.params,
+      'El identificador del pedido no es valido.',
+    );
+    return reply.status(200).send({ datos: reservasServicio.cubrirConStock(id) });
+  });
+
+  /** Suelta lo apartado para el pedido, sin cancelar el pedido. */
+  app.post('/api/pedidos/:id/liberar-reservas', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(
+      esquemaParametrosPedido,
+      request.params,
+      'El identificador del pedido no es valido.',
+    );
+    return reply.status(200).send({ datos: reservasServicio.liberar(id) });
   });
 
   app.patch('/api/pedidos/:id/estado', (request: FastifyRequest, reply: FastifyReply) => {

@@ -13,7 +13,7 @@
  * En cheque no tocan la caja: el cheque tiene su propia cartera.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import type {
   CajaVista,
@@ -69,12 +69,22 @@ function vistaCaja(tx: Tx, cajaId: number): CajaVista {
 function saldoTeorico(tx: Tx, cajaId: number): number {
   const caja = tx.select({ apertura: cajas.montoApertura }).from(cajas).where(eq(cajas.id, cajaId)).get();
   if (!caja) throw new ErrorNoEncontrado('caja', cajaId);
+  // El arqueo compara BILLETES contra lo que deberia haber en el cajon, asi
+  // que el teorico solo suma los movimientos de efectivo fisico. Una venta
+  // cobrada por transferencia esta en la caja como ingreso electronico, pero
+  // no puede aparecer como "faltante" al contar el cajon (regla de StockFlow).
+  // NULL cuenta como efectivo: son los movimientos manuales o de antes.
   const movimientos = tx
     .select({
       total: sql<number>`COALESCE(SUM(CASE WHEN ${cajaMovimientos.tipo} = 'ingreso' THEN ${cajaMovimientos.monto} ELSE -${cajaMovimientos.monto} END), 0)`.mapWith(Number),
     })
     .from(cajaMovimientos)
-    .where(eq(cajaMovimientos.cajaId, cajaId))
+    .where(
+      and(
+        eq(cajaMovimientos.cajaId, cajaId),
+        sql`(${cajaMovimientos.medioPagoId} IS NULL OR ${cajaMovimientos.medioPagoId} IN (SELECT id FROM medios_pago WHERE es_efectivo_fisico = 1))`,
+      ),
+    )
     .get();
   return caja.apertura + (movimientos?.total ?? 0);
 }

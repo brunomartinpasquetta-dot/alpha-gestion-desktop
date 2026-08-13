@@ -25,12 +25,17 @@ import {
   articulos,
   cajaMovimientos,
   cajas,
+  cheques,
   clientes,
   comprobantes,
   cuentasCorrientes,
+  mediosPago,
   movimientosStock,
+  pedidoItems,
   pedidos,
+  reservasStock,
   ventaItems,
+  ventaPagos,
   ventas,
 } from '../db/schema';
 import { fiscalServicio, type DatosComprobanteAprobado } from './fiscal.servicio';
@@ -42,6 +47,7 @@ import {
 } from '../dominio/errores';
 import { emitir } from '../eventos';
 import { calcularSubtotalCentavos, esCentavosValido, redondearCantidad } from '../utiles/numeros';
+import { entregarReservasParciales, liberarReservasDePedido, stockDisponible } from './reservas.servicio';
 
 type Tx = Parameters<Parameters<ReturnType<typeof obtenerDb>['transaction']>[0]>[0];
 
@@ -168,6 +174,36 @@ export const ventasServicio = {
       );
     }
 
+    // La venta fiada no lleva pagos: el cobro es un acto posterior, por CC.
+    if (entrada.formaPago === 'cuenta_corriente' && (entrada.pagos?.length ?? 0) > 0) {
+      throw new ErrorReglaNegocio('Una venta en cuenta corriente no lleva pagos: se cobra despues.');
+    }
+
+    /* --------- Pagos validados ANTES del CAE: un rechazo local despues de
+       ARCA quemaria un comprobante emitido sin venta. La transaccion los
+       re-valida igual (defensa en profundidad), pero el camino normal muere
+       aca, antes de gastar numeracion. --------- */
+    if (entrada.formaPago === 'contado' && entrada.pagos && entrada.pagos.length > 0) {
+      const sumaPrevista = entrada.pagos.reduce((acumulado, pago) => acumulado + pago.importe, 0);
+      const totalTentativo = items.reduce((suma, item) => suma + item.subtotal, 0);
+      if (sumaPrevista !== totalTentativo) {
+        throw new ErrorValidacion(
+          `Los pagos ($${(sumaPrevista / 100).toFixed(2)}) no coinciden con el total ($${(totalTentativo / 100).toFixed(2)}). No hay vuelto: carga lo cobrado en cada medio.`,
+        );
+      }
+      const mediosPre = obtenerDb().select().from(mediosPago).all();
+      for (const pago of entrada.pagos) {
+        const medio = mediosPre.find((m) => m.id === pago.medioPagoId);
+        if (!medio) throw new ErrorNoEncontrado('medio de pago', pago.medioPagoId);
+        if (!medio.activo) throw new ErrorReglaNegocio(`El medio de pago ${medio.nombre} esta inactivo.`);
+        if (medio.tipo === 'cheque' && (!pago.cheque?.numero?.trim() || !pago.cheque?.fechaPago?.trim())) {
+          throw new ErrorValidacion(
+            'El pago con cheque necesita numero y fecha de cobro para entrar a la cartera.',
+          );
+        }
+      }
+    }
+
     /* ------------------- Comprobante fiscal, ANTES de escribir ------------------ */
 
     const tipoComprobante = entrada.comprobante ?? 'remito';
@@ -249,7 +285,8 @@ export const ventasServicio = {
             }
           }
 
-          // Pedido asociado: tiene que estar listo, y pasa a entregado.
+          // Pedido asociado: tiene que estar listo. Si queda entregado o sigue
+          // abierto se decide DESPUES de saber cuanto se llevo (entrega parcial).
           const pedidoId = entrada.pedidoId ?? null;
           if (pedidoId !== null) {
             const pedido = tx.select({ estado: pedidos.estado }).from(pedidos).where(eq(pedidos.id, pedidoId)).get();
@@ -259,7 +296,6 @@ export const ventasServicio = {
                 `El pedido #${pedidoId} esta ${pedido.estado}: solo un pedido listo se entrega con la venta.`,
               );
             }
-            tx.update(pedidos).set({ estado: 'entregado' }).where(eq(pedidos.id, pedidoId)).run();
           }
 
           const total = items.reduce((suma, item) => suma + item.subtotal, 0);
@@ -313,6 +349,22 @@ export const ventasServicio = {
                 `${nombre} queda con stock negativo (${redondearCantidad(saldo - item.cantidad)}): revisa produccion o compras sin cargar.`,
               );
             }
+
+            // Vender por mostrador algo que estaba apartado para un pedido no se
+            // bloquea —el que atiende sabe si puede hacerlo—, pero tiene que
+            // avisar: del otro lado hay un cliente que lo encargo y lo espera.
+            if (pedidoId === null) {
+              const disponible = stockDisponible(tx, item.articuloId);
+              if (disponible < item.cantidad) {
+                const nombre =
+                  tx.select({ n: articulos.nombre }).from(articulos).where(eq(articulos.id, item.articuloId)).get()?.n ??
+                  `articulo ${item.articuloId}`;
+                advertencias.push(
+                  `${nombre}: se venden ${redondearCantidad(item.cantidad)} pero solo hay ${redondearCantidad(disponible)} sin comprometer. ` +
+                    'El resto estaba reservado para un pedido.',
+                );
+              }
+            }
             tx.insert(movimientosStock)
               .values({
                 articuloId: item.articuloId,
@@ -325,6 +377,60 @@ export const ventasServicio = {
                 notas: `Venta #${venta.id}`,
               })
               .run();
+          }
+
+          /* ---------------- Entrega del pedido: total o parcial ----------------
+             El cliente pidio 50 y puede llevarse 34. La venta consume las
+             reservas SOLO por lo vendido (de la mas vieja a la mas nueva, para
+             no perder el lote), y el destino del resto lo decide el operador:
+              - 'liberar': no lo quiere mas -> vuelve a disponible, pedido cierra.
+              - 'mantener' (default): lo retira despues -> sigue apartado y el
+                pedido queda LISTO con el saldo, listo para una segunda venta. */
+          if (pedidoId !== null) {
+            for (const item of items) {
+              entregarReservasParciales(tx, pedidoId, item.articuloId, item.cantidad, venta.id);
+            }
+
+            // Pendiente real por articulo: lo pedido menos TODO lo vendido de
+            // este pedido (ventas previas no anuladas + esta).
+            const pendientes = tx
+              .select({
+                articuloId: pedidoItems.articuloId,
+                nombre: articulos.nombre,
+                pedida: sql<number>`SUM(${pedidoItems.cantidad})`.mapWith(Number),
+                vendida: sql<number>`COALESCE((
+                  SELECT SUM(vi.cantidad) FROM venta_items vi
+                  JOIN ventas v ON v.id = vi.venta_id
+                  WHERE v.pedido_id = ${pedidoId} AND v.estado != 'anulada'
+                    AND vi.articulo_id = ${pedidoItems.articuloId}
+                ), 0)`.mapWith(Number),
+              })
+              .from(pedidoItems)
+              .innerJoin(articulos, eq(articulos.id, pedidoItems.articuloId))
+              .where(eq(pedidoItems.pedidoId, pedidoId))
+              .groupBy(pedidoItems.articuloId)
+              .all();
+
+            const restante = pendientes
+              .map((f) => ({ ...f, falta: redondearCantidad(Math.max(0, f.pedida - f.vendida)) }))
+              .filter((f) => f.falta > 0);
+
+            if (restante.length === 0) {
+              // Se llevo todo: pedido entregado y cualquier reserva sobrante
+              // (una tanda que rindio de mas) vuelve a la venta.
+              liberarReservasDePedido(tx, pedidoId, 'Pedido entregado completo; sobrante a disponible');
+              tx.update(pedidos).set({ estado: 'entregado' }).where(eq(pedidos.id, pedidoId)).run();
+            } else if (entrada.restoPedido === 'liberar') {
+              const detalle = restante.map((f) => `${f.falta} de ${f.nombre}`).join(', ');
+              liberarReservasDePedido(tx, pedidoId, `El cliente no llevo el resto (${detalle})`);
+              tx.update(pedidos).set({ estado: 'entregado' }).where(eq(pedidos.id, pedidoId)).run();
+              advertencias.push(`Entrega parcial: ${detalle} vuelven a stock disponible.`);
+            } else {
+              const detalle = restante.map((f) => `${f.falta} de ${f.nombre}`).join(', ');
+              advertencias.push(
+                `Entrega parcial: quedan ${detalle} apartados. El pedido sigue LISTO para cuando los retire.`,
+              );
+            }
           }
 
           // Efecto financiero segun la forma de pago.
@@ -372,24 +478,133 @@ export const ventasServicio = {
               })
               .run();
           } else {
+            /* ------------------- Pagos (mixtos) de la venta -------------------
+               Modelo de StockFlow: la venta tiene N pagos y la suma es EXACTA
+               (sin vuelto: el cajero carga lo cobrado en cada medio). Cada pago
+               genera su ingreso de caja con el medio anotado; al arqueo fisico
+               solo le importa el efectivo. El cheque, ademas, entra SOLO a la
+               cartera con su venta como documento: eso es lo que StockFlow no
+               tiene y aca si hace falta (los clientes pagan con diferidos). */
+            const pagosEntrada =
+              entrada.pagos && entrada.pagos.length > 0
+                ? entrada.pagos
+                : null;
+
+            const medios = tx.select().from(mediosPago).all();
+            const porId = new Map(medios.map((m) => [m.id, m]));
+
+            const pagos =
+              pagosEntrada ??
+              (() => {
+                // Sin detalle de pagos: todo al Efectivo (venta rapida de mostrador).
+                const efectivo =
+                  medios.find((m) => m.esEfectivoFisico && m.activo) ??
+                  medios.find((m) => m.tipo === 'efectivo' && m.activo);
+                if (!efectivo) {
+                  throw new ErrorReglaNegocio(
+                    'No hay un medio de pago Efectivo activo para registrar la venta.',
+                  );
+                }
+                return [{ medioPagoId: efectivo.id, importe: total, referencia: null, cheque: null }];
+              })();
+
+            const suma = pagos.reduce((acumulado, pago) => acumulado + pago.importe, 0);
+            if (suma > total) {
+              throw new ErrorValidacion(
+                `Los pagos ($${(suma / 100).toFixed(2)}) exceden el total de la venta ($${(total / 100).toFixed(2)}).`,
+              );
+            }
+            if (suma < total) {
+              throw new ErrorValidacion(
+                `Los pagos ($${(suma / 100).toFixed(2)}) no cubren el total de la venta ($${(total / 100).toFixed(2)}). No hay vuelto: carga lo cobrado en cada medio.`,
+              );
+            }
+
             const caja = cajaAbierta(tx);
             if (caja === undefined) {
               advertencias.push(
-                'No hay caja abierta: la venta de contado quedo registrada pero el efectivo no entro a ninguna caja.',
+                'No hay caja abierta: la venta quedo registrada pero la plata no entro a ninguna caja.',
               );
-            } else {
-              tx.insert(cajaMovimientos)
+            }
+
+            for (const pago of pagos) {
+              const medio = porId.get(pago.medioPagoId);
+              if (!medio) throw new ErrorNoEncontrado('medio de pago', pago.medioPagoId);
+              if (!medio.activo) {
+                throw new ErrorReglaNegocio(`El medio de pago ${medio.nombre} esta inactivo.`);
+              }
+
+              // Comision del medio: la absorbe el comercio, snapshot al momento.
+              const comisionImporte = Math.round((pago.importe * medio.comisionPct) / 100);
+              const netoImporte = pago.importe - comisionImporte;
+
+              // Cheque: obligatorio el detalle, y entra SOLO a la cartera.
+              let chequeId: number | null = null;
+              if (medio.tipo === 'cheque') {
+                const detalle = pago.cheque ?? null;
+                if (detalle === null || !detalle.numero?.trim() || !detalle.fechaPago?.trim()) {
+                  throw new ErrorValidacion(
+                    'El pago con cheque necesita numero y fecha de cobro para entrar a la cartera.',
+                  );
+                }
+                const contraparte =
+                  clienteId === null
+                    ? 'Mostrador'
+                    : tx.select({ n: clientes.nombre }).from(clientes).where(eq(clientes.id, clienteId)).get()?.n ??
+                      'Cliente';
+                const chequeNuevo = tx
+                  .insert(cheques)
+                  .values({
+                    tipo: 'recibido',
+                    formato: detalle.formato ?? 'fisico',
+                    numero: detalle.numero.trim(),
+                    banco: detalle.banco?.trim() || null,
+                    contraparte,
+                    entidadTipo: clienteId === null ? null : 'cliente',
+                    entidadId: clienteId,
+                    importe: pago.importe,
+                    fechaEmision: ahora.slice(0, 10),
+                    fechaPago: detalle.fechaPago,
+                    estado: 'en_cartera',
+                    documentoTipo: 'venta',
+                    documentoId: venta.id,
+                    notas: `Recibido en la venta #${venta.id}`,
+                  })
+                  .returning({ id: cheques.id })
+                  .all()[0];
+                chequeId = chequeNuevo?.id ?? null;
+              }
+
+              tx.insert(ventaPagos)
                 .values({
-                  cajaId: caja.id,
-                  tipo: 'ingreso',
-                  concepto: `Venta #${venta.id} de contado`,
-                  monto: total,
-                  documentoTipo: 'venta',
-                  documentoId: venta.id,
-                  fecha: ahora,
-                  notas: null,
+                  ventaId: venta.id,
+                  medioPagoId: medio.id,
+                  importe: pago.importe,
+                  referencia: pago.referencia?.trim() || null,
+                  comisionPct: medio.comisionPct,
+                  comisionImporte,
+                  netoImporte,
+                  chequeId,
                 })
                 .run();
+
+              if (caja !== undefined) {
+                tx.insert(cajaMovimientos)
+                  .values({
+                    cajaId: caja.id,
+                    tipo: 'ingreso',
+                    concepto: medio.esEfectivoFisico
+                      ? `Venta #${venta.id}`
+                      : `Venta #${venta.id} — ${medio.nombre}`,
+                    monto: pago.importe,
+                    documentoTipo: 'venta',
+                    documentoId: venta.id,
+                    medioPagoId: medio.id,
+                    fecha: ahora,
+                    notas: null,
+                  })
+                  .run();
+              }
             }
           }
 
@@ -463,9 +678,14 @@ export const ventasServicio = {
             .run();
         }
 
-        // Caja: espejo del ingreso, SOLO si hubo ingreso original.
+        // Caja: espejo POR PAGO, cada egreso con su medio. Un solo egreso sin
+        // medio rompia el arqueo: el ingreso de una transferencia esta excluido
+        // del teorico del cajon, pero el egreso "pelado" contaba como efectivo
+        // y aparecia plata fantasma al cierre.
+        const advertencias: string[] = [];
+        const pagosDeLaVenta = tx.select().from(ventaPagos).where(eq(ventaPagos.ventaId, ventaId)).all();
         const ingresoOriginal = tx
-          .select({ id: cajaMovimientos.id, cajaId: cajaMovimientos.cajaId })
+          .select({ id: cajaMovimientos.id })
           .from(cajaMovimientos)
           .where(
             and(
@@ -475,12 +695,36 @@ export const ventasServicio = {
             ),
           )
           .get();
-        const advertencias: string[] = [];
         if (ingresoOriginal !== undefined) {
           const caja = cajaAbierta(tx);
           if (caja === undefined) {
             advertencias.push('No hay caja abierta: la devolucion del efectivo no quedo asentada en ninguna caja.');
+          } else if (pagosDeLaVenta.length > 0) {
+            for (const pago of pagosDeLaVenta) {
+              const nombreMedio = tx
+                .select({ n: mediosPago.nombre, fisico: mediosPago.esEfectivoFisico })
+                .from(mediosPago)
+                .where(eq(mediosPago.id, pago.medioPagoId))
+                .get();
+              tx.insert(cajaMovimientos)
+                .values({
+                  cajaId: caja.id,
+                  tipo: 'egreso',
+                  concepto:
+                    nombreMedio !== undefined && !nombreMedio.fisico
+                      ? `Anulacion de venta #${ventaId} — ${nombreMedio.n}`
+                      : `Anulacion de venta #${ventaId}`,
+                  monto: pago.importe,
+                  documentoTipo: 'venta',
+                  documentoId: ventaId,
+                  medioPagoId: pago.medioPagoId,
+                  fecha: ahora,
+                  notas: null,
+                })
+                .run();
+            }
           } else {
+            // Venta anterior a los pagos mixtos: el espejo unico de siempre.
             tx.insert(cajaMovimientos)
               .values({
                 cajaId: caja.id,
@@ -493,6 +737,43 @@ export const ventasServicio = {
                 notas: null,
               })
               .run();
+          }
+        }
+
+        // El cheque que entro con esta venta se le devuelve al cliente: no
+        // puede seguir figurando como plata por cobrar en la cartera.
+        for (const pago of pagosDeLaVenta) {
+          if (pago.chequeId === null) continue;
+          const cheque = tx.select().from(cheques).where(eq(cheques.id, pago.chequeId)).get();
+          if (cheque !== undefined && cheque.estado === 'en_cartera') {
+            tx.update(cheques)
+              .set({ estado: 'rechazado', notas: `Venta #${ventaId} anulada: cheque devuelto al cliente` })
+              .where(eq(cheques.id, pago.chequeId))
+              .run();
+            advertencias.push(`El cheque ${cheque.numero} salio de la cartera (venta anulada).`);
+          } else if (cheque !== undefined) {
+            advertencias.push(
+              `El cheque ${cheque.numero} de esta venta ya esta ${cheque.estado}: revisalo a mano en la cartera.`,
+            );
+          }
+        }
+
+        // Las reservas que esta venta consumio vuelven a estar ACTIVAS: la
+        // mercaderia reingreso al deposito y sigue siendo del cliente del
+        // pedido. Sin esto, otro le compraba la mercaderia devuelta.
+        if (venta.pedidoId !== null) {
+          tx.update(reservasStock)
+            .set({ estado: 'activa', ventaId: null })
+            .where(and(eq(reservasStock.ventaId, ventaId), eq(reservasStock.estado, 'entregada')))
+            .run();
+          const pedido = tx
+            .select({ estado: pedidos.estado })
+            .from(pedidos)
+            .where(eq(pedidos.id, venta.pedidoId))
+            .get();
+          if (pedido !== undefined && pedido.estado === 'entregado') {
+            tx.update(pedidos).set({ estado: 'listo' }).where(eq(pedidos.id, venta.pedidoId)).run();
+            advertencias.push(`El pedido #${venta.pedidoId} volvio a LISTO con su mercaderia apartada.`);
           }
         }
 

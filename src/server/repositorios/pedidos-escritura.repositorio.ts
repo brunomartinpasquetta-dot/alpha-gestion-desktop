@@ -14,6 +14,8 @@ import { ejecutarSeguro } from '../dominio/errores';
 
 export interface ValoresNuevoPedido {
   readonly clienteId: number | null;
+  readonly vendedorId?: number | null;
+  readonly listaPrecioId?: number | null;
   readonly origen: 'celular' | 'mostrador' | 'sistema';
   readonly fechaEntregaEstimada: string | null;
   readonly cargadoPor: string | null;
@@ -34,6 +36,8 @@ export function insertarPedido(valores: ValoresNuevoPedido): Pedido {
         .insert(pedidos)
         .values({
           clienteId: valores.clienteId,
+          vendedorId: valores.vendedorId ?? null,
+          listaPrecioId: valores.listaPrecioId ?? null,
           origen: valores.origen,
           estado: 'pendiente',
           fechaEntregaEstimada: valores.fechaEntregaEstimada,

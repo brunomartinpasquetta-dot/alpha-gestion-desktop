@@ -26,6 +26,7 @@ import {
 } from '../ventanas';
 import { Icono } from './Icono';
 import { Logo } from './Logo';
+import { PantallaInicio } from '../pantallas/Inicio';
 import type { RespuestaSalud } from '../../compartido/contratos';
 
 /* --------------------------------- Titulo --------------------------------- */
@@ -131,7 +132,10 @@ export function BarraAccesos({
   readonly alAbrir: (clave: ClaveModulo) => void;
 }): JSX.Element {
   return (
-    <div className="flex h-20 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-masa-200 bg-white px-3">
+    // h-24/h-20: el tile apila icono (28) + etiqueta (14) + tecla (18) con sus
+    // separaciones = 68px; el alto anterior (64px) no alcanzaba y la tecla
+    // F1/F2 se montaba sobre el texto.
+    <div className="flex h-24 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-masa-200 bg-white px-3">
       {ACCESOS_DIRECTOS.map((acceso) => {
         const definicion = definicionDeModulo(acceso.clave);
         return (
@@ -140,13 +144,24 @@ export function BarraAccesos({
             type="button"
             onClick={() => alAbrir(acceso.clave)}
             title={definicion.descripcion}
-            className="group flex h-16 w-[5.25rem] shrink-0 flex-col items-center justify-center gap-1 rounded-ficha px-1 outline-none transition-colors hover:bg-dulce-500 hover:text-white focus-visible:bg-dulce-500 focus-visible:text-white"
+            // w-28: "Stock Productos" a 11px necesita ~90px y el ancho previo
+            // (5.25rem) la envolvia a dos lineas, aplastando el icono dentro del
+            // alto fijo del tile. Con 112px la etiqueta mas larga entra en una
+            // linea y el icono conserva siempre su tamaño completo.
+            className="group flex h-20 w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-ficha px-1 outline-none transition-colors hover:bg-dulce-500 hover:text-white focus-visible:bg-dulce-500 focus-visible:text-white"
           >
             <Icono
               nombre={definicion.icono}
-              className="h-7 w-7 text-masa-700 group-hover:text-white group-focus-visible:text-white"
+              // shrink-0: aunque una etiqueta futura vuelva a quedar larga, el
+              // flex nunca puede comprimir el icono por debajo de 28px.
+              className="h-7 w-7 shrink-0 text-masa-700 group-hover:text-white group-focus-visible:text-white"
             />
-            <span className="text-center text-[11px] leading-tight text-masa-800 group-hover:text-white group-focus-visible:text-white">
+            {/* Una sola linea siempre: si algun dia no entra, se trunca y el
+                nombre completo queda en el title, sin robarle alto al icono. */}
+            <span
+              title={definicion.etiqueta}
+              className="w-full truncate text-center text-[11px] leading-tight text-masa-800 group-hover:text-white group-focus-visible:text-white"
+            >
               {definicion.etiqueta}
             </span>
             <span className="rounded bg-masa-100 px-1 text-[10px] font-medium text-masa-700 group-hover:bg-white/25 group-hover:text-white group-focus-visible:bg-white/25 group-focus-visible:text-white">
@@ -300,52 +315,39 @@ export function BarraTareas({
  * en las ventanas de modulo. Aca solo va la marca y el estado general.
  */
 export function Escritorio({
-  ventanasAbiertas,
-  alAbrir,
-  urlPedidos,
+  tableroFijado = false,
+  alCerrarTablero,
 }: {
-  readonly ventanasAbiertas: number;
-  readonly alAbrir: (clave: ClaveModulo) => void;
-  /** URL de la PWA del celular en la LAN, para mostrarsela al dueño. */
-  readonly urlPedidos?: string | null;
+  /** true = el tablero ocupa el escritorio en lugar del fondo con el logo. */
+  readonly tableroFijado?: boolean;
+  readonly alCerrarTablero?: () => void;
 }): JSX.Element {
+  // Tablero FIJADO: reemplaza el fondo habitual, convive con los paneles del
+  // costado (WhatsApp, Alfi) y solo se va con "Cerrar tablero". Cada tarjeta
+  // es un atajo al modulo que explica el numero.
+  if (tableroFijado) {
+    return (
+      <div className="h-full overflow-y-auto bg-gradient-to-br from-masa-50 to-masa-200">
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold uppercase tracking-wide text-masa-900">Tablero</h2>
+            <button
+              type="button"
+              onClick={alCerrarTablero}
+              className="h-9 rounded-none border border-masa-300 bg-white px-4 text-sm font-bold uppercase tracking-wide text-masa-800 hover:bg-masa-50"
+            >
+              Cerrar tablero
+            </button>
+          </div>
+          <PantallaInicio />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-masa-50 to-masa-200 px-8">
       <Logo tamano={148} conNombre />
       <p className="mt-2 text-sm text-masa-700">Gestión y producción de alfajores</p>
-
-      {typeof urlPedidos === 'string' && (
-        <p className="mt-5 rounded-pastilla border border-masa-300 bg-white px-4 py-2 text-sm text-masa-800 shadow-ficha">
-          Pedidos desde el celular:{' '}
-          <span className="select-all font-mono font-semibold text-dulce-700">{urlPedidos}</span>
-        </p>
-      )}
-      {/* Firma BPSG canonica (ver cerebro modulos/firma-bpsg): tenue, BPSG en negrita. */}
-      <p className="mt-3 select-none text-[10px] tracking-tight text-masa-500">
-        © 2026 · Crafted by <span className="font-bold">BPSG</span>
-      </p>
-
-      {ventanasAbiertas === 0 && (
-        <>
-          <p className="mt-8 text-xs uppercase tracking-widest text-masa-700">Para empezar</p>
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {(['pedidos', 'stock-insumos', 'ordenes'] as const).map((clave) => {
-              const definicion = definicionDeModulo(clave);
-              return (
-                <button
-                  key={clave}
-                  type="button"
-                  onClick={() => alAbrir(clave)}
-                  className="inline-flex items-center gap-2 rounded-pastilla border border-masa-300 bg-white px-3 py-1.5 text-sm text-masa-800 shadow-ficha outline-none transition-colors hover:border-dulce-400 hover:text-dulce-700 focus-visible:ring-2 focus-visible:ring-dulce-400"
-                >
-                  <Icono nombre={definicion.icono} className="h-4 w-4" />
-                  {definicion.titulo}
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
     </div>
   );
 }

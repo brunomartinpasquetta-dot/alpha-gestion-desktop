@@ -604,6 +604,7 @@ export function MaestroArticulos({
               <th scope="col" className="px-3 py-2">Familia</th>
               <th scope="col" className="px-3 py-2 text-right">Costo</th>
               <th scope="col" className="px-3 py-2 text-right">Stock</th>
+              <th scope="col" className="px-3 py-2 text-right">Disponible</th>
               <th scope="col" className="px-3 py-2 text-right">Min./Ideal</th>
               <th scope="col" className="px-3 py-2 text-right">A reponer</th>
               <th scope="col" className="px-3 py-2">Estado</th>
@@ -612,13 +613,13 @@ export function MaestroArticulos({
           <tbody>
             {cargando ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-masa-700">
+                <td colSpan={10} className="px-3 py-8 text-center text-masa-700">
                   Cargando {titulo.toLowerCase()}...
                 </td>
               </tr>
             ) : filtrados.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-masa-700">
+                <td colSpan={10} className="px-3 py-8 text-center text-masa-700">
                   {articulos.length === 0
                     ? 'No hay articulos cargados. Empeza con el boton Nuevo.'
                     : 'Ningun articulo coincide con la busqueda.'}
@@ -645,6 +646,21 @@ export function MaestroArticulos({
                   </td>
                   <td className="px-3 py-1.5 text-right font-mono tabular-nums">
                     {formatearCantidad(a.stock)} {a.unidadAbreviatura}
+                  </td>
+                  {/* Lo que se puede prometer hoy. Cuando hay mercaderia apartada
+                      para un pedido, este numero es menor que el stock: es el que
+                      mira el que vende, no el del deposito. */}
+                  <td className="px-3 py-1.5 text-right font-mono tabular-nums">
+                    {a.reservado > 0 ? (
+                      <span title={`${formatearCantidad(a.reservado)} apartado para pedidos`}>
+                        <span className="font-semibold text-dulce-700">
+                          {formatearCantidad(a.disponible)}
+                        </span>
+                        <span className="text-xs text-masa-700"> (−{formatearCantidad(a.reservado)})</span>
+                      </span>
+                    ) : (
+                      <span className="text-masa-700">{formatearCantidad(a.disponible)}</span>
+                    )}
                   </td>
                   <td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-masa-700">
                     {a.stockMin === null ? '—' : formatearCantidad(a.stockMin)} /{' '}
@@ -692,11 +708,46 @@ export function MaestroArticulos({
             {modo === 'ver' && (seleccionado === null ? 'Detalle del articulo' : seleccionado.nombre)}
           </h2>
           {modo === 'ver' && seleccionado !== null && (
-            <span className="text-xs text-masa-700">
-              Stock actual:{' '}
-              <strong className="font-mono">
-                {formatearCantidad(seleccionado.stock)} {seleccionado.unidadAbreviatura}
-              </strong>
+            <span className="flex items-center gap-3 text-xs text-masa-700">
+              {/* Como se repone: si tiene receta se elabora, si no se compra.
+                  Es el dato que separa "hay que hacer una tanda" de "hay que
+                  llamar al proveedor", y hasta ahora habia que ir a Recetas
+                  para saberlo. */}
+              {seleccionado.recetaId === null ? (
+                <span title="No tiene receta: este articulo se compra, no se elabora">
+                  Se compra
+                </span>
+              ) : (
+                <span
+                  className="text-dulce-700"
+                  title={`Receta #${seleccionado.recetaId} con ${seleccionado.recetaInsumos} insumo(s)`}
+                >
+                  Se elabora · receta #{seleccionado.recetaId}
+                  {seleccionado.recetaRinde !== null && (
+                    <> · rinde {formatearCantidad(seleccionado.recetaRinde)} {seleccionado.unidadAbreviatura} por tanda</>
+                  )}
+                  {' · '}
+                  {seleccionado.recetaInsumos} insumo{seleccionado.recetaInsumos === 1 ? '' : 's'}
+                </span>
+              )}
+              <span>
+                Stock:{' '}
+                <strong className="font-mono">
+                  {formatearCantidad(seleccionado.stock)} {seleccionado.unidadAbreviatura}
+                </strong>
+                {seleccionado.reservado > 0 && (
+                  <>
+                    {' · '}apartado{' '}
+                    <strong className="font-mono text-alerta-700">
+                      {formatearCantidad(seleccionado.reservado)}
+                    </strong>
+                    {' · '}libre{' '}
+                    <strong className="font-mono text-dulce-700">
+                      {formatearCantidad(seleccionado.disponible)}
+                    </strong>
+                  </>
+                )}
+              </span>
             </span>
           )}
         </header>
@@ -942,6 +993,62 @@ export function MaestroArticulos({
           </footer>
         )}
       </section>
+    </div>
+  );
+}
+
+
+/* ------------------------- Stock Productos con pestanias ------------------- */
+
+/**
+ * Modulo "Stock Productos": absorbe al viejo "Maestro de articulos".
+ *
+ * Productos y Articulos tenian las mismas funciones sobre los mismos datos —
+ * Articulos era la union de Insumos y Productos— y dos modulos iguales
+ * confunden mas de lo que ayudan. La vista combinada sobrevive como pestania,
+ * que es util para buscar cualquier cosa por codigo de barras o exportar el
+ * catalogo entero, sin ocupar un lugar en el menu.
+ */
+export function PantallaStockProductos(): JSX.Element {
+  const [pestania, setPestania] = useState<'productos' | 'todos'>('productos');
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 gap-1 border-b border-masa-200 bg-masa-50 px-2 pt-1">
+        {(
+          [
+            ['productos', 'Productos'],
+            ['todos', 'Todos los articulos'],
+          ] as const
+        ).map(([clave, etiqueta]) => (
+          <button
+            key={clave}
+            type="button"
+            onClick={() => setPestania(clave)}
+            className={[
+              'rounded-t-ficha px-4 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-dulce-400',
+              pestania === clave
+                ? 'border border-b-0 border-masa-200 bg-white font-semibold text-masa-900'
+                : 'text-masa-700 hover:bg-masa-100',
+            ].join(' ')}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        {/* key: cambiar de pestania reinicia el maestro con su propio filtro */}
+        {pestania === 'productos' ? (
+          <MaestroArticulos
+            key="productos"
+            grupo="productos"
+            titulo="Stock Productos"
+            tipoNuevo="producto_terminado"
+          />
+        ) : (
+          <MaestroArticulos key="todos" grupo="todos" titulo="Todos los articulos" tipoNuevo="materia_prima" />
+        )}
+      </div>
     </div>
   );
 }
