@@ -12,6 +12,7 @@ import {
   HOST_SERVIDOR_DEFAULT,
   PUERTO_SERVIDOR_DEFAULT,
 } from '../compartido/config';
+import { leerConfigLocal } from './config-local';
 
 export interface ConfigServidor {
   readonly puerto: number;
@@ -44,6 +45,8 @@ export function leerConfig(): ConfigServidor {
     rutaDb: process.env.ALFAJORES_DB_PATH?.trim() || undefined,
     esDesarrollo,
     nivelLog: process.env.ALFAJORES_LOG_LEVEL?.trim() || (esDesarrollo ? 'info' : 'warn'),
-    pinPedidos: process.env.ALFAJORES_PIN_PEDIDOS?.trim() || undefined,
+    // El PIN del duenio (pantalla Configuracion LAN) vive en userData; la
+    // variable de entorno, si existe, manda.
+    pinPedidos: process.env.ALFAJORES_PIN_PEDIDOS?.trim() || leerConfigLocal().pinPedidos,
   };
 }

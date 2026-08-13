@@ -59,7 +59,10 @@ export function registrarGuardiaPin(app: FastifyInstance): void {
   app.addHook('onRequest', (request: FastifyRequest, reply: FastifyReply, listo: () => void) => {
     const ruta = request.url.split('?')[0] ?? '';
     if (!ruta.startsWith('/api/')) return listo();
-    if (esLocal(request.ip)) return listo();
+    // Una request que entra por el tunel de Cloudflare llega como loopback
+    // pero trae cf-connecting-ip: es REMOTA, con las mismas reglas que la red.
+    const porTunel = typeof request.headers['cf-connecting-ip'] === 'string';
+    if (esLocal(request.ip) && !porTunel) return listo();
     if (RUTAS_LIBRES.some((libre) => ruta === libre || ruta.startsWith(`${libre}/`))) return listo();
 
     // Regla 1: desde la red solo pedidos y monitor, sin importar el PIN.
@@ -74,9 +77,18 @@ export function registrarGuardiaPin(app: FastifyInstance): void {
       });
     }
 
-    // Regla 2: PIN, si esta configurado.
+    // Regla 2: PIN. En LAN es opcional (decision del duenio); por el TUNEL es
+    // OBLIGATORIO: la fabrica no se publica abierta a internet.
     const config = leerConfig();
-    if (config.pinPedidos === undefined) return listo();
+    if (config.pinPedidos === undefined) {
+      if (!porTunel) return listo();
+      return reply.status(401).send({
+        error: {
+          codigo: 'PIN_REQUERIDO',
+          mensaje: 'El acceso remoto necesita un PIN. Configuralo en Archivo -> Configuracion LAN.',
+        },
+      });
+    }
     const pin = request.headers['x-pin-pedidos'];
     if (typeof pin === 'string' && pin === config.pinPedidos) return listo();
 

@@ -19,7 +19,6 @@ import type {
 } from '../../compartido/contratos';
 import {
   enviarPedido,
-  guardarNombre,
   guardarPin,
   leerNombre,
   leerPin,
@@ -93,7 +92,7 @@ interface RenglonMovil {
 const MS_REINTENTO_COLA = 30_000;
 
 export function AppPedidos(): JSX.Element {
-  const [nombre, setNombre] = useState(() => leerNombre());
+  const [nombre] = useState(() => leerNombre());
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [desdeCache, setDesdeCache] = useState(false);
   const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
@@ -319,7 +318,10 @@ export function AppPedidos(): JSX.Element {
       clienteId: clienteId === 'mostrador' || clienteId === '' ? null : clienteId,
       vendedorId: vendedorId === '' ? null : vendedorId,
       origen: 'celular',
-      cargadoPor: nombre || null,
+      cargadoPor:
+        vendedorId !== '' && catalogo !== null
+          ? (catalogo.vendedores.find((v) => v.id === vendedorId)?.nombre ?? null)
+          : nombre || null,
       notas: notas.trim() || null,
       items: usaTalonario ? [] : items,
       renglones: usaTalonario
@@ -379,10 +381,6 @@ export function AppPedidos(): JSX.Element {
 
   /* --------------------------------- Pantallas ----------------------------- */
 
-  if (nombre === '') {
-    return <PantallaNombre alGuardar={(n) => { guardarNombre(n); setNombre(n); }} />;
-  }
-
   return (
     <div className="mx-auto flex min-h-screen max-w-lg flex-col bg-masa-100 pb-28">
       <header className="sticky top-0 z-10 flex items-center justify-between bg-dulce-600 px-4 py-3 text-white shadow-barra">
@@ -400,8 +398,7 @@ export function AppPedidos(): JSX.Element {
           <div className="min-w-0">
             <h1 className="truncate text-lg font-bold leading-tight">Pedidos</h1>
             <p className="text-xs text-white/75">
-              Alpha Gestión · {nombre}
-              {usaTalonario ? ` · Paso ${paso} de 3` : ''}
+              Alpha Gestión{usaTalonario ? ` · Paso ${paso} de 3` : ''}
             </p>
           </div>
         </div>
@@ -805,33 +802,6 @@ function FilaProducto({
           +
         </button>
       </div>
-    </div>
-  );
-}
-
-function PantallaNombre({ alGuardar }: { readonly alGuardar: (nombre: string) => void }): JSX.Element {
-  const [valor, setValor] = useState('');
-  return (
-    <div className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-4 bg-masa-100 p-6">
-      <h1 className="text-xl font-bold text-masa-900">¿Quien carga pedidos?</h1>
-      <p className="text-center text-sm text-masa-700">
-        Tu nombre queda en cada pedido para que en la fabrica sepan a quien preguntarle.
-      </p>
-      <input
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        placeholder="Nombre"
-        maxLength={40}
-        className="h-12 w-full rounded-ficha border border-masa-300 bg-white px-3 text-center text-lg text-masa-900"
-      />
-      <button
-        type="button"
-        onClick={() => valor.trim() !== '' && alGuardar(valor.trim())}
-        disabled={valor.trim() === ''}
-        className="h-12 w-full rounded-ficha bg-dulce-600 font-bold text-white disabled:bg-masa-300"
-      >
-        Empezar
-      </button>
     </div>
   );
 }

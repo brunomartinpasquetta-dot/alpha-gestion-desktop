@@ -23,6 +23,9 @@ import {
   TIPOS_MOVIMIENTO_CAJA,
 } from '../db/schema';
 import { cerrarDb, obtenerDb, obtenerRutaDb, obtenerSqlite } from '../db/conexion';
+import { leerConfig } from '../config';
+import { escribirConfigLocal } from '../config-local';
+import { detenerTunel, estadoTunel, iniciarTunel } from '../tunel';
 import { eq } from 'drizzle-orm';
 
 import { mediosPago } from '../db/schema';
@@ -448,6 +451,41 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
 
   app.post('/api/sistema/cargar-demo', (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.status(200).send({ datos: inicializacionServicio.cargarDemostracion() });
+  });
+
+  // Acceso remoto: estado del PIN y del tunel (solo desde el escritorio).
+  app.get('/api/sistema/acceso-remoto', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({
+      datos: { pinConfigurado: leerConfig().pinPedidos !== undefined, tunel: estadoTunel() },
+    });
+  });
+
+  app.post('/api/sistema/pin', (request: FastifyRequest, reply: FastifyReply) => {
+    const { pin } = validarOFallar(
+      z.object({ pin: z.string().max(20) }),
+      request.body,
+      'El PIN enviado no es valido.',
+    );
+    const limpio = pin.trim();
+    if (limpio !== '' && limpio.length < 4) {
+      throw new ErrorValidacion('El PIN tiene que tener al menos 4 caracteres (o vacio para sacarlo).');
+    }
+    escribirConfigLocal({ pinPedidos: limpio });
+    return reply.status(200).send({ datos: { pinConfigurado: limpio !== '' } });
+  });
+
+  app.post('/api/sistema/tunel', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { activar } = validarOFallar(
+      z.object({ activar: z.boolean() }),
+      request.body,
+      'La orden del tunel no es valida.',
+    );
+    if (activar && leerConfig().pinPedidos === undefined) {
+      throw new ErrorValidacion('Antes de abrir el tunel configura el PIN: es lo unico que protege el acceso desde internet.');
+    }
+    const estado = activar ? await iniciarTunel(leerConfig().puerto) : detenerTunel();
+    escribirConfigLocal({ tunelActivado: activar && estado.activo });
+    return reply.status(200).send({ datos: estado });
   });
 
   // Respaldo de la base con la API de backup de SQLite (consistente aun con

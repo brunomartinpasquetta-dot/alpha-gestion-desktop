@@ -142,7 +142,8 @@ export function registrarEstaticos(app: FastifyInstance, carpeta: string): void 
     // o una tablet que pide "/" va derecho a la pantalla de pedidos. Desde la
     // red solo existen /pedidos y /elaboracion.
     const esLocal = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(request.ip);
-    if (!esLocal) {
+    const porTunel = typeof request.headers['cf-connecting-ip'] === 'string';
+    if (!esLocal || porTunel) {
       return reply.redirect('/pedidos');
     }
 

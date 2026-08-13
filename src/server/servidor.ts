@@ -10,6 +10,8 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 
 import { leerConfig, type ConfigServidor } from './config';
+import { leerConfigLocal } from './config-local';
+import { detenerTunel, iniciarTunel } from './tunel';
 import { registrarEstaticos } from './plugins/estaticos';
 import { registrarGuardiaPin } from './plugins/guardia-pin';
 import { registrarManejadorErrores } from './plugins/manejador-errores';
@@ -140,11 +142,20 @@ export async function iniciarServidor(opciones: OpcionesServidor = {}): Promise<
       const url = `http://${hostNavegable}:${puerto}`;
       app.log.info({ url, puerto, host }, 'Servidor del ERP escuchando');
 
+      // Si el duenio dejo el tunel de pedidos remotos activado, se levanta
+      // solo con el sistema (la URL publica nueva se ve en Configuracion LAN).
+      if (leerConfigLocal().tunelActivado === true && leerConfig().pinPedidos !== undefined) {
+        void iniciarTunel(puerto).then((estado) => {
+          app.log.info({ tunel: estado }, 'Tunel de pedidos remotos');
+        });
+      }
+
       return {
         url,
         puerto,
         host,
         cerrar: async () => {
+          detenerTunel();
           await app.close();
         },
       };

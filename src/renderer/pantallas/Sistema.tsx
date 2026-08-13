@@ -40,24 +40,170 @@ export function PantallaConfiguracionLan(): JSX.Element {
               {datos?.urlElaboracion ?? 'Sin red: el servidor solo escucha en esta maquina'}
             </p>
           </div>
-          <div className="rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2">
-            <p className="text-micro font-bold uppercase tracking-wide text-masa-700">
-              PIN de acceso desde la red
-            </p>
-            {datos?.pinConfigurado === true ? (
-              <p>
-                Configurado: cualquier dispositivo de la red tiene que ingresar el PIN una vez.
-              </p>
-            ) : (
-              <p>
-                Sin configurar: cualquiera en el WiFi de la fabrica puede entrar. Para exigir un
-                PIN, pedile a BPSG que configure la variable ALFAJORES_PIN_PEDIDOS en esta maquina.
-              </p>
-            )}
-          </div>
+          <SeccionPin alCambiar={salud.recargar} />
         </div>
       </Seccion>
+      <SeccionTunel />
     </div>
+  );
+}
+
+/* ----------------------------- PIN de acceso ------------------------------- */
+
+function SeccionPin({ alCambiar }: { readonly alCambiar: () => void }): JSX.Element {
+  const estado = usarRecurso<{ pinConfigurado: boolean }>(
+    () => fetch('/api/sistema/acceso-remoto').then(async (r) => ((await r.json()) as { datos: { pinConfigurado: boolean } }).datos),
+    [],
+  );
+  const [pin, setPin] = useState('');
+  const [aviso, setAviso] = useState<string | null>(null);
+
+  const guardar = async (nuevo: string): Promise<void> => {
+    const r = await fetch('/api/sistema/pin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pin: nuevo }),
+    });
+    const cuerpo = (await r.json()) as { datos?: unknown; error?: { mensaje?: string } };
+    if (!r.ok) {
+      setAviso(cuerpo.error?.mensaje ?? 'No se pudo guardar el PIN.');
+      return;
+    }
+    setPin('');
+    setAviso(nuevo === '' ? 'PIN eliminado.' : 'PIN guardado. Los dispositivos van a pedirlo una vez.');
+    estado.recargar();
+    alCambiar();
+  };
+
+  return (
+    <div className="rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2">
+      <p className="text-micro font-bold uppercase tracking-wide text-masa-700">
+        PIN de acceso (red y remoto)
+      </p>
+      <p className="mt-1 text-xs text-masa-700">
+        {estado.datos?.pinConfigurado === true
+          ? 'Configurado: cada dispositivo lo ingresa una vez. Para el acceso desde internet es obligatorio.'
+          : 'Sin configurar: cualquiera del WiFi puede cargar pedidos, y el acceso desde internet queda bloqueado hasta que lo pongas.'}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
+          placeholder="Nuevo PIN (min. 4)"
+          maxLength={20}
+          className="h-10 w-44 rounded-none border border-masa-300 px-2 text-center font-mono"
+        />
+        <button
+          type="button"
+          disabled={pin.trim().length < 4}
+          onClick={() => void guardar(pin.trim())}
+          className="h-10 rounded-none border border-dulce-400 bg-dulce-500 px-4 text-sm font-bold uppercase text-white disabled:opacity-30"
+        >
+          Guardar PIN
+        </button>
+        {estado.datos?.pinConfigurado === true && (
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm('¿Sacar el PIN? El acceso desde internet queda bloqueado y la red queda abierta.')) void guardar('');
+            }}
+            className="h-10 rounded-none border border-peligro-300 bg-white px-4 text-sm font-bold uppercase text-peligro-700"
+          >
+            Sacar PIN
+          </button>
+        )}
+      </div>
+      {aviso !== null && <p className="mt-1.5 text-xs font-medium text-menta-700">{aviso}</p>}
+    </div>
+  );
+}
+
+/* -------------------------- Tunel de pedidos remotos ----------------------- */
+
+interface EstadoTunelVista {
+  activo: boolean;
+  url: string | null;
+  error: string | null;
+}
+
+function SeccionTunel(): JSX.Element {
+  const estado = usarRecurso<{ pinConfigurado: boolean; tunel: EstadoTunelVista }>(
+    () => fetch('/api/sistema/acceso-remoto').then(async (r) => ((await r.json()) as { datos: { pinConfigurado: boolean; tunel: EstadoTunelVista } }).datos),
+    [],
+  );
+  const [ocupado, setOcupado] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const alternar = async (activar: boolean): Promise<void> => {
+    setOcupado(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/sistema/tunel', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ activar }),
+      });
+      const cuerpo = (await r.json()) as { datos?: EstadoTunelVista; error?: { mensaje?: string } };
+      if (!r.ok) throw new Error(cuerpo.error?.mensaje ?? 'No se pudo cambiar el tunel.');
+      if (cuerpo.datos?.error) setError(cuerpo.datos.error);
+      estado.recargar();
+    } catch (causa) {
+      setError(causa instanceof Error ? causa.message : String(causa));
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const tunel = estado.datos?.tunel;
+  return (
+    <Seccion titulo="Pedidos desde afuera (internet)">
+      <div className="space-y-3 rounded-ficha border border-masa-200 bg-white p-4 text-sm text-masa-900">
+        <p>
+          El tunel publica SOLO la pantalla de pedidos en una direccion https, sin abrir puertos:
+          el duenio carga pedidos desde el celular con 4G, en cualquier lado. Necesita el PIN
+          configurado (es lo unico que protege el acceso) y se le exige a cada dispositivo.
+        </p>
+        {tunel?.activo === true && tunel.url !== null ? (
+          <div className="rounded-ficha border border-menta-300 bg-menta-50 px-3 py-2">
+            <p className="text-micro font-bold uppercase tracking-wide text-menta-800">
+              Tunel ACTIVO — compartir esta direccion
+            </p>
+            <p className="select-all font-mono text-base font-bold text-menta-800">{tunel.url}/pedidos</p>
+            <p className="mt-1 text-xs text-masa-700">
+              OJO: esta direccion CAMBIA cada vez que el tunel se levanta. Para una direccion fija
+              hace falta una cuenta de Cloudflare con dominio (pedirselo a BPSG).
+            </p>
+          </div>
+        ) : tunel?.activo === true ? (
+          <p className="rounded-ficha border border-alerta-300 bg-alerta-50 px-3 py-2 text-sm">
+            Levantando el tunel...
+          </p>
+        ) : (
+          <p className="text-xs text-masa-700">Tunel apagado: los pedidos remotos solo funcionan en el WiFi de la fabrica.</p>
+        )}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={ocupado || tunel?.activo === true}
+            onClick={() => void alternar(true)}
+            className="h-10 rounded-none border border-dulce-400 bg-dulce-500 px-4 text-sm font-bold uppercase text-white disabled:opacity-30"
+          >
+            {ocupado ? 'Trabajando...' : 'Activar tunel'}
+          </button>
+          <button
+            type="button"
+            disabled={ocupado || tunel?.activo !== true}
+            onClick={() => void alternar(false)}
+            className="h-10 rounded-none border border-masa-300 bg-white px-4 text-sm font-bold uppercase text-masa-800 disabled:opacity-30"
+          >
+            Detener
+          </button>
+        </div>
+        {error !== null && (
+          <p className="rounded-ficha border border-peligro-300 bg-peligro-50 px-3 py-2 text-sm text-peligro-700">{error}</p>
+        )}
+      </div>
+    </Seccion>
   );
 }
 
