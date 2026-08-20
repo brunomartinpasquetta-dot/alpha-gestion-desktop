@@ -10,3 +10,6 @@ release/
 .env
 .env.local
 .vite/
+
+# La clave del tunel NO va al repo publico (viaja solo en el instalador).
+recursos/tunel/

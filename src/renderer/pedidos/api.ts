@@ -60,6 +60,13 @@ function catalogoCacheado(): Catalogo | null {
  * devuelve el cache si existe, con la marca de cuando fue. Sin red ni cache,
  * lanza: no hay con que armar el formulario.
  */
+/** El servidor pidio PIN: hay conexion, falta autenticarse. */
+export class ErrorPinRequerido extends Error {
+  constructor() {
+    super('Esta conexion necesita el PIN de acceso.');
+  }
+}
+
 export async function obtenerCatalogo(): Promise<{ catalogo: Catalogo; desdeCache: boolean }> {
   try {
     // El PIN viaja tambien en las LECTURAS: desde la red, la API entera lo pide.
@@ -70,6 +77,11 @@ export async function obtenerCatalogo(): Promise<{ catalogo: Catalogo; desdeCach
       fetch('/api/presentaciones', { headers: cabeceras }),
       fetch('/api/vendedores', { headers: cabeceras }),
     ]);
+    // 401 = hay conexion pero falta el PIN: se distingue para pedirlo, en vez
+    // de mentir "sin conexion" (pasaba al entrar por el tunel desde afuera).
+    if ([rProductos, rClientes, rPresentaciones, rVendedores].some((r) => r.status === 401)) {
+      throw new ErrorPinRequerido();
+    }
     if (!rProductos.ok || !rClientes.ok || !rPresentaciones.ok || !rVendedores.ok) {
       throw new Error('catalogo no disponible');
     }
@@ -88,6 +100,8 @@ export async function obtenerCatalogo(): Promise<{ catalogo: Catalogo; desdeCach
     localStorage.setItem(CLAVE_CATALOGO, JSON.stringify(catalogo));
     return { catalogo, desdeCache: false };
   } catch (error) {
+    // Falta el PIN: NO se sirve el cache, hay que autenticarse primero.
+    if (error instanceof ErrorPinRequerido) throw error;
     const cache = catalogoCacheado();
     if (cache !== null) return { catalogo: cache, desdeCache: true };
     throw error instanceof Error ? error : new Error(String(error));

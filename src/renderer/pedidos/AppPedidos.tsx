@@ -19,6 +19,7 @@ import type {
 } from '../../compartido/contratos';
 import {
   enviarPedido,
+  ErrorPinRequerido,
   guardarPin,
   leerNombre,
   leerPin,
@@ -125,7 +126,13 @@ export function AppPedidos(): JSX.Element {
       setCatalogo(resultado.catalogo);
       setDesdeCache(resultado.desdeCache);
       setErrorCatalogo(null);
-    } catch {
+      setPidePin(false);
+    } catch (causa) {
+      // Con PIN pendiente se muestra el teclado del PIN, no un error de red.
+      if (causa instanceof ErrorPinRequerido) {
+        setPidePin(true);
+        return;
+      }
       setErrorCatalogo(
         'No hay conexion con la fabrica y este telefono todavia no tiene el catalogo guardado. ' +
           'Conectate una vez para descargarlo.',
@@ -733,6 +740,7 @@ export function AppPedidos(): JSX.Element {
           alGuardar={(pin) => {
             guardarPin(pin);
             setPidePin(false);
+            void cargarCatalogo();
             void sincronizarCola();
           }}
         />

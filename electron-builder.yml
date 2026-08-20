@@ -36,6 +36,13 @@ extraResources:
     to: conocimiento
     filter:
       - "*.json"
+  # Clave del tunel de pedidos remotos: restringida en el VPS a abrir un solo
+  # puerto hacia loopback (no da shell). Sin esto el sistema no puede publicar
+  # la pantalla de pedidos en internet.
+  - from: recursos/tunel
+    to: tunel
+    filter:
+      - "tunel_alpha"
 
 asar: true
 # Los modulos nativos tienen que quedar fuera del asar para poder cargarse.
