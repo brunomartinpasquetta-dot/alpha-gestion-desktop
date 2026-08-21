@@ -13,7 +13,9 @@
 import { useEffect, useState } from 'react';
 
 import type { OrdenProduccionVista, PedidoVista } from '../../compartido/contratos';
+import type { LineaTicketVista } from '../tipos-globales';
 import { obtenerOrdenesProduccion, obtenerPedidos } from '../servicios/cliente';
+import { leerPreferenciasImpresion } from './Sistema';
 import { formatearCantidad } from '../utiles/formato';
 
 function fechaLarga(iso: string): string {
@@ -32,6 +34,73 @@ function enUnidades(unidades: number, upc: number | null, abreviatura: string): 
       : `${docenas} doc + ${resto} u`;
   }
   return `${formatearCantidad(unidades)} ${abreviatura}`;
+}
+
+/**
+ * El MISMO contenido del ticket, pero como lineas para la termica. Se arma
+ * aparte del JSX a proposito: la impresora no entiende HTML, y asi las dos
+ * salidas (papel termico y hoja comun) dicen exactamente lo mismo.
+ */
+function lineasEscPos(pedido: PedidoVista, ordenes: OrdenProduccionVista[]): LineaTicketVista[] {
+  const lineas: LineaTicketVista[] = [
+    { texto: 'ORDEN DE ELABORACION', negrita: true, centrado: true },
+    { texto: 'ANYULIN - Alfajores Corondinos', centrado: true },
+    { texto: '', separador: true },
+    { texto: `PEDIDO #${pedido.id}`, grande: true, centrado: true },
+    { texto: (pedido.clienteNombre ?? 'MOSTRADOR').toUpperCase(), negrita: true, centrado: true },
+    { texto: '', separador: true },
+    { texto: `Cargado: ${fechaLarga(pedido.fechaPedido)}` },
+  ];
+  if (pedido.vendedorNombre !== null) lineas.push({ texto: `Vendedor: ${pedido.vendedorNombre}` });
+  if (pedido.cargadoPor !== null) lineas.push({ texto: `Tomo: ${pedido.cargadoPor}` });
+  lineas.push({ texto: `Impreso: ${fechaLarga(new Date().toISOString())}` });
+  lineas.push({ texto: '', separador: true });
+  lineas.push({ texto: 'QUE HAY QUE ARMAR', negrita: true });
+
+  if (pedido.renglones.length > 0) {
+    for (const r of pedido.renglones) {
+      lineas.push({
+        texto: `${formatearCantidad(r.cantidad)} x ${r.descripcion ?? r.presentacionNombre ?? 'Renglon'}`,
+        negrita: true,
+      });
+      if (r.componentes.length > 0) {
+        lineas.push({
+          texto: `   ${r.componentes.map((c) => `${formatearCantidad(c.unidades)} ${c.articuloNombre}`).join(' + ')}`,
+        });
+      }
+    }
+  } else {
+    for (const i of pedido.items) {
+      lineas.push({
+        texto: `${enUnidades(i.cantidad, i.unidadesPorCaja, i.unidadAbreviatura)} ${i.nombre}`,
+        negrita: true,
+      });
+    }
+  }
+
+  if (ordenes.length > 0) {
+    lineas.push({ texto: '', separador: true });
+    lineas.push({ texto: 'TANDAS', negrita: true });
+    for (const o of ordenes) {
+      lineas.push({
+        texto:
+          `#${o.id} ${o.articuloProducidoNombre} - ` +
+          `${enUnidades(o.cantidadPlanificada, o.unidadesPorCaja, o.unidadAbreviatura)}` +
+          `${o.numeroLote !== null ? ` Lote ${o.numeroLote}` : ''}` +
+          `${o.esperaInsumos && o.estado === 'planificada' ? ' FALTAN INSUMOS' : ''}`,
+      });
+    }
+  }
+
+  if (pedido.notas !== null && pedido.notas !== '') {
+    lineas.push({ texto: '', separador: true });
+    lineas.push({ texto: 'NOTAS', negrita: true });
+    lineas.push({ texto: pedido.notas });
+  }
+
+  lineas.push({ texto: '', separador: true });
+  lineas.push({ texto: 'Elaboro: ______________   Hora: ______' });
+  return lineas;
 }
 
 export function TicketPedido({ pedidoId }: { readonly pedidoId: number }): JSX.Element {
@@ -53,13 +122,33 @@ export function TicketPedido({ pedidoId }: { readonly pedidoId: number }): JSX.E
       .catch((causa: unknown) => setError(causa instanceof Error ? causa.message : String(causa)));
   }, [pedidoId]);
 
-  // Apenas estan los datos en pantalla, se abre el dialogo de impresion solo:
-  // el operario toca "Imprimir ticket" y sale el papel, sin pasos extra.
+  const [estadoImpresion, setEstadoImpresion] = useState<string | null>(null);
+
+  // Apenas estan los datos, el ticket se manda a imprimir SOLO. Con impresora
+  // termica elegida en Configuracion, sale por ESC/POS sin ningun dialogo (la
+  // sala de elaboracion no tiene que tocar nada); si no hay ninguna elegida,
+  // se abre el dialogo del sistema, que imprime igual en una hoja comun.
   useEffect(() => {
-    if (pedido === null) return;
-    const t = setTimeout(() => window.print(), 350);
-    return () => clearTimeout(t);
-  }, [pedido]);
+    if (pedido === null) return undefined;
+    const impresora = leerPreferenciasImpresion().impresoraTickets;
+    const puente = window.alfajores?.impresion;
+    if (impresora !== '' && puente) {
+      setEstadoImpresion('Imprimiendo...');
+      void puente
+        .ticket(impresora, lineasEscPos(pedido, ordenes))
+        .then((r) => {
+          setEstadoImpresion(r.ok ? `Ticket impreso en ${impresora}.` : (r.error ?? 'No se pudo imprimir.'));
+          // Salio el papel: la ventana ya no hace falta.
+          if (r.ok) setTimeout(() => window.alfajores?.ventanas.cerrarme(), 1500);
+        })
+        .catch((causa: unknown) =>
+          setEstadoImpresion(causa instanceof Error ? causa.message : String(causa)),
+        );
+      return undefined;
+    }
+    const temporizador = setTimeout(() => window.print(), 350);
+    return () => clearTimeout(temporizador);
+  }, [pedido, ordenes]);
 
   if (error !== null) {
     return <p className="p-4 text-sm text-peligro-600">{error}</p>;
@@ -113,10 +202,26 @@ export function TicketPedido({ pedidoId }: { readonly pedidoId: number }): JSX.E
         .ticket-80 .caja { border: 1px solid #000; padding: 3px 5px; }
       `}</style>
 
+      {estadoImpresion !== null && (
+        <p className="no-imprimir" style={{ marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
+          {estadoImpresion}
+        </p>
+      )}
       <div className="no-imprimir" style={{ marginBottom: 10, display: 'flex', gap: 8 }}>
         <button
           type="button"
-          onClick={() => window.print()}
+          onClick={() => {
+            const impresora = leerPreferenciasImpresion().impresoraTickets;
+            const puente = window.alfajores?.impresion;
+            if (impresora !== '' && puente) {
+              setEstadoImpresion('Imprimiendo...');
+              void puente
+                .ticket(impresora, lineasEscPos(pedido, ordenes))
+                .then((r) => setEstadoImpresion(r.ok ? `Ticket impreso en ${impresora}.` : (r.error ?? 'No se pudo imprimir.')));
+              return;
+            }
+            window.print();
+          }}
           style={{ height: 36, padding: '0 14px', border: '1px solid #8d5f23', background: '#8d5f23', color: '#fff', fontWeight: 700, textTransform: 'uppercase', fontSize: 12 }}
         >
           Imprimir

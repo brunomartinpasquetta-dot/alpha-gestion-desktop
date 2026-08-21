@@ -15,6 +15,7 @@ import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 
 import { NOMBRE_APP, NOMBRE_PRODUCTO, VERSION_APP } from '../compartido/config';
+import { armarTicket, enviarCrudoAImpresora, type LineaTicket } from './impresion';
 import { leerConfig } from '../server/config';
 import { aplicarMigraciones } from '../server/db/migraciones';
 import { suscribirLocal } from '../server/eventos';
@@ -230,6 +231,29 @@ function registrarCanalesDeVentanas(): void {
   // embebido navega a esa conversacion.
   // Reiniciar el programa (tras restaurar un respaldo): las migraciones y la
   // conexion arrancan de cero sobre la base restaurada.
+  // Impresoras instaladas en el SO, para elegir la de la sala de elaboracion.
+  ipcMain.handle('impresion:listar', async () => {
+    if (!ventanaPrincipal || ventanaPrincipal.isDestroyed()) return [];
+    const lista = await ventanaPrincipal.webContents.getPrintersAsync();
+    return lista.map((p) => ({ nombre: p.name, descripcion: p.displayName, pordefecto: (p as { isDefault?: boolean }).isDefault === true }));
+  });
+
+  // Ticket ESC/POS directo al spooler: sale solo, sin dialogo.
+  ipcMain.handle('impresion:ticket', async (_evento, carga: unknown) => {
+    const datos = carga as { impresora?: unknown; lineas?: unknown };
+    const impresora = typeof datos?.impresora === 'string' ? datos.impresora : '';
+    const lineas = Array.isArray(datos?.lineas) ? (datos.lineas as LineaTicket[]) : [];
+    if (impresora === '' || lineas.length === 0) {
+      return { ok: false, error: 'Falta la impresora o el contenido del ticket.' };
+    }
+    try {
+      await enviarCrudoAImpresora(impresora, armarTicket(lineas));
+      return { ok: true };
+    } catch (causa) {
+      return { ok: false, error: causa instanceof Error ? causa.message : String(causa) };
+    }
+  });
+
   ipcMain.on('app:reiniciar', () => {
     app.relaunch();
     app.exit(0);

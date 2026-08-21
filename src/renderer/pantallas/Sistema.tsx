@@ -4,7 +4,7 @@
  * "Mi Empresa" es la pantalla de facturacion/ARCA que ya existia, renombrada.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { RespuestaSalud } from '../../compartido/contratos';
 import { Seccion } from '../componentes/comunes';
@@ -318,6 +318,12 @@ export interface PreferenciasImpresion {
   papel: 'a4' | 'ticket';
   /** Texto que se agrega al pie de cada comprobante. */
   pie: string;
+  /**
+   * Impresora del sistema donde salen los tickets de elaboracion. Si esta
+   * cargada, el ticket se imprime SOLO (ESC/POS al spooler); si no, se abre
+   * el dialogo del sistema.
+   */
+  impresoraTickets: string;
 }
 
 export function leerPreferenciasImpresion(): PreferenciasImpresion {
@@ -325,12 +331,16 @@ export function leerPreferenciasImpresion(): PreferenciasImpresion {
     const crudo = localStorage.getItem(CLAVE_IMPRESION);
     if (crudo !== null) {
       const dato = JSON.parse(crudo) as Partial<PreferenciasImpresion>;
-      return { papel: dato.papel === 'ticket' ? 'ticket' : 'a4', pie: typeof dato.pie === 'string' ? dato.pie : '' };
+      return {
+        papel: dato.papel === 'ticket' ? 'ticket' : 'a4',
+        pie: typeof dato.pie === 'string' ? dato.pie : '',
+        impresoraTickets: typeof dato.impresoraTickets === 'string' ? dato.impresoraTickets : '',
+      };
     }
   } catch {
     // Preferencias rotas: se vuelve al default.
   }
-  return { papel: 'a4', pie: '' };
+  return { papel: 'a4', pie: '', impresoraTickets: '' };
 }
 
 export function PantallaConfiguracionImpresion(): JSX.Element {
@@ -380,6 +390,10 @@ export function PantallaConfiguracionImpresion(): JSX.Element {
               className="h-10 w-full rounded-none border border-masa-300 px-2"
             />
           </div>
+          <SelectorImpresora
+            valor={prefs.impresoraTickets}
+            alCambiar={(v) => setPrefs((p) => ({ ...p, impresoraTickets: v }))}
+          />
           <button
             type="button"
             onClick={guardar}
@@ -390,6 +404,80 @@ export function PantallaConfiguracionImpresion(): JSX.Element {
           {guardado && <p className="text-xs font-medium text-menta-700">Guardado. Se aplica a los proximos comprobantes.</p>}
         </div>
       </Seccion>
+    </div>
+  );
+}
+
+/* --------------------- Impresora de tickets (elaboracion) ------------------ */
+
+/**
+ * Elige en que impresora salen los tickets de la sala de elaboracion. Con una
+ * termica elegida, el ticket se imprime SOLO (ESC/POS crudo al spooler): el
+ * operario toca "Ticket" y sale el papel, sin dialogos.
+ */
+function SelectorImpresora({
+  valor,
+  alCambiar,
+}: {
+  readonly valor: string;
+  readonly alCambiar: (valor: string) => void;
+}): JSX.Element {
+  const [impresoras, setImpresoras] = useState<{ nombre: string; descripcion: string }[]>([]);
+  const [prueba, setPrueba] = useState<string | null>(null);
+
+  useEffect(() => {
+    void window.alfajores?.impresion
+      .listar()
+      .then((lista) => setImpresoras(lista.map((i) => ({ nombre: i.nombre, descripcion: i.descripcion }))))
+      .catch(() => setImpresoras([]));
+  }, []);
+
+  const probar = (): void => {
+    setPrueba('Enviando...');
+    void window.alfajores?.impresion
+      .ticket(valor, [
+        { texto: 'PRUEBA DE IMPRESION', grande: true, centrado: true },
+        { texto: 'Alpha Gestion', centrado: true },
+        { separador: true, texto: '' },
+        { texto: 'Si lees esto, los tickets de elaboracion' },
+        { texto: 'van a salir solos en esta impresora.' },
+      ])
+      .then((r) => setPrueba(r.ok ? 'Listo: mira la impresora.' : (r.error ?? 'No se pudo imprimir.')))
+      .catch((causa: unknown) => setPrueba(causa instanceof Error ? causa.message : String(causa)));
+  };
+
+  return (
+    <div>
+      <label className="mb-1 block text-micro font-bold uppercase tracking-wide text-masa-700">
+        Impresora de los tickets de elaboracion
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={valor}
+          onChange={(e) => alCambiar(e.target.value)}
+          className="h-10 min-w-64 rounded-none border border-masa-300 bg-white px-2 text-sm"
+        >
+          <option value="">Preguntar cada vez (dialogo del sistema)</option>
+          {impresoras.map((i) => (
+            <option key={i.nombre} value={i.nombre}>
+              {i.descripcion || i.nombre}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={valor === ''}
+          onClick={probar}
+          className="h-10 rounded-none border border-masa-300 bg-white px-4 text-sm font-bold uppercase tracking-wide text-masa-800 disabled:opacity-30"
+        >
+          Imprimir prueba
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-masa-700">
+        Con una impresora elegida el ticket sale SOLO al tocar "Ticket" en el pedido. Sin elegir,
+        se abre el dialogo de impresion de siempre.
+      </p>
+      {prueba !== null && <p className="mt-1 text-xs font-medium text-masa-800">{prueba}</p>}
     </div>
   );
 }

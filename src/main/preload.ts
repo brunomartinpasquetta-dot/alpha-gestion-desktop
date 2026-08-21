@@ -112,6 +112,23 @@ const eventos = {
   },
 } as const;
 
+const impresion = {
+  listar(): Promise<{ nombre: string; descripcion: string; pordefecto: boolean }[]> {
+    return ipcRenderer.invoke('impresion:listar') as Promise<
+      { nombre: string; descripcion: string; pordefecto: boolean }[]
+    >;
+  },
+  ticket(
+    impresora: string,
+    lineas: readonly { texto: string; grande?: boolean; negrita?: boolean; centrado?: boolean; separador?: boolean }[],
+  ): Promise<{ ok: boolean; error?: string }> {
+    return ipcRenderer.invoke('impresion:ticket', { impresora: String(impresora), lineas }) as Promise<{
+      ok: boolean;
+      error?: string;
+    }>;
+  },
+} as const;
+
 const sistema = {
   /** Cierra y vuelve a abrir el programa (tras restaurar un respaldo). */
   reiniciar(): void {
@@ -172,6 +189,7 @@ export interface ApiAlfajores {
   readonly eventos: typeof eventos;
   readonly whatsapp: typeof whatsapp;
   readonly sistema: typeof sistema;
+  readonly impresion: typeof impresion;
 }
 
 const api: ApiAlfajores = Object.freeze({
@@ -183,6 +201,7 @@ const api: ApiAlfajores = Object.freeze({
   eventos,
   whatsapp,
   sistema,
+  impresion,
 });
 
 contextBridge.exposeInMainWorld('alfajores', api);

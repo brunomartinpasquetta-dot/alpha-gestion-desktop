@@ -50,6 +50,19 @@ export interface ApiEventos {
   alCambiar(manejador: (tipo: string) => void): () => void;
 }
 
+export interface LineaTicketVista {
+  texto: string;
+  grande?: boolean;
+  negrita?: boolean;
+  centrado?: boolean;
+  separador?: boolean;
+}
+
+export interface ApiImpresion {
+  listar(): Promise<{ nombre: string; descripcion: string; pordefecto: boolean }[]>;
+  ticket(impresora: string, lineas: readonly LineaTicketVista[]): Promise<{ ok: boolean; error?: string }>;
+}
+
 export interface ApiSistema {
   /** Cierra y vuelve a abrir el programa (tras restaurar un respaldo). */
   reiniciar(): void;
@@ -71,6 +84,7 @@ export interface ApiAlfajores {
   readonly eventos: ApiEventos;
   readonly whatsapp: ApiWhatsApp;
   readonly sistema: ApiSistema;
+  readonly impresion: ApiImpresion;
 }
 
 declare global {
