@@ -37,6 +37,14 @@ import {
   obtenerVentas,
 } from '../servicios/cliente';
 import { FormularioVenta } from './FormularioVenta';
+import { definicionDeModulo } from '../ventanas';
+import {
+  BarraFiltros,
+  entraEnRango,
+  RANGO_VACIO,
+  SelectorFiltro,
+  type RangoFechas,
+} from '../componentes/filtros';
 import { FormularioCompra, FormularioPedido } from './FormulariosOperacion';
 import {
   formatearFecha,
@@ -774,6 +782,10 @@ function PestanaGestionPedidos(): JSX.Element {
   const [vendiendo, setVendiendo] = useState<number | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [rango, setRango] = useState<RangoFechas>(RANGO_VACIO);
+  const [clienteFiltro, setClienteFiltro] = useState<number | ''>('');
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoPedido | ''>('');
+  const [busqueda, setBusqueda] = useState('');
 
   usarEventos('pedidos:cambio', estado.recargar);
 
@@ -814,7 +826,27 @@ function PestanaGestionPedidos(): JSX.Element {
         comandoVacio={COMANDO_SEED_DEMO}
       >
         {(todos) => {
-          const activos = todos.filter((p) => p.estado !== 'cancelado');
+          const visibles = todos
+            .filter((p) => entraEnRango(p.fechaPedido, rango))
+            .filter((p) => clienteFiltro === '' || p.clienteId === clienteFiltro)
+            .filter((p) => estadoFiltro === '' || p.estado === estadoFiltro)
+            .filter((p) => {
+              const q = busqueda.trim().toLowerCase();
+              if (q === '') return true;
+              return (
+                String(p.id).includes(q) ||
+                (p.clienteNombre ?? '').toLowerCase().includes(q) ||
+                (p.vendedorNombre ?? '').toLowerCase().includes(q)
+              );
+            });
+          const clientesDeLaLista = [...new Map(
+            todos.filter((p) => p.clienteId !== null).map((p) => [p.clienteId!, p.clienteNombre ?? 'Cliente']),
+          )].map(([valor, etiqueta]) => ({ valor, etiqueta })).sort((a, b) => a.etiqueta.localeCompare(b.etiqueta));
+          const hayFiltros =
+            rango.desde !== '' || rango.hasta !== '' || clienteFiltro !== '' || estadoFiltro !== '' || busqueda !== '';
+          // Con filtro puesto se muestran TODOS los que coinciden (incluidos
+          // cancelados si se pidieron); sin filtro, la vista de trabajo.
+          const activos = hayFiltros ? visibles : visibles.filter((p) => p.estado !== 'cancelado');
           const deHoy = activos.filter(esDeHoy);
           const anteriores = activos.filter((p) => !esDeHoy(p));
           const grupos: [string, PedidoVista[]][] = [
@@ -823,6 +855,40 @@ function PestanaGestionPedidos(): JSX.Element {
           ];
           return (
             <div className="space-y-4">
+              <BarraFiltros
+                rango={rango}
+                alCambiarRango={setRango}
+                texto={busqueda}
+                alCambiarTexto={setBusqueda}
+                placeholderTexto="Buscar por numero, cliente o vendedor..."
+                selectores={
+                  <>
+                    <SelectorFiltro
+                      valor={clienteFiltro}
+                      alCambiar={(v) => setClienteFiltro(v === '' ? '' : Number(v))}
+                      vacio="Todos los clientes"
+                      opciones={clientesDeLaLista}
+                    />
+                    <SelectorFiltro
+                      valor={estadoFiltro}
+                      alCambiar={(v) => setEstadoFiltro(v as EstadoPedido | '')}
+                      vacio="Todos los estados"
+                      opciones={(Object.keys(ETIQUETA_ESTADO_PEDIDO) as EstadoPedido[]).map((e) => ({
+                        valor: e,
+                        etiqueta: ETIQUETA_ESTADO_PEDIDO[e],
+                      }))}
+                    />
+                  </>
+                }
+                resumen={`${activos.length} de ${todos.length} pedidos`}
+                alLimpiar={() => {
+                  setRango(RANGO_VACIO);
+                  setClienteFiltro('');
+                  setEstadoFiltro('');
+                  setBusqueda('');
+                }}
+                hayFiltros={hayFiltros}
+              />
               {grupos.map(([titulo, lista]) => (
                 <div key={titulo}>
                   <p className="mb-1.5 text-micro font-bold uppercase tracking-wide text-masa-700">
@@ -876,6 +942,22 @@ function PestanaGestionPedidos(): JSX.Element {
                                   </td>
                                   <td className="px-3 py-2">
                                     <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        title="Imprimir la orden de trabajo en 80 mm"
+                                        onClick={() => {
+                                          const d = definicionDeModulo('ticket-pedido');
+                                          window.alfajores?.ventanas.abrir(
+                                            d.clave,
+                                            `Ticket pedido #${pedido.id}`,
+                                            d.icono,
+                                            { pedidoId: String(pedido.id) },
+                                          );
+                                        }}
+                                        className={`${claseBoton} border-masa-400 bg-white text-masa-900`}
+                                      >
+                                        Ticket
+                                      </button>
                                       <button
                                         type="button"
                                         disabled={!puedeEditar}

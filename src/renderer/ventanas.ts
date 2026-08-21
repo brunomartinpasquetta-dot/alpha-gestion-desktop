@@ -44,7 +44,9 @@ export type ClaveModulo =
   | 'ajustes-productos'
   | 'movimientos-stock'
   /** Ventana de un documento concreto: recibe ?ventaId=N. No va en los menus. */
-  | 'comprobante';
+  | 'comprobante'
+  | 'ticket-pedido'
+  | 'sitio-web';
 
 export interface DefinicionModulo {
   readonly clave: ClaveModulo;
@@ -232,6 +234,20 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     icono: 'ayuda',
     descripcion: 'Como se usa el sistema, version instalada y actualizaciones.',
   },
+  'ticket-pedido': {
+    clave: 'ticket-pedido',
+    titulo: 'Ticket de elaboracion',
+    etiqueta: 'Ticket',
+    icono: 'ordenes',
+    descripcion: 'Orden de trabajo del pedido en papel de 80 mm, para la sala de elaboracion.',
+  },
+  'sitio-web': {
+    clave: 'sitio-web',
+    titulo: 'Sitio web Anyulin',
+    etiqueta: 'Sitio web',
+    icono: 'productos',
+    descripcion: 'La pagina publica de la marca, para mostrarla o compartirla con un cliente.',
+  },
   comprobante: {
     clave: 'comprobante',
     titulo: 'Comprobante',
@@ -376,7 +392,7 @@ export const MENUS: readonly MenuSuperior[] = [
     items: [{ clave: 'estadisticas' }, { clave: 'contabilidad' }],
   },
   // Ultimo por convencion: es donde todo el mundo busca la ayuda.
-  { nombre: 'Ayuda', items: [{ clave: 'ayuda' }] },
+  { nombre: 'Ayuda', items: [{ clave: 'sitio-web' }, { clave: 'ayuda' }] },
 ];
 
 /* -------------------------------------------------------------------------- */

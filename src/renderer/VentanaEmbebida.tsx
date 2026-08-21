@@ -10,10 +10,12 @@
 import { useEffect } from 'react';
 
 import { PantallaAyuda } from './pantallas/Ayuda';
-import { MaestroArticulos, PantallaStockProductos } from './pantallas/MaestroArticulos';
+import { PantallaStockInsumos, PantallaStockProductos } from './pantallas/MaestroArticulos';
 import { MaestroTerceros } from './pantallas/MaestroTerceros';
 import { PantallaVendedores } from './pantallas/Vendedores';
 import { PantallaMediosPago } from './pantallas/MediosPago';
+import { SitioWeb } from './pantallas/SitioWeb';
+import { TicketPedido } from './pantallas/TicketPedido';
 import { PantallaAjustesStock, PantallaMovimientosStock } from './pantallas/StockAjustes';
 import {
   PantallaConfiguracionImpresion,
@@ -47,6 +49,23 @@ function Simple({ children }: { readonly children: JSX.Element }): JSX.Element {
 
 function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
   switch (clave) {
+    case 'ticket-pedido': {
+      const pedidoId = Number(params.get('pedidoId') ?? '');
+      return Number.isInteger(pedidoId) && pedidoId > 0 ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-white p-4">
+          <TicketPedido pedidoId={pedidoId} />
+        </div>
+      ) : (
+        <Simple>
+          <EstadoVacio
+            titulo="Ticket sin pedido"
+            detalle="Esta ventana necesita saber de que pedido se trata. Abrila con el boton Ticket del pedido."
+          />
+        </Simple>
+      );
+    }
+    case 'sitio-web':
+      return <SitioWeb />;
     case 'comprobante': {
       const ventaId = Number(params.get('ventaId') ?? '');
       return Number.isInteger(ventaId) && ventaId > 0 ? (
@@ -63,9 +82,7 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
     case 'tablero':
       return <Simple><PantallaInicio /></Simple>;
     case 'stock-insumos':
-      return (
-        <MaestroArticulos grupo="insumos" titulo="Stock Insumos" tipoNuevo="materia_prima" />
-      );
+      return <PantallaStockInsumos />;
     case 'stock-productos':
     case 'articulos': // clave vieja: fusionada en Stock Productos
       return <PantallaStockProductos />;

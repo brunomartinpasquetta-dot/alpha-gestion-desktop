@@ -17,6 +17,13 @@ import type {
   TipoMovimientoStock,
 } from '../../compartido/contratos';
 import { EstadoCargando, EstadoError, Pastilla, Seccion, type TonoPastilla } from '../componentes/comunes';
+import {
+  BarraFiltros,
+  entraEnRango,
+  RANGO_VACIO,
+  SelectorFiltro,
+  type RangoFechas,
+} from '../componentes/filtros';
 import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
 import { ajustarStock, obtenerMovimientosDeGrupo, obtenerStock } from '../servicios/cliente';
@@ -174,31 +181,90 @@ const ETIQUETA_MOVIMIENTO: Readonly<Record<TipoMovimientoStock, { texto: string;
   ajuste: { texto: 'Ajuste', tono: 'alerta' },
 };
 
-function TablaMovimientos({ grupo }: { readonly grupo: GrupoStock }): JSX.Element {
+export function TablaMovimientosStock({ grupo }: { readonly grupo: GrupoStock }): JSX.Element {
   const estado = usarRecurso<MovimientoGrupoVista[]>(() => obtenerMovimientosDeGrupo(grupo), [grupo]);
   usarEventos('ordenes:cambio', estado.recargar);
   const [busqueda, setBusqueda] = useState('');
+  const [rango, setRango] = useState<RangoFechas>(RANGO_VACIO);
+  const [articuloFiltro, setArticuloFiltro] = useState<number | ''>('');
+  const [tipoFiltro, setTipoFiltro] = useState<TipoMovimientoStock | ''>('');
 
   if (estado.cargando) return <EstadoCargando que="los movimientos" />;
   if (estado.error !== null) return <EstadoError mensaje={estado.error} alReintentar={estado.recargar} />;
-  const filas = (estado.datos ?? []).filter(
-    (m) =>
-      busqueda.trim() === '' ||
-      m.articuloNombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      m.articuloCodigo.toLowerCase().includes(busqueda.toLowerCase()),
-  );
+  const todos = estado.datos ?? [];
+  const filas = todos
+    .filter((m) => entraEnRango(m.fecha, rango))
+    .filter((m) => articuloFiltro === '' || m.articuloId === articuloFiltro)
+    .filter((m) => tipoFiltro === '' || m.tipo === tipoFiltro)
+    .filter((m) => {
+      const q = busqueda.trim().toLowerCase();
+      if (q === '') return true;
+      return (
+        m.articuloNombre.toLowerCase().includes(q) ||
+        m.articuloCodigo.toLowerCase().includes(q) ||
+        (m.notas ?? '').toLowerCase().includes(q)
+      );
+    });
+
+  const articulosDeLaLista = [...new Map(todos.map((m) => [m.articuloId, m.articuloNombre]))]
+    .map(([valor, etiqueta]) => ({ valor, etiqueta }))
+    .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta));
+  const tiposPresentes = [...new Set(todos.map((m) => m.tipo))].map((tipo) => ({
+    valor: tipo,
+    etiqueta: ETIQUETA_MOVIMIENTO[tipo].texto,
+  }));
+  const hayFiltros =
+    rango.desde !== '' || rango.hasta !== '' || articuloFiltro !== '' || tipoFiltro !== '' || busqueda !== '';
+
+  // Neto de lo filtrado: cuanto entro y cuanto salio en ese corte.
+  const entradas = filas.filter((m) => m.cantidad > 0).reduce((s, m) => s + m.cantidad, 0);
+  const salidas = filas.filter((m) => m.cantidad < 0).reduce((s, m) => s + m.cantidad, 0);
 
   return (
     <div className="space-y-2">
-      <input
-        value={busqueda}
-        onChange={(e) => setBusqueda(e.target.value)}
-        placeholder="Filtrar por articulo..."
-        className="h-9 w-72 rounded-none border border-masa-300 px-2 text-sm"
+      <BarraFiltros
+        rango={rango}
+        alCambiarRango={setRango}
+        texto={busqueda}
+        alCambiarTexto={setBusqueda}
+        placeholderTexto="Buscar por articulo o nota..."
+        selectores={
+          <>
+            <SelectorFiltro
+              valor={articuloFiltro}
+              alCambiar={(v) => setArticuloFiltro(v === '' ? '' : Number(v))}
+              vacio="Todos los articulos"
+              opciones={articulosDeLaLista}
+            />
+            <SelectorFiltro
+              valor={tipoFiltro}
+              alCambiar={(v) => setTipoFiltro(v as TipoMovimientoStock | '')}
+              vacio="Todos los movimientos"
+              opciones={tiposPresentes}
+            />
+          </>
+        }
+        resumen={`${filas.length} de ${todos.length} movimientos`}
+        alLimpiar={() => {
+          setRango(RANGO_VACIO);
+          setArticuloFiltro('');
+          setTipoFiltro('');
+          setBusqueda('');
+        }}
+        hayFiltros={hayFiltros}
       />
+      {filas.length > 0 && (
+        <p className="text-xs text-masa-700">
+          Entradas <span className="font-mono font-bold text-menta-700">+{formatearCantidad(entradas)}</span>
+          {' · '}
+          Salidas <span className="font-mono font-bold text-peligro-600">{formatearCantidad(salidas)}</span>
+          {' · '}
+          Neto <span className="font-mono font-bold text-masa-900">{formatearCantidad(entradas + salidas)}</span>
+        </p>
+      )}
       {filas.length === 0 ? (
         <p className="rounded-ficha border border-masa-200 bg-white px-3 py-4 text-sm text-masa-700">
-          Sin movimientos registrados.
+          {hayFiltros ? 'Ningun movimiento coincide con el filtro.' : 'Sin movimientos registrados.'}
         </p>
       ) : (
         <div className="overflow-hidden rounded-ficha border border-masa-200 bg-white">
@@ -266,7 +332,7 @@ export function PantallaMovimientosStock(): JSX.Element {
           Stock Productos
         </button>
       </div>
-      <TablaMovimientos grupo={pestania} />
+      <TablaMovimientosStock grupo={pestania} />
     </div>
   );
 }

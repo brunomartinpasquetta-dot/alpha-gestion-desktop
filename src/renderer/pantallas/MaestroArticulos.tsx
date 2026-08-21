@@ -26,6 +26,7 @@ import {
   type TipoArticulo,
   type UnidadMedidaVista,
 } from '../../compartido/contratos';
+import { TablaMovimientosStock } from './StockAjustes';
 import { Pastilla } from '../componentes/comunes';
 import { Aviso } from '../componentes/Formulario';
 import { PanelLedger } from '../componentes/PanelLedger';
@@ -1010,7 +1011,7 @@ export function MaestroArticulos({
  * catalogo entero, sin ocupar un lugar en el menu.
  */
 export function PantallaStockProductos(): JSX.Element {
-  const [pestania, setPestania] = useState<'productos' | 'todos'>('productos');
+  const [pestania, setPestania] = useState<'productos' | 'movimientos' | 'todos'>('productos');
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -1018,6 +1019,7 @@ export function PantallaStockProductos(): JSX.Element {
         {(
           [
             ['productos', 'Productos'],
+            ['movimientos', 'Movimientos'],
             ['todos', 'Todos los articulos'],
           ] as const
         ).map(([clave, etiqueta]) => (
@@ -1045,8 +1047,58 @@ export function PantallaStockProductos(): JSX.Element {
             titulo="Stock Productos"
             tipoNuevo="producto_terminado"
           />
+        ) : pestania === 'movimientos' ? (
+          <div className="h-full overflow-auto p-4">
+            <TablaMovimientosStock grupo="productos" />
+          </div>
         ) : (
           <MaestroArticulos key="todos" grupo="todos" titulo="Todos los articulos" tipoNuevo="materia_prima" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------- Stock Insumos con pestanias -------------------- */
+
+/**
+ * Insumos y su ledger, separados en pestanias: el maestro (que hay) y los
+ * MOVIMIENTOS (que paso). Antes los movimientos vivian en un modulo aparte y
+ * habia que abrirlo por el menu; aca estan al lado de lo que explican.
+ */
+export function PantallaStockInsumos(): JSX.Element {
+  const [pestania, setPestania] = useState<'insumos' | 'movimientos'>('insumos');
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 gap-1 border-b border-masa-200 bg-masa-50 px-2 pt-1">
+        {(
+          [
+            ['insumos', 'Insumos'],
+            ['movimientos', 'Movimientos'],
+          ] as const
+        ).map(([clave, etiqueta]) => (
+          <button
+            key={clave}
+            type="button"
+            onClick={() => setPestania(clave)}
+            className={[
+              'rounded-t-ficha px-4 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-dulce-400',
+              pestania === clave
+                ? 'border border-b-0 border-masa-200 bg-white font-semibold text-masa-900'
+                : 'text-masa-700 hover:bg-masa-100',
+            ].join(' ')}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        {pestania === 'insumos' ? (
+          <MaestroArticulos key="insumos" grupo="insumos" titulo="Stock Insumos" tipoNuevo="materia_prima" />
+        ) : (
+          <div className="h-full overflow-auto p-4">
+            <TablaMovimientosStock grupo="insumos" />
+          </div>
         )}
       </div>
     </div>

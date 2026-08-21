@@ -19,6 +19,14 @@ import {
   type RecetaVista,
 } from '../../compartido/contratos';
 import { Pastilla, type TonoPastilla } from '../componentes/comunes';
+import {
+  BarraFiltros,
+  entraEnRango,
+  RANGO_VACIO,
+  SelectorFiltro,
+  type RangoFechas,
+} from '../componentes/filtros';
+import { definicionDeModulo } from '../ventanas';
 import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
@@ -457,6 +465,14 @@ function PestanaElaboracion(): JSX.Element {
 
 /* ------------------------- Ordenes de pedido ------------------------------- */
 
+/** Abre la ventana del ticket 80 mm del pedido (se imprime sola al cargar). */
+function imprimirTicket(pedidoId: number): void {
+  const definicion = definicionDeModulo('ticket-pedido');
+  window.alfajores?.ventanas.abrir(definicion.clave, `Ticket pedido #${pedidoId}`, definicion.icono, {
+    pedidoId: String(pedidoId),
+  });
+}
+
 /** Cantidad en la unidad de trabajo: docenas si upc=12, cajas si upc>1, u. */
 function enUnidades(unidades: number, upc: number | null, abreviatura: string): string {
   if (upc === 12) {
@@ -499,6 +515,10 @@ function PestanaOrdenesDePedido(): JSX.Element {
   const [finalizando, setFinalizando] = useState<PedidoVista | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [rango, setRango] = useState<RangoFechas>(RANGO_VACIO);
+  const [clienteFiltro, setClienteFiltro] = useState<number | ''>('');
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoElaboracionPedido | ''>('');
+  const [busqueda, setBusqueda] = useState('');
 
   const recargar = (): void => {
     pedidos.recargar();
@@ -519,11 +539,41 @@ function PestanaOrdenesDePedido(): JSX.Element {
   }
 
   const todasLasOrdenes = ordenes.datos ?? [];
-  const filas = (pedidos.datos ?? []).filter(
-    (p) => p.estado !== 'cancelado' && p.estado !== 'entregado',
-  );
   const ordenesDe = (pedidoId: number): OrdenProduccionVista[] =>
     todasLasOrdenes.filter((o) => o.pedidoId === pedidoId && o.estado !== 'cancelada');
+
+  const abiertos = (pedidos.datos ?? []).filter(
+    (p) => p.estado !== 'cancelado' && p.estado !== 'entregado',
+  );
+  // Mas viejo primero: lo que espera hace mas tiempo se elabora antes.
+  const filas = abiertos
+    .filter((p) => entraEnRango(p.fechaPedido, rango))
+    .filter((p) => clienteFiltro === '' || p.clienteId === clienteFiltro)
+    .filter((p) => estadoFiltro === '' || estadoElaboracionDe(ordenesDe(p.id)) === estadoFiltro)
+    .filter((p) => {
+      const q = busqueda.trim().toLowerCase();
+      if (q === '') return true;
+      return (
+        String(p.id).includes(q) ||
+        (p.clienteNombre ?? '').toLowerCase().includes(q) ||
+        (p.vendedorNombre ?? '').toLowerCase().includes(q) ||
+        p.renglones.some((r) => (r.descripcion ?? r.presentacionNombre ?? '').toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => a.fechaPedido.localeCompare(b.fechaPedido));
+
+  const clientesDeLaLista = [...new Map(
+    abiertos.filter((p) => p.clienteId !== null).map((p) => [p.clienteId!, p.clienteNombre ?? 'Cliente']),
+  )].map(([valor, etiqueta]) => ({ valor, etiqueta })).sort((a, b) => a.etiqueta.localeCompare(b.etiqueta));
+
+  const hayFiltros =
+    rango.desde !== '' || rango.hasta !== '' || clienteFiltro !== '' || estadoFiltro !== '' || busqueda !== '';
+  const limpiar = (): void => {
+    setRango(RANGO_VACIO);
+    setClienteFiltro('');
+    setEstadoFiltro('');
+    setBusqueda('');
+  };
 
   const correrEnCadena = async (
     objetivos: OrdenProduccionVista[],
@@ -593,9 +643,38 @@ function PestanaOrdenesDePedido(): JSX.Element {
           {error}
         </p>
       )}
+      <BarraFiltros
+        rango={rango}
+        alCambiarRango={setRango}
+        texto={busqueda}
+        alCambiarTexto={setBusqueda}
+        placeholderTexto="Buscar por numero, cliente, vendedor o producto..."
+        selectores={
+          <>
+            <SelectorFiltro
+              valor={clienteFiltro}
+              alCambiar={(v) => setClienteFiltro(v === '' ? '' : Number(v))}
+              vacio="Todos los clientes"
+              opciones={clientesDeLaLista}
+            />
+            <SelectorFiltro
+              valor={estadoFiltro}
+              alCambiar={(v) => setEstadoFiltro(v as EstadoElaboracionPedido | '')}
+              vacio="Todos los estados"
+              opciones={(Object.keys(ETIQUETA_ELABORACION) as EstadoElaboracionPedido[]).map((e) => ({
+                valor: e,
+                etiqueta: ETIQUETA_ELABORACION[e].texto,
+              }))}
+            />
+          </>
+        }
+        resumen={`${filas.length} de ${abiertos.length} pedidos`}
+        alLimpiar={limpiar}
+        hayFiltros={hayFiltros}
+      />
       {filas.length === 0 ? (
         <p className="rounded-ficha border border-masa-200 bg-white px-3 py-4 text-sm text-masa-700">
-          No hay pedidos abiertos.
+          {hayFiltros ? 'Ningun pedido coincide con el filtro.' : 'No hay pedidos abiertos.'}
         </p>
       ) : (
         <div className="overflow-hidden rounded-ficha border border-masa-200 bg-white">
@@ -603,6 +682,7 @@ function PestanaOrdenesDePedido(): JSX.Element {
             <thead>
               <tr className="border-b border-masa-200 text-left text-micro uppercase tracking-wide text-masa-700">
                 <th className="px-3 py-2 font-semibold">Pedido</th>
+                <th className="px-3 py-2 font-semibold">Fecha</th>
                 <th className="px-3 py-2 font-semibold">Cliente</th>
                 <th className="px-3 py-2 font-semibold">Estado</th>
                 <th className="px-3 py-2 text-right font-semibold">Acciones</th>
@@ -633,6 +713,7 @@ function PestanaOrdenesDePedido(): JSX.Element {
                     alPausar={() => pausar(pedido)}
                     alFinalizar={() => setFinalizando(pedido)}
                     alCancelar={() => cancelar(pedido)}
+                    alImprimir={() => imprimirTicket(pedido.id)}
                   />
                 );
               })}
@@ -673,6 +754,7 @@ function FilaPedidoElaboracion({
   alPausar,
   alFinalizar,
   alCancelar,
+  alImprimir,
 }: {
   readonly pedido: PedidoVista;
   readonly ordenes: OrdenProduccionVista[];
@@ -687,6 +769,7 @@ function FilaPedidoElaboracion({
   readonly alPausar: () => void;
   readonly alFinalizar: () => void;
   readonly alCancelar: () => void;
+  readonly alImprimir: () => void;
 }): JSX.Element {
   const claseBoton =
     'h-8 rounded-none border px-2.5 text-xs font-bold uppercase tracking-wide disabled:opacity-30';
@@ -697,10 +780,20 @@ function FilaPedidoElaboracion({
         className={['cursor-pointer border-b border-masa-100', expandido ? 'bg-dulce-50' : 'hover:bg-masa-50'].join(' ')}
       >
         <td className="px-3 py-2 font-mono font-bold text-masa-900">#{pedido.id}</td>
+        <td className="px-3 py-2 whitespace-nowrap text-masa-800">
+          {new Date(pedido.fechaPedido).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+          <span className="block text-xs text-masa-700">
+            {new Date(pedido.fechaPedido).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </td>
         <td className="px-3 py-2 text-masa-900">{pedido.clienteNombre ?? 'Mostrador'}</td>
         <td className="px-3 py-2"><Pastilla texto={chip.texto} tono={chip.tono} /></td>
         <td className="px-3 py-2">
           <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={alImprimir} title="Imprimir la orden de trabajo en 80 mm"
+              className={`${claseBoton} border-masa-400 bg-white text-masa-900`}>
+              Ticket
+            </button>
             <button type="button" disabled={ocupado || !puedeElaborar} onClick={alElaborar}
               className={`${claseBoton} border-dulce-400 bg-dulce-500 text-white`}>
               Elaborar
@@ -722,7 +815,7 @@ function FilaPedidoElaboracion({
       </tr>
       {expandido && (
         <tr className="border-b border-masa-100 bg-masa-50">
-          <td colSpan={4} className="px-4 py-3">
+          <td colSpan={5} className="px-4 py-3">
             <DetalleElaboracionPedido pedido={pedido} ordenes={ordenes} />
           </td>
         </tr>
