@@ -546,7 +546,7 @@ export function MaestroArticulos({
           className={botonBarra}
         >
           <History className="h-4 w-4" aria-hidden="true" />
-          Movimientos
+          Historial del articulo
         </button>
 
         <span className="mx-1 h-6 w-px bg-masa-200" aria-hidden="true" />
@@ -1011,7 +1011,7 @@ export function MaestroArticulos({
  * catalogo entero, sin ocupar un lugar en el menu.
  */
 export function PantallaStockProductos(): JSX.Element {
-  const [pestania, setPestania] = useState<'productos' | 'movimientos' | 'todos'>('productos');
+  const [pestania, setPestania] = useState<'productos' | 'movimientos'>('productos');
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -1020,7 +1020,6 @@ export function PantallaStockProductos(): JSX.Element {
           [
             ['productos', 'Productos'],
             ['movimientos', 'Movimientos'],
-            ['todos', 'Todos los articulos'],
           ] as const
         ).map(([clave, etiqueta]) => (
           <button
@@ -1039,7 +1038,6 @@ export function PantallaStockProductos(): JSX.Element {
         ))}
       </div>
       <div className="min-h-0 flex-1">
-        {/* key: cambiar de pestania reinicia el maestro con su propio filtro */}
         {pestania === 'productos' ? (
           <MaestroArticulos
             key="productos"
@@ -1047,12 +1045,10 @@ export function PantallaStockProductos(): JSX.Element {
             titulo="Stock Productos"
             tipoNuevo="producto_terminado"
           />
-        ) : pestania === 'movimientos' ? (
+        ) : (
           <div className="h-full overflow-auto p-4">
             <TablaMovimientosStock grupo="productos" />
           </div>
-        ) : (
-          <MaestroArticulos key="todos" grupo="todos" titulo="Todos los articulos" tipoNuevo="materia_prima" />
         )}
       </div>
     </div>

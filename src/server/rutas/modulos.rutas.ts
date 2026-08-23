@@ -20,6 +20,7 @@ import {
 } from '../servicios/consultas.servicio';
 import { responderConDatos } from '../asistente/consultas';
 import { answerQuestion as responderPregunta } from '../asistente/motor';
+import { cajaGeneralServicio } from '../servicios/caja-general.servicio';
 import { presentacionesServicio } from '../servicios/presentaciones.servicio';
 import { stockServicio } from '../servicios/stock.servicio';
 
@@ -180,6 +181,25 @@ export function registrarRutasModulos(app: FastifyInstance): void {
 
   app.get('/api/caja/general', (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.status(200).send({ datos: consultasServicio.obtenerCajaGeneral() });
+  });
+
+  // Caja general (la caja fuerte): saldos y libro de movimientos.
+  app.get('/api/caja-general/saldos', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: cajaGeneralServicio.saldos() });
+  });
+
+  app.get('/api/caja-general/movimientos', (request: FastifyRequest, reply: FastifyReply) => {
+    const filtro = validarOFallar(
+      z.object({
+        desde: z.string().max(10).optional(),
+        hasta: z.string().max(10).optional(),
+        tipo: z.enum(['ingreso', 'egreso', 'desde_caja_diaria']).optional(),
+        medio: z.enum(['efectivo', 'electronico']).optional(),
+      }),
+      request.query,
+      'El filtro de movimientos no es valido.',
+    );
+    return reply.status(200).send({ datos: cajaGeneralServicio.listarMovimientos(filtro) });
   });
 
   app.get('/api/estadisticas', (_request: FastifyRequest, reply: FastifyReply) => {

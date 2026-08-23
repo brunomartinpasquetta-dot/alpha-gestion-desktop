@@ -113,8 +113,9 @@ function VentanaPrincipal(): JSX.Element {
       {/* Arriba de todo: si hay una version lista, se ve apenas se abre. */}
       <AvisoActualizacion />
 
-      {/* En Windows queda la barra nativa del sistema, con sus botones. */}
-      {esMac && <BarraTitulo version={puente?.version ?? ''} />}
+      {/* La barra de marca ES el topbar de la ventana en las dos plataformas:
+          en Mac deja lugar al semaforo, en Windows a los botones del overlay. */}
+      {puente !== undefined && <BarraTitulo version={puente.version} esMac={esMac} />}
 
       <BarraMenu alAbrir={abrir} />
       <BarraAccesos alAbrir={abrir} />
@@ -130,11 +131,13 @@ function VentanaPrincipal(): JSX.Element {
       />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* Alfi a la izquierda, WhatsApp a la derecha: cada asistente en su
+            margen, para que abrir uno no empuje al otro. */}
+        <PanelAsistente abierto={alfiAbierto} alCerrar={() => setAlfiAbierto(false)} />
         <div className="min-w-0 flex-1 overflow-hidden">
           <Escritorio tableroFijado={tableroFijado} alCerrarTablero={() => fijarTablero(false)} />
         </div>
         <PanelWhatsApp />
-        <PanelAsistente abierto={alfiAbierto} alCerrar={() => setAlfiAbierto(false)} />
       </div>
 
       <BarraTareas

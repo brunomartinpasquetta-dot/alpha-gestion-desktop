@@ -45,4 +45,25 @@ export const REPO_GITHUB = {
 } as const;
 
 /** Version del producto. */
-export const VERSION_APP = '1.7.1';
+export const VERSION_APP = '1.8.2';
+
+/* ------------------------- Barra de titulo propia ------------------------- */
+
+/**
+ * La barra marron ES la barra de titulo de la ventana: el sistema no dibuja
+ * ninguna (`titleBarStyle: 'hidden'`). Estas constantes son la UNICA fuente de
+ * verdad y las comparten el proceso main (opciones de BrowserWindow) y el
+ * renderer (el div de la barra).
+ *
+ * Si el alto de aca y el del div se separan, en Windows los botones del sistema
+ * quedan desalineados con la franja marron; si se separan los colores, aparece
+ * un rectangulo de otro color detras de esos botones (el fondo del div NO pinta
+ * debajo del overlay nativo).
+ */
+export const ALTO_BARRA_TITULO = 32;
+
+/** dulce-600 de tailwind.config.cjs. Cambiar los dos juntos, siempre. */
+export const COLOR_BARRA_TITULO = '#9a5c28';
+
+/** Simbolos de minimizar/maximizar/cerrar en Windows. 5.34:1 sobre el marron. */
+export const COLOR_SIMBOLOS_BARRA = '#ffffff';

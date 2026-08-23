@@ -26,6 +26,7 @@ import { cerrarDb, obtenerDb, obtenerRutaDb, obtenerSqlite } from '../db/conexio
 import { leerConfig } from '../config';
 import { escribirConfigLocal } from '../config-local';
 import { detenerTunel, estadoTunel, iniciarTunel } from '../tunel';
+import { cajaGeneralServicio } from '../servicios/caja-general.servicio';
 import { eq } from 'drizzle-orm';
 
 import { mediosPago } from '../db/schema';
@@ -196,6 +197,31 @@ const esquemaNuevaOrden = z.object({
 
 export function registrarRutasEscritura(app: FastifyInstance): void {
   /* -------------------------------- Clientes ------------------------------- */
+
+  /* ------------------------------ Caja general ----------------------------- */
+
+  app.post('/api/caja-general/movimientos', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(
+      z.object({
+        tipo: z.enum(['ingreso', 'egreso']),
+        monto: z.number().int().positive(),
+        concepto: z.string().min(2).max(200),
+        categoria: z
+          .enum(['deposito_cierre', 'retiro', 'servicios', 'sueldos', 'impuestos', 'proveedores', 'otros'])
+          .nullable()
+          .optional(),
+        esEfectivo: z.boolean().default(true),
+        usuario: z.string().max(80).nullable().optional(),
+      }),
+      request.body,
+      'El movimiento de caja general no es valido.',
+    );
+    return reply.status(201).send({ datos: cajaGeneralServicio.registrar(entrada) });
+  });
+
+  app.post('/api/caja-general/recalcular', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: cajaGeneralServicio.recalcular() });
+  });
 
   /* ----------------------------- Medios de pago ---------------------------- */
 

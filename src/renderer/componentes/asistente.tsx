@@ -8,6 +8,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { Logo } from './Logo';
+
 const ANCHO_PANEL = 380;
 const TRANSICION = 'width 300ms cubic-bezier(0.4,0,0.2,1)';
 
@@ -54,7 +56,7 @@ export function BotonAsistente({
           : 'border-dulce-400 bg-white text-dulce-700 hover:bg-dulce-50',
       ].join(' ')}
     >
-      <span className="font-mono text-base">α</span> Alfi
+      <Logo tamano={18} className="shrink-0" /> Alfi
     </button>
   );
 }
@@ -112,11 +114,13 @@ export function PanelAsistente({
         style={{ width: anchoPanel, transition: TRANSICION }}
       >
         <div
-          className="flex h-full flex-col border-l border-masa-200 bg-white"
+          className="flex h-full flex-col border-r border-masa-200 bg-white"
           style={{ width: ANCHO_PANEL }}
         >
           <div className="flex items-center justify-between bg-dulce-600 px-3 py-2 text-white">
-            <span className="text-sm font-bold uppercase tracking-wide">Alfi · Asistente</span>
+            <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide">
+              <Logo tamano={18} /> Alfi · Asistente
+            </span>
             <button
               type="button"
               title="Minimizar"

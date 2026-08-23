@@ -7,9 +7,14 @@
 
 import path from 'node:path';
 
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, shell, type BrowserWindowConstructorOptions } from 'electron';
 
-import { NOMBRE_PRODUCTO } from '../compartido/config';
+import {
+  ALTO_BARRA_TITULO,
+  COLOR_BARRA_TITULO,
+  COLOR_SIMBOLOS_BARRA,
+  NOMBRE_PRODUCTO,
+} from '../compartido/config';
 
 /** Medidas pensadas para una pantalla de trabajo: tablas anchas de produccion y stock. */
 const ANCHO_DEFAULT = 1440;
@@ -92,6 +97,38 @@ function endurecerVentana(
   });
 }
 
+/**
+ * Opciones que convierten la barra marron del renderer en LA barra de titulo de
+ * la ventana. Se aplican a TODAS las ventanas visibles (principal y modulos):
+ * si un modulo abriera con la barra gris del sistema, la app se veria partida
+ * en dos identidades.
+ *
+ *   Mac     -> 'hidden' + titleBarOverlay { height }. Los semaforos siguen
+ *              visibles y Electron los CENTRA solo dentro de esos 32px. Por eso
+ *              NO se usa `trafficLightPosition`: pasarlo desactiva el centrado.
+ *   Windows -> 'hidden' + titleBarOverlay con color: Windows sigue dibujando
+ *              minimizar/maximizar/cerrar (con 'hidden' a secas DESAPARECEN) y
+ *              nosotros se los pintamos del marron de marca.
+ *
+ * NO se usa `frame: false`: se perderian los Snap Layouts de Win11, el doble
+ * clic para maximizar y el menu del clic derecho.
+ */
+export function opcionesBarraTitulo(): Pick<
+  BrowserWindowConstructorOptions,
+  'titleBarStyle' | 'titleBarOverlay'
+> {
+  return process.platform === 'darwin'
+    ? { titleBarStyle: 'hidden', titleBarOverlay: { height: ALTO_BARRA_TITULO } }
+    : {
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+          color: COLOR_BARRA_TITULO,
+          symbolColor: COLOR_SIMBOLOS_BARRA,
+          height: ALTO_BARRA_TITULO,
+        },
+      };
+}
+
 /** Crea la ventana principal del ERP, ya endurecida y con la URL cargada. */
 export function crearVentanaPrincipal(opciones: OpcionesVentana): BrowserWindow {
   const ventana = new BrowserWindow({
@@ -104,6 +141,7 @@ export function crearVentanaPrincipal(opciones: OpcionesVentana): BrowserWindow 
     // Se muestra recien en 'ready-to-show': evita el flash blanco del arranque.
     show: false,
     autoHideMenuBar: true,
+    ...opcionesBarraTitulo(),
     webPreferences: {
       // El renderer es codigo no privilegiado: sin Node, aislado y en sandbox.
       contextIsolation: true,

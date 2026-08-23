@@ -31,11 +31,31 @@ import type { RespuestaSalud } from '../../compartido/contratos';
 
 /* --------------------------------- Titulo --------------------------------- */
 
-export function BarraTitulo({ version }: { readonly version: string }): JSX.Element {
+/**
+ * Topbar de la ventana. No es una barra dibujada DEBAJO del marco del sistema:
+ * es el marco mismo (la ventana se crea sin barra nativa y esta ocupa su lugar).
+ *
+ * Los costados quedan libres a proposito: en Mac para el semaforo (arriba a la
+ * izquierda) y en Windows para los botones de minimizar/maximizar/cerrar que
+ * Electron dibuja sobre la barra (arriba a la derecha).
+ */
+export function BarraTitulo({
+  version,
+  esMac,
+}: {
+  readonly version: string;
+  readonly esMac: boolean;
+}): JSX.Element {
   return (
     <div
       className="relative flex h-8 shrink-0 items-center bg-dulce-600 text-white"
-      style={{ WebkitAppRegion: 'drag' } as CSSProperties}
+      style={
+        {
+          WebkitAppRegion: 'drag',
+          paddingLeft: esMac ? 78 : 12,
+          paddingRight: esMac ? 12 : 140,
+        } as CSSProperties
+      }
     >
       <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-tight">
         ALPHA GESTIÓN{version === '' ? '' : ` — v${version}`}

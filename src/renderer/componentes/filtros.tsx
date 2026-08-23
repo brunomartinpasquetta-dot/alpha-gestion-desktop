@@ -65,8 +65,9 @@ export function BarraFiltros({
 }: {
   readonly rango: RangoFechas;
   readonly alCambiarRango: (rango: RangoFechas) => void;
-  readonly texto: string;
-  readonly alCambiarTexto: (texto: string) => void;
+  /** Buscador libre. Si no se pasa, la barra no lo muestra. */
+  readonly texto?: string;
+  readonly alCambiarTexto?: (texto: string) => void;
   readonly placeholderTexto?: string;
   /** Selectores propios de cada pantalla (cliente, estado, tipo...). */
   readonly selectores?: ReactNode;
@@ -75,31 +76,9 @@ export function BarraFiltros({
   readonly alLimpiar: () => void;
   readonly hayFiltros: boolean;
 }): JSX.Element {
-  const atajo = (etiqueta: string, nuevo: RangoFechas): JSX.Element => {
-    const activo = rango.desde === nuevo.desde && rango.hasta === nuevo.hasta;
-    return (
-      <button
-        type="button"
-        onClick={() => alCambiarRango(activo ? RANGO_VACIO : nuevo)}
-        className={[
-          CLASE_ATAJO,
-          activo
-            ? 'border-dulce-500 bg-dulce-500 text-white'
-            : 'border-masa-300 bg-white text-masa-800 hover:bg-masa-50',
-        ].join(' ')}
-      >
-        {etiqueta}
-      </button>
-    );
-  };
-
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2">
-      {atajo('Hoy', rangoHoy())}
-      {atajo('7 dias', rangoUltimosDias(7))}
-      {atajo('30 dias', rangoUltimosDias(30))}
-
-      <span className="ml-1 text-micro font-bold uppercase tracking-wide text-masa-700">Desde</span>
+      <span className="text-micro font-bold uppercase tracking-wide text-masa-700">Desde</span>
       <input
         type="date"
         value={rango.desde}
@@ -116,12 +95,14 @@ export function BarraFiltros({
 
       {selectores}
 
-      <input
-        value={texto}
-        onChange={(e) => alCambiarTexto(e.target.value)}
-        placeholder={placeholderTexto}
-        className={`${CLASE_CAMPO} min-w-44 flex-1`}
-      />
+      {alCambiarTexto !== undefined && (
+        <input
+          value={texto ?? ''}
+          onChange={(e) => alCambiarTexto(e.target.value)}
+          placeholder={placeholderTexto}
+          className={`${CLASE_CAMPO} min-w-44 flex-1`}
+        />
+      )}
 
       {hayFiltros && (
         <button

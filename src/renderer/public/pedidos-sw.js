@@ -10,7 +10,7 @@
  * se toma apenas hay conexion, y el cache solo entra cuando no la hay.
  */
 
-const CACHE = 'alpha-pedidos-v3';
+const CACHE = 'alpha-pedidos-v4';
 
 self.addEventListener('install', (evento) => {
   evento.waitUntil(self.skipWaiting());

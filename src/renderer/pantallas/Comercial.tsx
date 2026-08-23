@@ -46,7 +46,7 @@ import {
   type RangoFechas,
 } from '../componentes/filtros';
 import { FormularioCompra, FormularioPedido } from './FormulariosOperacion';
-import {
+import { formatearCantidad,
   formatearFecha,
   formatearMoneda,
   formatearTexto,
@@ -161,6 +161,17 @@ function enUnidadVenta(cantidad: number, upc: number | null, abreviatura: string
   return resto === 0 ? base : `${base} y ${resto} u`;
 }
 
+/** Cajas enteras y unidades sueltas, cada una en su columna. */
+function cajasYUnidades(cantidad: number, upc: number | null): { cajas: string; unidades: string } {
+  if (upc === null || upc <= 0) return { cajas: '—', unidades: formatearCantidad(cantidad) };
+  const enteras = Math.floor(cantidad / upc);
+  const sueltas = Math.round(cantidad % upc);
+  return {
+    cajas: enteras === 0 ? '—' : `${formatearCantidad(enteras)} × ${upc}`,
+    unidades: formatearCantidad(cantidad) + (sueltas > 0 && enteras > 0 ? ` (${sueltas} sueltas)` : ''),
+  };
+}
+
 function PestanaPedidos(): JSX.Element {
   const estado = usarRecurso(() => obtenerPedidos(), []);
   const [expandido, setExpandido] = useState<number | null>(null);
@@ -243,26 +254,8 @@ function PestanaPedidos(): JSX.Element {
             const desdeCelular = pedido.origen === 'celular';
             // Que acciones aplican se decide aca arriba: el render de abajo es
             // una sola fila, siempre en el mismo orden.
-            const activo = pedido.estado !== 'entregado' && pedido.estado !== 'cancelado';
             const puedeVender = pedido.estado === 'listo';
             const puedeEditar = pedido.estado === 'pendiente' || pedido.estado === 'confirmado' || pedido.estado === 'listo';
-            // Resumen para el encabezado: cuanto esta apartado y cuanto en
-            // produccion, en la unidad de venta de cada articulo.
-            const resumenEstado = activo
-              ? pedido.items
-                  .map((i) => {
-                    const partes: string[] = [];
-                    if (i.reservado > 0)
-                      partes.push(`reservado ${enUnidadVenta(pendienteDeItem(i), i.unidadesPorCaja, i.unidadAbreviatura)}`);
-                    const enProduccion = Math.max(0, i.cantidad - i.reservado);
-                    if (enProduccion > 0)
-                      partes.push(`en produccion ${enUnidadVenta(enProduccion, i.unidadesPorCaja, i.unidadAbreviatura)}`);
-                    const detalle = partes.join(', ');
-                    return pedido.items.length > 1 ? `${i.nombre}: ${detalle}` : detalle;
-                  })
-                  .filter((x) => x !== '')
-                  .join(' · ')
-              : null;
 
             return (
               <div
@@ -295,17 +288,9 @@ function PestanaPedidos(): JSX.Element {
                         />
                       </div>
                       <p className="mt-0.5 text-xs text-masa-700">
-                        Pedido {formatearFecha(pedido.fechaPedido)}
-                        {pedido.cargadoPor !== null && ` · cargado por ${pedido.cargadoPor}`}
+                        {formatearFecha(pedido.fechaPedido)}
+                        {pedido.cargadoPor !== null && ` · ${pedido.cargadoPor}`}
                       </p>
-                      {resumenEstado !== null && resumenEstado !== '' && (
-                        <p className="mt-1 text-xs">
-                          <span className="font-semibold uppercase tracking-wide text-masa-700">
-                            Estado del pedido:{' '}
-                          </span>
-                          <span className="text-masa-900">{resumenEstado}</span>
-                        </p>
-                      )}
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="font-mono tabular-nums text-masa-900">
@@ -349,8 +334,9 @@ function PestanaPedidos(): JSX.Element {
                       <thead>
                         <tr className="text-micro uppercase tracking-wide text-masa-700">
                           <th scope="col" className="pb-1 text-left">Articulo</th>
-                          <th scope="col" className="pb-1 text-right">Pedido</th>
-                          <th scope="col" className="pb-1 text-right">Apartado de stock</th>
+                          <th scope="col" className="pb-1 text-right">Cajas</th>
+                          <th scope="col" className="pb-1 text-right">Unidades</th>
+                          <th scope="col" className="pb-1 text-right">Apartado</th>
                           <th scope="col" className="pb-1 text-right">En produccion</th>
                           {pedido.items.some((i) => i.notas !== null) && (
                             <th scope="col" className="pb-1 text-left">Notas</th>
@@ -368,7 +354,10 @@ function PestanaPedidos(): JSX.Element {
                                 {item.nombre}
                               </td>
                               <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
-                                {enUnidadVenta(item.cantidad, item.unidadesPorCaja, item.unidadAbreviatura)}
+                                {cajasYUnidades(item.cantidad, item.unidadesPorCaja).cajas}
+                              </td>
+                              <td className="py-1.5 text-right font-mono font-semibold tabular-nums text-masa-900">
+                                {cajasYUnidades(item.cantidad, item.unidadesPorCaja).unidades}
                               </td>
                               <td className="py-1.5 text-right">
                                 {apartado >= item.cantidad ? (
@@ -785,7 +774,6 @@ function PestanaGestionPedidos(): JSX.Element {
   const [rango, setRango] = useState<RangoFechas>(RANGO_VACIO);
   const [clienteFiltro, setClienteFiltro] = useState<number | ''>('');
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoPedido | ''>('');
-  const [busqueda, setBusqueda] = useState('');
 
   usarEventos('pedidos:cambio', estado.recargar);
 
@@ -829,21 +817,12 @@ function PestanaGestionPedidos(): JSX.Element {
           const visibles = todos
             .filter((p) => entraEnRango(p.fechaPedido, rango))
             .filter((p) => clienteFiltro === '' || p.clienteId === clienteFiltro)
-            .filter((p) => estadoFiltro === '' || p.estado === estadoFiltro)
-            .filter((p) => {
-              const q = busqueda.trim().toLowerCase();
-              if (q === '') return true;
-              return (
-                String(p.id).includes(q) ||
-                (p.clienteNombre ?? '').toLowerCase().includes(q) ||
-                (p.vendedorNombre ?? '').toLowerCase().includes(q)
-              );
-            });
+            .filter((p) => estadoFiltro === '' || p.estado === estadoFiltro);
           const clientesDeLaLista = [...new Map(
             todos.filter((p) => p.clienteId !== null).map((p) => [p.clienteId!, p.clienteNombre ?? 'Cliente']),
           )].map(([valor, etiqueta]) => ({ valor, etiqueta })).sort((a, b) => a.etiqueta.localeCompare(b.etiqueta));
           const hayFiltros =
-            rango.desde !== '' || rango.hasta !== '' || clienteFiltro !== '' || estadoFiltro !== '' || busqueda !== '';
+            rango.desde !== '' || rango.hasta !== '' || clienteFiltro !== '' || estadoFiltro !== '';
           // Con filtro puesto se muestran TODOS los que coinciden (incluidos
           // cancelados si se pidieron); sin filtro, la vista de trabajo.
           const activos = hayFiltros ? visibles : visibles.filter((p) => p.estado !== 'cancelado');
@@ -858,9 +837,6 @@ function PestanaGestionPedidos(): JSX.Element {
               <BarraFiltros
                 rango={rango}
                 alCambiarRango={setRango}
-                texto={busqueda}
-                alCambiarTexto={setBusqueda}
-                placeholderTexto="Buscar por numero, cliente o vendedor..."
                 selectores={
                   <>
                     <SelectorFiltro
@@ -885,7 +861,6 @@ function PestanaGestionPedidos(): JSX.Element {
                   setRango(RANGO_VACIO);
                   setClienteFiltro('');
                   setEstadoFiltro('');
-                  setBusqueda('');
                 }}
                 hayFiltros={hayFiltros}
               />

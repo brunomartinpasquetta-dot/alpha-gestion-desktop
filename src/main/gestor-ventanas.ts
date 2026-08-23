@@ -17,6 +17,7 @@
 
 import path from 'node:path';
 
+import { opcionesBarraTitulo } from './ventana';
 import { BrowserWindow, shell } from 'electron';
 
 /** Lo que la barra de tareas necesita saber de cada ventana abierta. */
@@ -133,6 +134,9 @@ export function abrirVentana(solicitud: SolicitudApertura): number {
   const posicion = principal && !principal.isDestroyed() ? principal.getBounds() : null;
 
   const ventana = new BrowserWindow({
+    // MISMA barra que la principal: los modulos abren con el topbar marron de
+    // la marca, no con la barra gris del sistema.
+    ...opcionesBarraTitulo(),
     // Ver Menu.setApplicationMenu(null) en index.ts: ademas se pide por ventana
     // porque en Windows la barra nativa se dibuja por ventana, no por app.
     autoHideMenuBar: true,

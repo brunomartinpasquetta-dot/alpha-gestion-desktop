@@ -310,7 +310,6 @@ export function AppPedidos(): JSX.Element {
       .filter((item) => item.cantidad > 0);
   }, [seleccion, catalogo]);
 
-  const totalCajas = Object.values(seleccion).reduce((suma, n) => suma + Math.max(n, 0), 0);
 
   /* ---------------------------------- Envio -------------------------------- */
 
@@ -728,9 +727,7 @@ export function AppPedidos(): JSX.Element {
                 ? 'Elegi el cliente'
                 : !hayCarga
                   ? 'Carga el pedido'
-                  : usaTalonario
-                    ? `Enviar pedido · ${renglones.length} ${renglones.length === 1 ? 'renglon' : 'renglones'}`
-                    : `Enviar pedido · ${totalCajas} ${totalCajas === 1 ? 'caja' : 'cajas'}`}
+                  : 'Enviar pedido'}
           </button>
         )}
       </div>

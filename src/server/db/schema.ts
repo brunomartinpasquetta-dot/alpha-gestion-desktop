@@ -312,6 +312,74 @@ export const clientes = sqliteTable(
   ],
 );
 
+export const CATEGORIAS_CAJA_GENERAL = [
+  'deposito_cierre',
+  'retiro',
+  'servicios',
+  'sueldos',
+  'impuestos',
+  'proveedores',
+  'otros',
+] as const;
+export type CategoriaCajaGeneral = (typeof CATEGORIAS_CAJA_GENERAL)[number];
+
+export const TIPOS_MOVIMIENTO_CAJA_GENERAL = ['ingreso', 'egreso', 'desde_caja_diaria'] as const;
+export type TipoMovimientoCajaGeneral = (typeof TIPOS_MOVIMIENTO_CAJA_GENERAL)[number];
+
+/**
+ * Caja General: la "caja fuerte" del negocio. A diferencia de la caja diaria,
+ * NUNCA se cierra ni se arquea: acumula. Es una unica fila (singleton) con el
+ * saldo partido en efectivo y electronico.
+ *
+ * El total NO se calcula sumando las dos columnas: se lleva aparte. Si el
+ * desglose se desincroniza alguna vez, sumar arrastraria el error al numero
+ * que el duenio mira todos los dias (leccion de StockFlow, migraciones
+ * 0018/0019 de ese proyecto).
+ *
+ * Los cheques NO viven aca: son la cartera (`cheques`), que es su propia
+ * verdad hasta que se acreditan. La pantalla los muestra al lado, informativos.
+ */
+export const cajaGeneral = sqliteTable('caja_general', {
+  id: integer('id').primaryKey(),
+  /** Centavos. Total real; no es la suma de los dos de abajo. */
+  saldoTotal: integer('saldo_total').notNull().default(0),
+  saldoEfectivo: integer('saldo_efectivo').notNull().default(0),
+  saldoElectronico: integer('saldo_electronico').notNull().default(0),
+  actualizadoEn: text('actualizado_en').notNull().default(AHORA),
+});
+
+/**
+ * Libro de la caja general: append-only. Cada fila guarda el saldo DESPUES del
+ * movimiento (total, efectivo y electronico), asi el resumen de un periodo se
+ * saca por diferencia de saldos y no por suma de etiquetas.
+ */
+export const cajaGeneralMovimientos = sqliteTable(
+  'caja_general_movimientos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tipo: text('tipo', { enum: TIPOS_MOVIMIENTO_CAJA_GENERAL }).notNull(),
+    /** Centavos, siempre POSITIVO: el signo lo da el tipo. */
+    monto: integer('monto').notNull(),
+    concepto: text('concepto').notNull(),
+    categoria: text('categoria', { enum: CATEGORIAS_CAJA_GENERAL }),
+    /** true = efectivo fisico; false = transferencia, tarjeta, etc. */
+    esEfectivo: integer('es_efectivo', { mode: 'boolean' }).notNull().default(true),
+    saldoTotalDespues: integer('saldo_total_despues').notNull(),
+    saldoEfectivoDespues: integer('saldo_efectivo_despues').notNull(),
+    saldoElectronicoDespues: integer('saldo_electronico_despues').notNull(),
+    /** Caja diaria, compra o venta que lo origino. */
+    documentoTipo: text('documento_tipo'),
+    documentoId: integer('documento_id'),
+    usuario: text('usuario'),
+    fecha: text('fecha').notNull().default(AHORA),
+  },
+  (tabla) => [
+    index('ix_caja_general_mov_fecha').on(tabla.fecha),
+    index('ix_caja_general_mov_tipo').on(tabla.tipo),
+    check('ck_caja_general_mov_monto', sql`${tabla.monto} > 0`),
+  ],
+);
+
 /* ------------------------------------------------------------------------- */
 /* Recetas (BOM encadenable)                                                 */
 /* ------------------------------------------------------------------------- */

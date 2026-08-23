@@ -7,7 +7,7 @@
  * asi que repetir el chrome adentro seria ruido.
  */
 
-import { useEffect } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 
 import { PantallaAyuda } from './pantallas/Ayuda';
 import { PantallaStockInsumos, PantallaStockProductos } from './pantallas/MaestroArticulos';
@@ -172,8 +172,28 @@ export function VentanaEmbebida({ clave }: { readonly clave: string }): JSX.Elem
     document.title = definicion.titulo;
   }, [definicion.titulo]);
 
+  const esMac = (window.alfajores?.plataforma ?? '') === 'darwin';
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-masa-100 text-masa-900">
+      {/* Topbar de la ventana del modulo: la misma franja marron de la
+          principal, con el nombre del modulo. Los costados quedan libres para
+          el semaforo (Mac) y los botones del sistema (Windows). */}
+      <div
+        className="relative flex h-8 shrink-0 items-center bg-dulce-600 text-white"
+        style={
+          {
+            WebkitAppRegion: 'drag',
+            paddingLeft: esMac ? 78 : 12,
+            paddingRight: esMac ? 12 : 140,
+          } as CSSProperties
+        }
+      >
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] font-semibold tracking-tight">
+          {definicion.titulo}
+        </span>
+      </div>
+
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-masa-200 bg-white px-5 py-2.5">
         <div className="min-w-0">
           <h1 className="text-base font-semibold tracking-tight text-masa-900">

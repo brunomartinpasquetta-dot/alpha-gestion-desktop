@@ -127,6 +127,13 @@
       "when": 1786490627348,
       "tag": "0017_vendedor_cuit_cliente",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1787469996546,
+      "tag": "0018_caja_general",
+      "breakpoints": true
     }
   ]
 }

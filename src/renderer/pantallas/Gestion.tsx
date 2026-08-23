@@ -19,7 +19,8 @@ import {
   type UsuarioVista,
 } from '../../compartido/contratos';
 import { EstadoCargando, EstadoError, Pastilla, Seccion, TarjetaIndicador } from '../componentes/comunes';
-import { Aviso, BotonFila, BotonPrimario } from '../componentes/Formulario';
+import { Aviso, BotonFila, BotonPrimario, CampoSelector, CampoTexto, ModalFormulario } from '../componentes/Formulario';
+import { BarraFiltros, RANGO_VACIO, SelectorFiltro, type RangoFechas } from '../componentes/filtros';
 import { FormularioUsuario } from './FormulariosMaestros';
 import { Tabla, type Columna } from '../componentes/Tabla';
 import { COMANDO_SEED_DEMO, Vista } from '../componentes/Vista';
@@ -36,11 +37,11 @@ import {
   obtenerUsuarios,
   probarConexionArca,
 } from '../servicios/cliente';
-import { formatearCantidad, formatearEntero, formatearMoneda, formatearMonedaConSigno } from '../utiles/formato';
+import { aCentavos, formatearCantidad, formatearEntero, formatearFecha, formatearMoneda, formatearMonedaConSigno } from '../utiles/formato';
 
 /* ------------------------------- Caja general ------------------------------ */
 
-export function PantallaCajaGeneral(): JSX.Element {
+function PestanaResumenCajas(): JSX.Element {
   const { datos, cargando, error, recargar } = usarRecurso<ResumenCajaGeneral>(
     () => obtenerCajaGeneral(),
     [],
@@ -870,3 +871,360 @@ export function PantallaFacturacion(): JSX.Element {
     </div>
   );
 }
+
+/* ------------------------ Caja General (caja fuerte) ----------------------- */
+
+interface SaldosCajaGeneral {
+  total: number;
+  efectivo: number;
+  electronico: number;
+  chequesEnCartera: number;
+  cantidadCheques: number;
+}
+
+interface MovimientoCajaGeneral {
+  id: number;
+  fecha: string;
+  tipo: 'ingreso' | 'egreso' | 'desde_caja_diaria';
+  monto: number;
+  concepto: string;
+  categoria: string | null;
+  esEfectivo: boolean;
+  saldoTotalDespues: number;
+  saldoEfectivoDespues: number;
+  saldoElectronicoDespues: number;
+  usuario: string | null;
+}
+
+const CATEGORIAS: readonly { valor: string; etiqueta: string }[] = [
+  { valor: 'retiro', etiqueta: 'Retiro' },
+  { valor: 'servicios', etiqueta: 'Servicios' },
+  { valor: 'sueldos', etiqueta: 'Sueldos' },
+  { valor: 'impuestos', etiqueta: 'Impuestos' },
+  { valor: 'proveedores', etiqueta: 'Proveedores' },
+  { valor: 'deposito_cierre', etiqueta: 'Deposito de cierre' },
+  { valor: 'otros', etiqueta: 'Otros' },
+];
+
+const ETIQUETA_TIPO_CG: Record<string, string> = {
+  ingreso: 'Ingreso',
+  egreso: 'Egreso',
+  desde_caja_diaria: 'Desde caja diaria',
+};
+
+async function pedirCg<T>(ruta: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(ruta, {
+    ...init,
+    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  const cuerpo = (await r.json()) as { datos?: T; error?: { mensaje?: string } };
+  if (!r.ok || cuerpo.datos === undefined) {
+    throw new Error(cuerpo.error?.mensaje ?? `El servidor respondio ${r.status}.`);
+  }
+  return cuerpo.datos;
+}
+
+/** Alta manual de ingreso o egreso de la caja fuerte. */
+function ModalMovimientoCg({
+  tipo,
+  saldos,
+  alCerrar,
+  alGuardar,
+}: {
+  readonly tipo: 'ingreso' | 'egreso';
+  readonly saldos: SaldosCajaGeneral;
+  readonly alCerrar: () => void;
+  readonly alGuardar: () => void;
+}): JSX.Element {
+  const [monto, setMonto] = useState('');
+  const [concepto, setConcepto] = useState('');
+  const [categoria, setCategoria] = useState('');
+  const [esEfectivo, setEsEfectivo] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  const centavos = aCentavos(Number(monto.replace(',', '.')));
+  const valido = centavos > 0 && concepto.trim().length >= 2;
+
+  const guardar = async (): Promise<void> => {
+    if (!valido) return;
+    // Un egreso mayor al saldo deja la caja en rojo. No se bloquea (puede ser
+    // una carga atrasada), pero se avisa antes de confirmarlo.
+    if (tipo === 'egreso') {
+      const disponible = esEfectivo ? saldos.efectivo : saldos.electronico;
+      if (centavos > disponible) {
+        const nombre = esEfectivo ? 'efectivo' : 'electronico';
+        const ok = window.confirm(
+          `En la caja general hay ${formatearMoneda(disponible)} en ${nombre} y estas sacando ${formatearMoneda(centavos)}.\n\n` +
+            `El saldo ${nombre} quedaria en ${formatearMoneda(disponible - centavos)}.\n\n¿Registrar igual?`,
+        );
+        if (!ok) return;
+      }
+    }
+    setGuardando(true);
+    setError(null);
+    try {
+      await pedirCg('/api/caja-general/movimientos', {
+        method: 'POST',
+        body: JSON.stringify({
+          tipo,
+          monto: centavos,
+          concepto: concepto.trim(),
+          categoria: categoria === '' ? null : categoria,
+          esEfectivo,
+        }),
+      });
+      alGuardar();
+    } catch (causa) {
+      setError(causa instanceof Error ? causa.message : String(causa));
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <ModalFormulario
+      titulo={tipo === 'ingreso' ? 'Ingreso a caja general' : 'Egreso de caja general'}
+      descripcion="Movimiento manual de la caja fuerte. No toca el arqueo de la caja diaria."
+      ancho="max-w-lg"
+      error={error}
+      guardando={guardando}
+      puedeGuardar={valido}
+      etiquetaGuardar={tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar egreso'}
+      alCerrar={alCerrar}
+      alGuardar={() => void guardar()}
+    >
+      <CampoTexto id="cg-monto" rotulo="Monto ($)" valor={monto} alCambiar={setMonto} maximo={14} />
+      <CampoTexto id="cg-concepto" rotulo="Concepto" valor={concepto} alCambiar={setConcepto} maximo={200} />
+      <CampoSelector
+        id="cg-categoria"
+        rotulo="Categoria"
+        valor={categoria}
+        vacio="Sin categoria"
+        opciones={CATEGORIAS.map((c) => ({ valor: c.valor, etiqueta: c.etiqueta }))}
+        alCambiar={(v) => setCategoria(String(v))}
+      />
+      <div>
+        <p className="mb-1 text-micro font-bold uppercase tracking-wide text-masa-700">Medio</p>
+        {(
+          [
+            [true, 'Efectivo (billetes en la caja fuerte)'],
+            [false, 'Electronico (transferencia, tarjeta)'],
+          ] as const
+        ).map(([valor, etiqueta]) => (
+          <label key={String(valor)} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
+            <input
+              type="radio"
+              name="cg-medio"
+              checked={esEfectivo === valor}
+              onChange={() => setEsEfectivo(valor)}
+              className="accent-dulce-600"
+            />
+            {etiqueta}
+          </label>
+        ))}
+      </div>
+    </ModalFormulario>
+  );
+}
+
+function PestanaCajaFuerte(): JSX.Element {
+  const saldos = usarRecurso<SaldosCajaGeneral>(() => pedirCg('/api/caja-general/saldos'), []);
+  const [rango, setRango] = useState<RangoFechas>(RANGO_VACIO);
+  const [tipoFiltro, setTipoFiltro] = useState('');
+  const [medioFiltro, setMedioFiltro] = useState('');
+  const [alta, setAlta] = useState<'ingreso' | 'egreso' | null>(null);
+  const [version, setVersion] = useState(0);
+
+  const movimientos = usarRecurso<MovimientoCajaGeneral[]>(() => {
+    const p = new URLSearchParams();
+    if (rango.desde !== '') p.set('desde', rango.desde);
+    if (rango.hasta !== '') p.set('hasta', rango.hasta);
+    if (tipoFiltro !== '') p.set('tipo', tipoFiltro);
+    if (medioFiltro !== '') p.set('medio', medioFiltro);
+    return pedirCg(`/api/caja-general/movimientos?${p.toString()}`);
+  }, [rango.desde, rango.hasta, tipoFiltro, medioFiltro, version]);
+
+  const refrescar = (): void => {
+    saldos.recargar();
+    setVersion((v) => v + 1);
+  };
+
+  const lista = movimientos.datos ?? [];
+  const ingresos = lista.filter((m) => m.tipo !== 'egreso').reduce((s, m) => s + m.monto, 0);
+  const egresos = lista.filter((m) => m.tipo === 'egreso').reduce((s, m) => s + m.monto, 0);
+  const hayFiltros = rango.desde !== '' || rango.hasta !== '' || tipoFiltro !== '' || medioFiltro !== '';
+
+  return (
+    <div className="space-y-4">
+      <Seccion
+        titulo="Saldos de la caja fuerte"
+        acciones={
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAlta('ingreso')}
+              className="h-9 rounded-none border border-menta-500 bg-menta-600 px-4 text-sm font-bold uppercase tracking-wide text-white"
+            >
+              Ingreso
+            </button>
+            <button
+              type="button"
+              onClick={() => setAlta('egreso')}
+              className="h-9 rounded-none border border-peligro-300 bg-white px-4 text-sm font-bold uppercase tracking-wide text-peligro-700"
+            >
+              Egreso
+            </button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <TarjetaIndicador
+            rotulo="Efectivo"
+            valor={formatearMoneda(saldos.datos?.efectivo ?? 0)}
+            detalle="Billetes en la caja fuerte"
+          />
+          <TarjetaIndicador
+            rotulo="Electronico"
+            valor={formatearMoneda(saldos.datos?.electronico ?? 0)}
+            detalle="Transferencias y tarjetas"
+            tono="info"
+          />
+          <TarjetaIndicador
+            rotulo="Cheques en cartera"
+            valor={formatearMoneda(saldos.datos?.chequesEnCartera ?? 0)}
+            detalle={`${formatearEntero(saldos.datos?.cantidadCheques ?? 0)} cheque(s) — todavia no cobrados`}
+            tono="alerta"
+          />
+          <TarjetaIndicador
+            rotulo="Saldo total"
+            valor={formatearMoneda(saldos.datos?.total ?? 0)}
+            detalle="Efectivo + electronico (sin cheques)"
+            tono="positivo"
+          />
+        </div>
+      </Seccion>
+
+      <Seccion titulo="Movimientos">
+        <BarraFiltros
+          rango={rango}
+          alCambiarRango={setRango}
+          selectores={
+            <>
+              <SelectorFiltro
+                valor={tipoFiltro}
+                alCambiar={(v) => setTipoFiltro(String(v))}
+                vacio="Todos los tipos"
+                opciones={[
+                  { valor: 'ingreso', etiqueta: 'Ingresos' },
+                  { valor: 'egreso', etiqueta: 'Egresos' },
+                  { valor: 'desde_caja_diaria', etiqueta: 'Desde caja diaria' },
+                ]}
+              />
+              <SelectorFiltro
+                valor={medioFiltro}
+                alCambiar={(v) => setMedioFiltro(String(v))}
+                vacio="Todos los medios"
+                opciones={[
+                  { valor: 'efectivo', etiqueta: 'Efectivo' },
+                  { valor: 'electronico', etiqueta: 'Electronico' },
+                ]}
+              />
+            </>
+          }
+          resumen={`${lista.length} movimiento(s) · ingresos ${formatearMoneda(ingresos)} · egresos ${formatearMoneda(egresos)}`}
+          alLimpiar={() => {
+            setRango(RANGO_VACIO);
+            setTipoFiltro('');
+            setMedioFiltro('');
+          }}
+          hayFiltros={hayFiltros}
+        />
+        {movimientos.cargando ? (
+          <p className="px-3 py-4 text-sm text-masa-700">Cargando movimientos...</p>
+        ) : lista.length === 0 ? (
+          <p className="rounded-ficha border border-masa-200 bg-white px-3 py-4 text-sm text-masa-700">
+            Sin movimientos en el periodo.
+          </p>
+        ) : (
+          <div className="mt-2 overflow-hidden rounded-ficha border border-masa-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-masa-200 text-left text-micro uppercase tracking-wide text-masa-700">
+                  <th className="px-3 py-2 font-semibold">Fecha</th>
+                  <th className="px-3 py-2 font-semibold">Tipo</th>
+                  <th className="px-3 py-2 font-semibold">Concepto</th>
+                  <th className="px-3 py-2 font-semibold">Categoria</th>
+                  <th className="px-3 py-2 font-semibold">Medio</th>
+                  <th className="px-3 py-2 text-right font-semibold">Monto</th>
+                  <th className="px-3 py-2 text-right font-semibold">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map((m) => (
+                  <tr key={m.id} className="border-b border-masa-100">
+                    <td className="whitespace-nowrap px-3 py-1.5 text-masa-800">{formatearFecha(m.fecha)}</td>
+                    <td className="px-3 py-1.5 text-masa-800">{ETIQUETA_TIPO_CG[m.tipo] ?? m.tipo}</td>
+                    <td className="px-3 py-1.5 text-masa-900">{m.concepto}</td>
+                    <td className="px-3 py-1.5 text-masa-700">
+                      {CATEGORIAS.find((c) => c.valor === m.categoria)?.etiqueta ?? '—'}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <Pastilla texto={m.esEfectivo ? 'Efectivo' : 'Electronico'} tono={m.esEfectivo ? 'positivo' : 'info'} />
+                    </td>
+                    <td
+                      className={[
+                        'px-3 py-1.5 text-right font-mono font-bold tabular-nums',
+                        m.tipo === 'egreso' ? 'text-peligro-600' : 'text-menta-700',
+                      ].join(' ')}
+                    >
+                      {m.tipo === 'egreso' ? '−' : '+'}
+                      {formatearMoneda(m.monto)}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono tabular-nums text-masa-800">
+                      {formatearMoneda(m.saldoTotalDespues)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Seccion>
+
+      {alta !== null && saldos.datos !== null && (
+        <ModalMovimientoCg
+          tipo={alta}
+          saldos={saldos.datos}
+          alCerrar={() => setAlta(null)}
+          alGuardar={() => {
+            setAlta(null);
+            refrescar();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export function PantallaCajaGeneral(): JSX.Element {
+  const [pestania, setPestania] = useState<'caja' | 'cajas'>('caja');
+  const claseTab = (activa: boolean): string =>
+    [
+      'h-10 rounded-none border-b-2 px-4 text-sm font-bold uppercase tracking-wide',
+      activa ? 'border-dulce-500 text-dulce-700' : 'border-transparent text-masa-700 hover:text-masa-900',
+    ].join(' ');
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 border-b border-masa-200">
+        <button type="button" className={claseTab(pestania === 'caja')} onClick={() => setPestania('caja')}>
+          Caja general
+        </button>
+        <button type="button" className={claseTab(pestania === 'cajas')} onClick={() => setPestania('cajas')}>
+          Cajas diarias
+        </button>
+      </div>
+      {pestania === 'caja' ? <PestanaCajaFuerte /> : <PestanaResumenCajas />}
+    </div>
+  );
+}
+
