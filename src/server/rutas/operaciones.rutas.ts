@@ -68,6 +68,9 @@ const esquemaNuevoCheque = z.object({
 
 const esquemaCambioCheque = z.object({
   estado: z.enum(ESTADOS_CHEQUE),
+  // Solo para el endoso: a que proveedor se le entrega el cheque.
+  destinoEntidadTipo: z.enum(['cliente', 'proveedor']).nullable().optional(),
+  destinoEntidadId: z.number().int().positive().nullable().optional(),
 });
 
 const esquemaConfigFiscal = z.object({
@@ -119,6 +122,8 @@ const esquemaNuevaVenta = z.object({
         articuloId: z.number().int().positive(),
         cantidad: z.number().min(0.01).max(1_000_000),
         precioUnitario: z.number().int().min(0),
+        // Regalo explicito: la unica forma de que un renglon salga en $0.
+        bonificado: z.boolean().optional(),
       }),
     )
     .min(1)
@@ -194,12 +199,12 @@ export function registrarRutasOperaciones(app: FastifyInstance): void {
 
   app.patch('/api/cheques/:id/estado', (request: FastifyRequest, reply: FastifyReply) => {
     const { id } = validarOFallar(esquemaId, request.params, 'El identificador del cheque no es valido.');
-    const { estado } = validarOFallar(
+    const cambio = validarOFallar(
       esquemaCambioCheque,
       request.body,
       'El estado enviado no es valido.',
     );
-    const datos = chequesServicio.cambiarEstado(id, estado);
+    const datos = chequesServicio.cambiarEstado(id, cambio);
     return reply.status(200).send({ datos });
   });
 

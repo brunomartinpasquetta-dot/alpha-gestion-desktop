@@ -9,7 +9,15 @@
 import { and, eq, inArray } from 'drizzle-orm';
 
 import { obtenerDb } from '../db/conexion';
-import { articulos, pedidoItems, pedidos, type EstadoPedido, type Pedido } from '../db/schema';
+import {
+  articulos,
+  pedidoItems,
+  pedidoRenglonComponentes,
+  pedidoRenglones,
+  pedidos,
+  type EstadoPedido,
+  type Pedido,
+} from '../db/schema';
 import { ejecutarSeguro } from '../dominio/errores';
 
 export interface ValoresNuevoPedido {
@@ -25,6 +33,18 @@ export interface ValoresNuevoPedido {
     readonly articuloId: number;
     readonly cantidad: number;
     readonly notas: string | null;
+  }>;
+  /**
+   * Renglones del talonario: la verdad comercial (que pidio y como lo pidio).
+   * Van en la MISMA transaccion que la cabecera: se escribian aparte, asi que un
+   * fallo entre las dos dejaba un pedido sin renglones, y la reparacion por
+   * clave de idempotencia devolvia ese pedido roto sin rehacerlos nunca.
+   */
+  readonly renglones?: ReadonlyArray<{
+    readonly presentacionId: number | null;
+    readonly descripcion: string | null;
+    readonly cantidad: number;
+    readonly componentes?: ReadonlyArray<{ readonly articuloId: number; readonly unidades: number }>;
   }>;
 }
 
@@ -59,6 +79,32 @@ export function insertarPedido(valores: ValoresNuevoPedido): Pedido {
             notas: item.notas,
           })
           .run();
+      }
+
+      for (const renglon of valores.renglones ?? []) {
+        const fila = tx
+          .insert(pedidoRenglones)
+          .values({
+            pedidoId: cabecera.id,
+            presentacionId: renglon.presentacionId,
+            descripcion: renglon.descripcion,
+            cantidad: renglon.cantidad,
+          })
+          .returning({ id: pedidoRenglones.id })
+          .all()[0];
+        // La composicion propia del renglon (mezcla a medida, caja con sabores
+        // elegidos) se guarda con el: arma la orden de elaboracion y el remito.
+        if (fila) {
+          for (const componente of renglon.componentes ?? []) {
+            tx.insert(pedidoRenglonComponentes)
+              .values({
+                renglonId: fila.id,
+                articuloId: componente.articuloId,
+                unidades: componente.unidades,
+              })
+              .run();
+          }
+        }
       }
 
       return cabecera;

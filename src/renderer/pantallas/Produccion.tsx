@@ -945,13 +945,21 @@ function ModalFinalizarYEnviar({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-ficha border border-masa-200 bg-white p-4 shadow-xl">
+      {/*
+        max-h + columna: con varias tandas la lista crecia sin tope y en una
+        pantalla de 768px los botones quedaban DEBAJO del borde, asi que el
+        pedido no se podia finalizar. Ahora scrollea la lista y los botones
+        quedan siempre a la vista.
+      */}
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-ficha border border-masa-200 bg-white shadow-xl">
+        <div className="shrink-0 p-4 pb-2">
         <h2 className="text-lg font-bold text-masa-900">Finalizar y enviar a stock</h2>
         <p className="mt-0.5 text-sm text-masa-700">
           Pedido #{pedido.id}{pedido.clienteNombre !== null ? ` — ${pedido.clienteNombre}` : ''}. Ajusta la
           cantidad REAL que salio de cada tanda antes de que entre al deposito.
         </p>
-        <div className="mt-3 space-y-2">
+        </div>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4">
           {ordenes.map((o) => (
             <div key={o.id} className="flex items-center gap-3 rounded-ficha border border-masa-200 px-3 py-2">
               <span className="min-w-0 flex-1 text-sm text-masa-900">
@@ -977,10 +985,11 @@ function ModalFinalizarYEnviar({
             </div>
           ))}
         </div>
+        <div className="shrink-0 border-t border-masa-200 p-4">
         {error !== null && (
-          <p className="mt-2 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">{error}</p>
+          <p className="mb-2 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">{error}</p>
         )}
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="flex justify-end gap-2">
           <button type="button" onClick={alCerrar} disabled={guardando}
             className="h-10 rounded-none border border-masa-300 bg-white px-4 text-sm font-bold uppercase text-masa-800">
             Cancelar
@@ -989,6 +998,7 @@ function ModalFinalizarYEnviar({
             className="h-10 rounded-none border border-menta-500 bg-menta-600 px-4 text-sm font-bold uppercase text-white disabled:opacity-30">
             {guardando ? 'Enviando...' : 'Enviar a stock'}
           </button>
+        </div>
         </div>
       </div>
     </div>

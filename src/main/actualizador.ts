@@ -23,6 +23,9 @@
  * electron-builder.yml, y poner MAC_TIENE_FIRMA en true.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { app, BrowserWindow, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 
@@ -54,8 +57,27 @@ const URL_RELEASES_WEB = `https://github.com/${REPO_GITHUB.owner}/${REPO_GITHUB.
  */
 let ultimoErrorAutomatico: string | null = null;
 
+/**
+ * Anota lo que hace el actualizador, en consola Y en un archivo.
+ *
+ * Solo iba a consola, y en la app instalada esa salida se descarta: cuando la
+ * actualizacion fallaba en la maquina del cliente, el cartel decia que fallo
+ * pero el motivo no quedaba en ningun lado. Sin eso hay que adivinar por
+ * telefono. Ahora el duenio abre un archivo y lee que paso.
+ */
 function registrar(mensaje: string): void {
   console.info(`[actualizador] ${mensaje}`);
+  try {
+    const carpeta = path.join(app.getPath('appData'), 'alfajores-erp');
+    fs.mkdirSync(carpeta, { recursive: true });
+    fs.appendFileSync(
+      path.join(carpeta, 'actualizaciones.log'),
+      `[${new Date().toISOString()}] ${mensaje}\n`,
+      'utf8',
+    );
+  } catch {
+    // Sin log se sigue igual: nunca puede tumbar el arranque.
+  }
 }
 
 /** Compara "1.2.10" contra "1.2.9" numericamente, no alfabeticamente. */

@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
+import { esRemota } from '../plugins/guardia-pin';
 import {
   consultasServicio,
   LIMITE_MOVIMIENTOS_DEFAULT,
@@ -22,6 +23,7 @@ import { responderConDatos } from '../asistente/consultas';
 import { answerQuestion as responderPregunta } from '../asistente/motor';
 import { cajaGeneralServicio } from '../servicios/caja-general.servicio';
 import { presentacionesServicio } from '../servicios/presentaciones.servicio';
+import { promocionesServicio } from '../servicios/promociones.servicio';
 import { stockServicio } from '../servicios/stock.servicio';
 
 function validarOFallar<T>(esquema: z.ZodType<T>, datos: unknown, mensaje: string): T {
@@ -116,6 +118,10 @@ export function registrarRutasModulos(app: FastifyInstance): void {
   // Medios de pago activos, en el orden del PDV. El renderer arma con esto
   // las filas del pago mixto.
   // Catalogo de presentaciones para el talonario de pedidos.
+  app.get('/api/promociones', (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({ datos: promocionesServicio.listar() });
+  });
+
   app.get('/api/presentaciones', (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.status(200).send({ datos: presentacionesServicio.listar() });
   });
@@ -218,8 +224,29 @@ export function registrarRutasModulos(app: FastifyInstance): void {
 
   /* -------------------------------- Maestros ----------------------------- */
 
-  app.get('/api/clientes', (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.status(200).send({ datos: consultasServicio.listarClientes() });
+  app.get('/api/clientes', (request: FastifyRequest, reply: FastifyReply) => {
+    const todos = consultasServicio.listarClientes();
+    /*
+     * Desde la red va el catalogo PELADO. La PWA de pedidos solo usa id, nombre
+     * y vendedorId; mandaba ademas CUIT, telefono, direccion, email, limite de
+     * credito y saldo de cuenta corriente de TODOS los clientes. Eso es la
+     * cartera del negocio viajando por internet para que un celular arme un
+     * combo desplegable.
+     */
+    if (esRemota(request)) {
+      return reply.status(200).send({
+        datos: todos
+          .filter((cliente) => cliente.activo)
+          .map((cliente) => ({
+            id: cliente.id,
+            nombre: cliente.nombre,
+            vendedorId: cliente.vendedorId ?? null,
+            listaPrecioId: cliente.listaPrecioId ?? null,
+            activo: true,
+          })),
+      });
+    }
+    return reply.status(200).send({ datos: todos });
   });
 
   app.get('/api/proveedores', (_request: FastifyRequest, reply: FastifyReply) => {

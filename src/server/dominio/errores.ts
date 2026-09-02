@@ -56,10 +56,23 @@ export class ErrorConflicto extends ErrorDominio {
   }
 }
 
-/** Fallo tecnico al acceder a la base (500), envuelto para no filtrar SQL crudo. */
+/**
+ * Fallo tecnico al acceder a la base (500).
+ *
+ * El detalle del driver NO viaja al cliente. Decia envolverlo "para no filtrar
+ * SQL crudo", pero pasaba `causa.message` como detalles, que es exactamente el
+ * mensaje de SQLite: nombres de tablas y columnas, constraints, a veces la ruta
+ * del archivo. Eso se serializaba en la respuesta y salia tambien por el tunel,
+ * o sea a internet. Ahora queda en `causaTecnica`, que el manejador de errores
+ * escribe en el log del servidor y nunca manda en el cuerpo.
+ */
 export class ErrorDatos extends ErrorDominio {
+  readonly causaTecnica: string | undefined;
+
   constructor(mensaje: string, causa?: unknown) {
-    super('ERROR_DATOS', mensaje, causa instanceof Error ? causa.message : causa);
+    super('ERROR_DATOS', mensaje);
+    this.causaTecnica =
+      causa instanceof Error ? causa.message : causa === undefined ? undefined : String(causa);
   }
 }
 

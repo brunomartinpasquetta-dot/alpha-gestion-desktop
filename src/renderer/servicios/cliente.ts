@@ -67,6 +67,10 @@ import type {
   OrdenProduccionVista,
   PedidoVista,
   PresentacionVista,
+  DetalleCuentaCorrienteVista,
+  SimulacionImputacion,
+  PromocionVista,
+  EntradaPromocion,
   ProveedorVista,
   RecetaVista,
   RespuestaSalud,
@@ -317,16 +321,53 @@ export async function crearCheque(entrada: EntradaNuevoCheque): Promise<void> {
   if (!respuesta.ok) throw errorDesdeRespuesta('/api/cheques', respuesta, cuerpo);
 }
 
-export async function cambiarEstadoCheque(chequeId: number, estado: string): Promise<void> {
+export async function cambiarEstadoCheque(
+  chequeId: number,
+  estado: string,
+  /** Solo en el endoso: el proveedor al que se le entrega el cheque. */
+  destinoProveedorId?: number | null,
+): Promise<void> {
   const ruta = `/api/cheques/${chequeId}/estado`;
   const respuesta = await fetch(ruta, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ estado }),
+    body: JSON.stringify(
+      destinoProveedorId === undefined || destinoProveedorId === null
+        ? { estado }
+        : { estado, destinoEntidadTipo: 'proveedor', destinoEntidadId: destinoProveedorId },
+    ),
   });
   const cuerpo = await leerJson(respuesta, ruta);
   if (!respuesta.ok) throw errorDesdeRespuesta(ruta, respuesta, cuerpo);
 }
+
+export const obtenerDetalleCuentaCorriente = (
+  entidadTipo: 'cliente' | 'proveedor',
+  entidadId: number,
+): Promise<DetalleCuentaCorrienteVista> =>
+  pedirItem<DetalleCuentaCorrienteVista>(`/api/cc/${entidadTipo}/${entidadId}/detalle`);
+
+export const simularImputacion = (
+  entidadTipo: 'cliente' | 'proveedor',
+  entidadId: number,
+  importe: number,
+): Promise<SimulacionImputacion> =>
+  pedirItem<SimulacionImputacion>(`/api/cc/${entidadTipo}/${entidadId}/imputacion/${importe}`);
+
+export const obtenerPromociones = (): Promise<PromocionVista[]> =>
+  pedirLista<PromocionVista>('/api/promociones');
+
+export const crearPromocion = (entrada: EntradaPromocion): Promise<{ id: number }> =>
+  enviar<{ id: number }>('/api/promociones', 'POST', entrada);
+
+export const actualizarPromocion = (id: number, entrada: EntradaPromocion): Promise<{ id: number }> =>
+  enviar<{ id: number }>(`/api/promociones/${id}`, 'PUT', entrada);
+
+export const cambiarActivoPromocion = (
+  id: number,
+  activo: boolean,
+): Promise<{ id: number; activo: boolean }> =>
+  enviar<{ id: number; activo: boolean }>(`/api/promociones/${id}/activo`, 'PATCH', { activo });
 
 export const obtenerMediosPago = (): Promise<MedioPagoVista[]> =>
   pedirLista<MedioPagoVista>('/api/medios-pago');
@@ -475,6 +516,11 @@ export const crearOrdenProduccion = (entrada: EntradaNuevaOrden): Promise<{ id: 
 
 export const ajustarStock = (entrada: EntradaAjusteStock): Promise<ResultadoAjuste> =>
   enviar<ResultadoAjuste>('/api/stock/ajustes', 'POST', entrada);
+
+export const ajustarStockEnLote = (
+  ajustes: readonly EntradaAjusteStock[],
+): Promise<{ aplicados: number }> =>
+  enviar<{ aplicados: number }>('/api/stock/ajustes/lote', 'POST', { ajustes });
 
 export const crearReceta = (entrada: EntradaReceta): Promise<{ id: number }> =>
   enviar<{ id: number }>('/api/recetas', 'POST', entrada);

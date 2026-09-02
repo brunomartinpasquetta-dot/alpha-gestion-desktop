@@ -14,6 +14,7 @@ import { obtenerDb } from '../db/conexion';
 import { TIPOS_ARTICULO, unidadesMedida } from '../db/schema';
 import { ErrorValidacion } from '../dominio/errores';
 import { formatearIssuesZod } from '../plugins/manejador-errores';
+import { esRemota } from '../plugins/guardia-pin';
 import { stockServicio } from '../servicios/stock.servicio';
 
 /** Los querystring llegan siempre como texto: aceptamos las cuatro formas usuales. */
@@ -56,6 +57,18 @@ export function registrarRutasArticulos(app: FastifyInstance): void {
       ...(consulta.tipo !== undefined ? { tipo: consulta.tipo } : {}),
       ...(consulta.grupo !== undefined ? { grupo: consulta.grupo } : {}),
     });
+
+    /*
+     * El catalogo que sale a la red va SIN COSTOS. La PWA de pedidos necesita
+     * saber que se vende y cuanto hay, no cuanto sale producirlo: el costo y el
+     * margen son el dato que el negocio justamente no quiere que salga de la
+     * fabrica.
+     */
+    if (esRemota(request)) {
+      return reply.status(200).send({
+        datos: datos.map(({ costoActual: _costo, ...resto }) => resto),
+      });
+    }
 
     return reply.status(200).send({ datos });
   });

@@ -6,7 +6,7 @@
  * fila. Los estados terminales (acreditado, endosado, anulado) van al historial.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 
 import {
@@ -27,8 +27,10 @@ import {
   cambiarEstadoCheque,
   crearCheque,
   obtenerCheques,
+  obtenerProveedores,
   obtenerResumenCartera,
 } from '../servicios/cliente';
+import type { ProveedorVista } from '../../compartido/contratos';
 import { aCentavos, formatearFecha, formatearMoneda } from '../utiles/formato';
 
 type Pestana = 'recibidos' | 'emitidos' | 'historial';
@@ -57,6 +59,9 @@ export function PantallaCheques(): JSX.Element {
   const resumen = usarRecurso<ResumenCartera>(() => obtenerResumenCartera(), []);
   const [pestana, setPestana] = useState<Pestana>('recibidos');
   const [modalAlta, setModalAlta] = useState(false);
+  // El endoso no se puede resolver con un click: hay que saber a QUIEN se le
+  // entrega el cheque, porque ese endoso le baja la deuda al proveedor.
+  const [endosando, setEndosando] = useState<ChequeVista | null>(null);
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
 
   const recargarTodo = (): void => {
@@ -67,6 +72,18 @@ export function PantallaCheques(): JSX.Element {
 
   const aplicarTransicion = (cheque: ChequeVista, destino: EstadoCheque): void => {
     if (destino === 'anulado' && !window.confirm(`¿Anular el cheque ${cheque.numero}?`)) return;
+    if (destino === 'endosado') {
+      setEndosando(cheque);
+      return;
+    }
+    if (destino === 'rechazado' && cheque.tipo === 'recibido') {
+      const aviso =
+        `El cheque ${cheque.numero} vuelve como rechazado.` +
+        (cheque.entidadTipo === 'cliente'
+          ? ' La deuda de la cuenta corriente se regenera automaticamente. ¿Confirmas?'
+          : ' No esta vinculado a un cliente, asi que la deuda hay que asentarla a mano. ¿Confirmas?');
+      if (!window.confirm(aviso)) return;
+    }
     setErrorAccion(null);
     cambiarEstadoCheque(cheque.id, destino)
       .then(recargarTodo)
@@ -164,6 +181,19 @@ export function PantallaCheques(): JSX.Element {
           )
         }
       </Vista>
+
+      {endosando !== null && (
+        <FormularioEndoso
+          cheque={endosando}
+          alCerrar={() => setEndosando(null)}
+          alConfirmar={(proveedorId) =>
+            cambiarEstadoCheque(endosando.id, 'endosado', proveedorId).then(() => {
+              setEndosando(null);
+              recargarTodo();
+            })
+          }
+        />
+      )}
 
       {modalAlta && (
         <FormularioAlta
@@ -421,6 +451,119 @@ function FormularioAlta({
             {guardando ? 'Guardando...' : 'Guardar cheque'}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Endoso: a que proveedor se le entrega el cheque. Sin este dato el sistema
+ * marcaba el cheque como endosado y la deuda del proveedor quedaba intacta:
+ * habiamos pagado y seguiamos debiendo.
+ */
+function FormularioEndoso({
+  cheque,
+  alCerrar,
+  alConfirmar,
+}: {
+  readonly cheque: ChequeVista;
+  readonly alCerrar: () => void;
+  readonly alConfirmar: (proveedorId: number) => Promise<void>;
+}): JSX.Element {
+  const [proveedores, setProveedores] = useState<ProveedorVista[]>([]);
+  const [proveedorId, setProveedorId] = useState<number | ''>('');
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    obtenerProveedores()
+      .then((lista) => setProveedores(lista.filter((p) => p.activo)))
+      .catch((causa: unknown) => setError(causa instanceof Error ? causa.message : String(causa)));
+  }, []);
+
+  const elegido = proveedores.find((p) => p.id === proveedorId);
+  const deuda = elegido === undefined ? 0 : -elegido.saldoCc;
+
+  const confirmar = (): void => {
+    if (proveedorId === '' || guardando) return;
+    setGuardando(true);
+    setError(null);
+    alConfirmar(proveedorId).catch((causa: unknown) => {
+      setError(causa instanceof Error ? causa.message : String(causa));
+      setGuardando(false);
+    });
+  };
+
+  const campo =
+    'h-10 w-full rounded-ficha border border-masa-300 bg-white px-3 text-sm text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400';
+  const rotulo = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-masa-900/50 p-4"
+      onMouseDown={alCerrar}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-ficha border-2 border-masa-300 bg-white shadow-xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="border-b border-masa-200 px-4 py-3">
+          <h2 className="text-base font-semibold text-masa-900">Endosar cheque {cheque.numero}</h2>
+          <p className="mt-0.5 text-sm text-masa-700">
+            Se le entrega a un proveedor por {formatearMoneda(cheque.importe)}: le baja la deuda por ese importe.
+          </p>
+        </header>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          <div>
+            <label className={rotulo} htmlFor="endoso-proveedor">
+              Proveedor
+            </label>
+            <select
+              id="endoso-proveedor"
+              className={campo}
+              value={proveedorId}
+              onChange={(e) => setProveedorId(e.target.value === '' ? '' : Number(e.target.value))}
+            >
+              <option value="">Elegi el proveedor</option>
+              {proveedores.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {elegido !== undefined && (
+            <p className="rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2 text-sm text-masa-800">
+              Le debemos <strong className="font-mono">{formatearMoneda(Math.max(deuda, 0))}</strong>
+              {cheque.importe > deuda && deuda >= 0 && ' — el cheque supera la deuda y queda saldo a favor nuestro.'}
+            </p>
+          )}
+
+          {error !== null && (
+            <p className="rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-700">
+              {error}
+            </p>
+          )}
+        </div>
+
+        <footer className="flex shrink-0 justify-end gap-2 border-t border-masa-200 px-4 py-3">
+          <button type="button" className="h-10 px-4 text-sm text-masa-800" onClick={alCerrar}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="h-10 bg-dulce-700 px-4 text-sm font-semibold text-white disabled:opacity-50"
+            disabled={proveedorId === '' || guardando}
+            onClick={confirmar}
+          >
+            {guardando ? 'Endosando…' : 'Endosar'}
+          </button>
+        </footer>
       </div>
     </div>
   );

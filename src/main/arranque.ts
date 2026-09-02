@@ -57,7 +57,23 @@ function anotarYAvisar(origen: string, error: unknown): void {
   app.exit(1);
 }
 
-process.on('uncaughtException', (error) => anotarYAvisar('uncaughtException', error));
+/*
+ * Este guardia es SOLO PARA EL ARRANQUE. Node ejecuta todos los handlers de
+ * uncaughtException registrados, en orden, y este se registra primero: como
+ * termina en app.exit(1), se llevaba puesta la aplicacion ante cualquier
+ * excepcion no capturada del resto de la sesion —un throw dentro de un listener
+ * de ipcMain, un "Object has been destroyed" al escribir en una ventana recien
+ * cerrada— y el guardia de ciclo-vida.ts, que existe justamente para que la app
+ * NO se caiga por eso, nunca llegaba a correr: era codigo muerto.
+ *
+ * Una vez que la app esta lista, este handler se hace a un lado. Antes de eso
+ * si tiene que matar el proceso: sin ventana ni base no hay nada que sostener,
+ * y el cartel es lo unico que le explica al operador que paso.
+ */
+process.on('uncaughtException', (error) => {
+  if (app.isReady()) return;
+  anotarYAvisar('uncaughtException', error);
+});
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

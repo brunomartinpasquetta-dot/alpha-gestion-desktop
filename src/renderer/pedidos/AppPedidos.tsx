@@ -158,6 +158,21 @@ export function AppPedidos(): JSX.Element {
       return envio;
     });
     setEnCola(resultado.quedan);
+    /*
+     * Un pedido descartado se AVISA. Antes se borraba en silencio: el vendedor
+     * lo daba por enviado y el unico que se enteraba era el cliente cuando no
+     * le llegaba la mercaderia. El aviso de error pisa al de exito a proposito:
+     * es lo que hay que leer.
+     */
+    if (resultado.descartados.length > 0) {
+      setAviso({
+        tono: 'mal',
+        texto:
+          `${resultado.descartados.length === 1 ? 'Un pedido no se pudo enviar' : `${resultado.descartados.length} pedidos no se pudieron enviar`} ` +
+          `y se descartaron: ${resultado.descartados.join(' · ')}. Cargalos de nuevo.`,
+      });
+      return;
+    }
     if (resultado.enviados > 0) {
       setAviso({
         tono: 'ok',
@@ -815,7 +830,7 @@ function PantallaPin({ alGuardar }: { readonly alGuardar: (pin: string) => void 
   const [valor, setValor] = useState(() => leerPin());
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-masa-900/50 p-6">
-      <div className="w-full max-w-sm rounded-panel bg-white p-5">
+      <div className="max-h-[92vh] w-full max-w-sm overflow-y-auto rounded-panel bg-white p-5">
         <h2 className="text-lg font-bold text-masa-900">PIN de la fabrica</h2>
         <p className="mt-1 text-sm text-masa-700">
           La carga de pedidos esta protegida. Ingresa el PIN configurado en el sistema.

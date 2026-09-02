@@ -32,6 +32,7 @@ export interface FilaCaja {
   usuario: string | null;
   totalIngresos: number;
   totalEgresos: number;
+  netoEfectivo: number;
 }
 
 /** Proyeccion unica: la comparten el listado y la busqueda de la caja abierta. */
@@ -51,6 +52,18 @@ const COLUMNAS_CAJA = {
     ),
   totalEgresos:
     sql<number>`COALESCE(SUM(CASE WHEN ${cajaMovimientos.tipo} = 'egreso' THEN ${cajaMovimientos.monto} ELSE 0 END), 0)`.mapWith(
+      Number,
+    ),
+  /*
+   * Neto de EFECTIVO FISICO, que es contra lo que se arquea el cajon.
+   * La pantalla mostraba apertura + ingresos - egresos con TODO adentro
+   * (transferencias, tarjetas), y al cerrar el servidor comparaba los billetes
+   * contados contra este otro numero: el modal anunciaba un faltante que no
+   * existia, del tamanio de lo cobrado por medios electronicos.
+   * Se calcula aca, con la misma condicion que usa saldoTeorico() al cerrar.
+   */
+  netoEfectivo:
+    sql<number>`COALESCE(SUM(CASE WHEN (${cajaMovimientos.medioPagoId} IS NULL OR ${cajaMovimientos.medioPagoId} IN (SELECT id FROM medios_pago WHERE es_efectivo_fisico = 1)) THEN (CASE WHEN ${cajaMovimientos.tipo} = 'ingreso' THEN ${cajaMovimientos.monto} ELSE -${cajaMovimientos.monto} END) ELSE 0 END), 0)`.mapWith(
       Number,
     ),
 };

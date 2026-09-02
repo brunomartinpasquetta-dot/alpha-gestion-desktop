@@ -1,0 +1,12 @@
+--> NO-OP A PROPOSITO. No borrar.
+--> Las migraciones 0019 (CHECK de cuentas_corrientes con 'cheque') y 0020
+--> (columnas de promocion en presentaciones) se escribieron A MANO, porque
+--> drizzle-kit genera un SELECT roto al recrear una tabla. Al escribirlas a
+--> mano quedaron sin su snapshot en drizzle/meta, y el generador seguia
+--> comparando contra el estado de 0018: volvia a proponer esos mismos cambios,
+--> que en una base al dia fallan con "duplicate column name" y abortan el
+--> arranque de la app.
+--> Estos dos archivos existen solo para que su snapshot fije el estado REAL del
+--> schema. El SELECT 1 esta porque el migrador rechaza un archivo sin ninguna
+--> sentencia: no hay nada que aplicar, los cambios ya los hacen 0019 y 0020.
+SELECT 1;

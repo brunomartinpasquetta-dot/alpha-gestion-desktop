@@ -12,7 +12,7 @@
  * porque el operador que ya usa aquel sistema no tiene que reaprender nada.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileSpreadsheet, History, Pencil, Plus, Printer, Search, Trash2, X } from 'lucide-react';
 
 import {
@@ -32,6 +32,7 @@ import { Aviso } from '../componentes/Formulario';
 import { PanelLedger } from '../componentes/PanelLedger';
 import {
   actualizarArticulo,
+  ajustarStock,
   cambiarActivoArticulo,
   crearArticulo,
   crearFamilia,
@@ -59,6 +60,13 @@ interface EstadoFormulario {
   unidadBaseId: number | '';
   unidadesPorCaja: string;
   costoActual: string;
+  /**
+   * Stock en mano. Es un LEDGER: no se guarda, se ajusta. Si el operador lo
+   * cambia, al guardar se asienta un ajuste por la diferencia, que queda en el
+   * historial con su motivo. Escribirlo derecho romperia la regla de que el
+   * stock siempre sale de sumar movimientos.
+   */
+  stockActual: string;
   stockMin: string;
   stockIdeal: string;
   porPeso: boolean;
@@ -79,6 +87,7 @@ const FORMULARIO_VACIO: EstadoFormulario = {
   unidadBaseId: '',
   unidadesPorCaja: '12',
   costoActual: '',
+  stockActual: '',
   stockMin: '',
   stockIdeal: '',
   porPeso: false,
@@ -99,6 +108,7 @@ function aFormulario(a: ArticuloConStock, precios: PrecioDeArticulo[]): EstadoFo
     unidadBaseId: a.unidadBaseId,
     unidadesPorCaja: a.unidadesPorCaja === null ? '' : String(a.unidadesPorCaja),
     costoActual: a.costoActual === null ? '' : String(a.costoActual / 100),
+    stockActual: String(a.stock),
     stockMin: a.stockMin === null ? '' : String(a.stockMin),
     stockIdeal: a.stockIdeal === null ? '' : String(a.stockIdeal),
     porPeso: a.porPeso,
@@ -130,8 +140,20 @@ function mensajeDeError(causa: unknown): string {
 /* Piezas visuales                                                            */
 /* -------------------------------------------------------------------------- */
 
+/*
+ * Campos compactos. Estaban en h-9 (36 px) con padding de sobra: para un codigo
+ * de 6 caracteres o un IVA de dos digitos eso es el doble de lo que el dato
+ * necesita, y la ficha entera quedaba desproporcionada y con menos renglones a
+ * la vista. A h-7 (28 px) entra lo mismo y se lee mejor de un pantallazo.
+ */
+/**
+ * Las dos listas que se usan todos los dias y van adelante en la ficha, en este
+ * orden. El resto se muestra al final, agrupado.
+ */
+const LISTAS_PRINCIPALES: readonly string[] = ['General', 'Mayorista'];
+
 const CLASE_INPUT =
-  'h-9 w-full rounded-ficha border border-masa-300 bg-white px-2 text-sm text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400 disabled:bg-masa-100 disabled:text-masa-700';
+  'h-7 w-full rounded-ficha border border-masa-300 bg-white px-1.5 text-sm leading-none text-masa-900 outline-none focus-visible:ring-2 focus-visible:ring-dulce-400 disabled:bg-masa-100 disabled:text-masa-700';
 
 /** Campo con su rotulo, ocupando N columnas de la grilla de 12. */
 function Campo({
@@ -145,7 +167,7 @@ function Campo({
 }): JSX.Element {
   return (
     <div className={columnas}>
-      <label className="mb-1 block text-micro font-semibold uppercase tracking-wide text-masa-700">
+      <label className="mb-0.5 block text-micro font-semibold uppercase tracking-wide text-masa-700">
         {rotulo}
       </label>
       {children}
@@ -156,7 +178,7 @@ function Campo({
 /** Valor calculado, no editable. Se ve distinto de un campo a proposito. */
 function ValorCalculado({ children }: { readonly children: React.ReactNode }): JSX.Element {
   return (
-    <div className="flex h-9 items-center rounded-ficha border border-dashed border-masa-300 bg-masa-50 px-2 font-mono text-sm tabular-nums text-masa-800">
+    <div className="flex h-7 items-center rounded-ficha border border-dashed border-masa-300 bg-masa-50 px-1.5 font-mono text-sm leading-none tabular-nums text-masa-800">
       {children}
     </div>
   );
@@ -319,6 +341,39 @@ export function MaestroArticulos({
     else setForm(FORMULARIO_VACIO);
   };
 
+  /*
+   * Alto de la ficha, en porcentaje de la ventana. Se arrastra desde el borde
+   * de arriba: con muchas propiedades la ficha quedaba corta y habia que
+   * scrollear adentro de un recuadro chico. Queda guardado, asi que cada uno
+   * lo deja como le sirve y no lo tiene que reacomodar cada vez.
+   */
+  const [altoFicha, setAltoFicha] = useState<number>(() => {
+    const guardado = Number(localStorage.getItem('alpha-alto-ficha-articulo'));
+    return Number.isFinite(guardado) && guardado >= 20 && guardado <= 85 ? guardado : 34;
+  });
+
+  const arrastrarDivisor = (evento: React.MouseEvent): void => {
+    evento.preventDefault();
+    const contenedor = evento.currentTarget.parentElement;
+    if (contenedor === null) return;
+    const mover = (e: MouseEvent): void => {
+      const caja = contenedor.getBoundingClientRect();
+      const desdeAbajo = ((caja.bottom - e.clientY) / caja.height) * 100;
+      const acotado = Math.min(85, Math.max(20, desdeAbajo));
+      setAltoFicha(acotado);
+    };
+    const soltar = (): void => {
+      window.removeEventListener('mousemove', mover);
+      window.removeEventListener('mouseup', soltar);
+      setAltoFicha((alto) => {
+        localStorage.setItem('alpha-alto-ficha-articulo', String(Math.round(alto)));
+        return alto;
+      });
+    };
+    window.addEventListener('mousemove', mover);
+    window.addEventListener('mouseup', soltar);
+  };
+
   const campo = <C extends keyof EstadoFormulario>(clave: C, valor: EstadoFormulario[C]): void =>
     setForm((f) => ({ ...f, [clave]: valor }));
 
@@ -377,6 +432,27 @@ export function MaestroArticulos({
           : [];
       if (precios.length > 0) await fijarPreciosDeArticulo(guardado.id, precios);
 
+      /*
+       * El stock no se guarda: se AJUSTA. Si el operador escribio una cantidad
+       * distinta de la que hay, se asienta un movimiento por la diferencia, con
+       * su motivo, y el ledger sigue siendo la unica fuente del stock. Escribir
+       * el numero derecho en el articulo romperia esa regla y dejaria un stock
+       * que no coincide con la suma de sus movimientos.
+       */
+      let avisoStock = '';
+      if (modo !== 'crear' && seleccionado !== null && form.stockActual.trim() !== '') {
+        const deseado = Number(form.stockActual.replace(',', '.'));
+        const diferencia = Number((deseado - seleccionado.stock).toFixed(3));
+        if (Number.isFinite(deseado) && diferencia !== 0) {
+          await ajustarStock({
+            articuloId: guardado.id,
+            cantidad: diferencia,
+            motivo: `Correccion manual desde la ficha del articulo (de ${seleccionado.stock} a ${deseado})`,
+          });
+          avisoStock = ` Stock ajustado en ${diferencia > 0 ? '+' : ''}${diferencia}.`;
+        }
+      }
+
       const lista = await recargar();
       const actualizado = lista.find((a) => a.id === guardado.id) ?? null;
       setSeleccionadoId(guardado.id);
@@ -385,7 +461,10 @@ export function MaestroArticulos({
         const preciosNuevos = await obtenerPreciosDeArticulo(guardado.id).catch(() => []);
         setForm(aFormulario(actualizado, preciosNuevos));
       }
-      setAviso({ tono: 'ok', texto: `${form.nombre} ${modo === 'crear' ? 'dado de alta' : 'actualizado'}.` });
+      setAviso({
+        tono: 'ok',
+        texto: `${form.nombre} ${modo === 'crear' ? 'dado de alta' : 'actualizado'}.${avisoStock}`,
+      });
     } catch (causa) {
       setAviso({ tono: 'mal', texto: mensajeDeError(causa) });
     } finally {
@@ -700,8 +779,33 @@ export function MaestroArticulos({
       )}
       </div>
 
-      {/* Detalle: siempre visible */}
-      <section className="flex h-[46%] min-h-[330px] shrink-0 flex-col overflow-hidden rounded-ficha border-2 border-masa-300 bg-white">
+      {/* Tirador para agrandar la ficha hacia arriba. Solo aparece cuando hay
+          algo que mirar: sin articulo elegido la ficha es una franja fina. */}
+      {!(modo === 'ver' && seleccionado === null) && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Arrastra para agrandar la ficha"
+          title="Arrastra para agrandar la ficha"
+          onMouseDown={arrastrarDivisor}
+          className="group flex h-2 shrink-0 cursor-row-resize items-center justify-center"
+        >
+          <span className="h-0.5 w-16 rounded-full bg-masa-300 transition-colors group-hover:bg-dulce-500" />
+        </div>
+      )}
+
+      {/* Detalle: siempre visible, pero sin robarle lugar a la grilla. Mientras
+          no hay articulo elegido no tiene nada que mostrar, asi que se queda en
+          una franja fina y la lista se lleva toda la ventana; al elegir uno (o
+          al cargar/editar) se abre al alto que el usuario haya dejado. */}
+      <section
+        style={
+          modo === 'ver' && seleccionado === null ? undefined : { height: `${altoFicha}%` }
+        }
+        className={`flex shrink-0 flex-col overflow-hidden rounded-ficha border-2 border-masa-300 bg-white ${
+          modo === 'ver' && seleccionado === null ? 'h-auto' : 'min-h-[200px]'
+        }`}
+      >
         <header className="flex shrink-0 items-center justify-between border-b border-masa-200 px-3 py-2">
           <h2 className="text-sm font-semibold text-masa-900">
             {modo === 'crear' && 'Nuevo articulo'}
@@ -842,8 +946,14 @@ export function MaestroArticulos({
               </select>
             </Campo>
 
-            {/* Costo, IVA y precios por lista con su utilidad */}
-            <Campo columnas="col-span-3" rotulo="P. Costo">
+            {/*
+              Orden de la ficha, pedido por el duenio y pensado para como se
+              lee: primero lo que decide el precio (costo, utilidad y precio de
+              las dos listas que se usan todos los dias), despues el IVA, y
+              recien ahi el stock. Las demas listas quedan al final, que es
+              donde se miran solo cuando hacen falta.
+            */}
+            <Campo columnas="col-span-2" rotulo="P. Costo">
               <input
                 value={form.costoActual}
                 onChange={(e) => campo('costoActual', e.target.value)}
@@ -853,6 +963,41 @@ export function MaestroArticulos({
                 className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
               />
             </Campo>
+
+            {/* Las dos listas de todos los dias, cada una con su utilidad
+                DELANTE del precio: primero cuanto deja, despues cuanto sale. */}
+            {form.tipo === 'producto_terminado' &&
+              LISTAS_PRINCIPALES.map((nombreLista) => {
+                const precio = form.precios.find((x) => x.listaNombre === nombreLista);
+                if (precio === undefined) return null;
+                return (
+                  <Fragment key={precio.listaPrecioId}>
+                    <Campo columnas="col-span-2" rotulo={`Util. ${nombreLista}`}>
+                      <ValorCalculado>{utilidad(precio.valor, form.costoActual)}</ValorCalculado>
+                    </Campo>
+                    <Campo columnas="col-span-2" rotulo={`P. ${nombreLista}`}>
+                      <input
+                        value={precio.valor}
+                        onChange={(e) =>
+                          campo(
+                            'precios',
+                            form.precios.map((x) =>
+                              x.listaPrecioId === precio.listaPrecioId
+                                ? { ...x, valor: e.target.value }
+                                : x,
+                            ),
+                          )
+                        }
+                        disabled={!editando}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
+                      />
+                    </Campo>
+                  </Fragment>
+                );
+              })}
+
             <Campo columnas="col-span-2" rotulo="IVA">
               <select
                 value={form.alicuotaIva}
@@ -867,7 +1012,63 @@ export function MaestroArticulos({
                 ))}
               </select>
             </Campo>
-            <div className="col-span-7" />
+
+            {/* Stock: el de ahora primero, despues los dos limites. */}
+            <Campo columnas="col-span-2" rotulo="Stock">
+              <input
+                value={form.stockActual}
+                onChange={(e) => campo('stockActual', e.target.value)}
+                disabled={!editando || modo === 'crear'}
+                inputMode="decimal"
+                title={
+                  modo === 'crear'
+                    ? 'El stock inicial se carga con un ajuste, despues de crear el articulo.'
+                    : 'Cambiarlo asienta un ajuste por la diferencia, que queda en el historial.'
+                }
+                className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
+              />
+            </Campo>
+            <Campo columnas="col-span-2" rotulo="Stock minimo">
+              <input
+                value={form.stockMin}
+                onChange={(e) => campo('stockMin', e.target.value)}
+                disabled={!editando}
+                inputMode="decimal"
+                className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
+              />
+            </Campo>
+            <Campo columnas="col-span-2" rotulo="Stock ideal">
+              <input
+                value={form.stockIdeal}
+                onChange={(e) => campo('stockIdeal', e.target.value)}
+                disabled={!editando}
+                inputMode="decimal"
+                className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
+              />
+            </Campo>
+            {form.tipo === 'producto_terminado' && (
+              <Campo columnas="col-span-2" rotulo="Unidades por caja">
+                <input
+                  value={form.unidadesPorCaja}
+                  onChange={(e) => campo('unidadesPorCaja', e.target.value)}
+                  disabled={!editando}
+                  inputMode="numeric"
+                  className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
+                />
+              </Campo>
+            )}
+            <Campo columnas="col-span-3" rotulo="Venta por peso">
+              <label className="inline-flex h-7 items-center gap-2 text-sm text-masa-900">
+                <input
+                  type="checkbox"
+                  checked={form.porPeso}
+                  onChange={(e) => campo('porPeso', e.target.checked)}
+                  disabled={!editando}
+                  className="h-4 w-4"
+                />
+                <span>Se vende por peso</span>
+              </label>
+            </Campo>
 
             {/*
               Los precios de venta son SOLO de los productos terminados: los
@@ -875,7 +1076,7 @@ export function MaestroArticulos({
               confunde sobre que hace cada cosa.
             */}
             {form.tipo !== 'producto_terminado' && (
-              <p className="col-span-12 rounded-ficha border border-masa-200 bg-masa-50 px-3 py-2 text-micro text-masa-700">
+              <p className="col-span-12 rounded-ficha border border-masa-200 bg-masa-50 px-3 py-1.5 text-micro text-masa-700">
                 Los insumos no llevan precio de venta: se compran. Lo que importa aca es el{' '}
                 <strong>costo</strong>, que se actualiza solo con cada compra.
               </p>
@@ -887,76 +1088,42 @@ export function MaestroArticulos({
               </p>
             )}
 
-            {/* Un precio por lista, con la utilidad al lado: es el numero que
-                decide si el precio tiene sentido. */}
+            {/* El resto de las listas, al final. */}
             {form.tipo === 'producto_terminado' &&
-              form.precios.map((precio) => (
-              <div key={precio.listaPrecioId} className="col-span-6 grid grid-cols-6 gap-x-3">
-                <Campo columnas="col-span-4" rotulo={`P. ${precio.listaNombre}`}>
-                  <input
-                    value={precio.valor}
-                    onChange={(e) =>
-                      campo(
-                        'precios',
-                        form.precios.map((p) =>
-                          p.listaPrecioId === precio.listaPrecioId ? { ...p, valor: e.target.value } : p,
-                        ),
-                      )
-                    }
-                    disabled={!editando}
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
-                  />
-                </Campo>
-                <Campo columnas="col-span-2" rotulo="Utilidad">
-                  <ValorCalculado>{utilidad(precio.valor, form.costoActual)}</ValorCalculado>
-                </Campo>
-              </div>
-              ))}
-
-            {/* Stock */}
-            <Campo columnas="col-span-3" rotulo="Stock minimo">
-              <input
-                value={form.stockMin}
-                onChange={(e) => campo('stockMin', e.target.value)}
-                disabled={!editando}
-                inputMode="decimal"
-                className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
-              />
-            </Campo>
-            <Campo columnas="col-span-3" rotulo="Stock ideal">
-              <input
-                value={form.stockIdeal}
-                onChange={(e) => campo('stockIdeal', e.target.value)}
-                disabled={!editando}
-                inputMode="decimal"
-                className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
-              />
-            </Campo>
-            {form.tipo === 'producto_terminado' && (
-              <Campo columnas="col-span-3" rotulo="Unidades por caja">
-                <input
-                  value={form.unidadesPorCaja}
-                  onChange={(e) => campo('unidadesPorCaja', e.target.value)}
-                  disabled={!editando}
-                  inputMode="numeric"
-                  className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
-                />
-              </Campo>
-            )}
-            <Campo columnas="col-span-3" rotulo="Venta por peso">
-              <label className="inline-flex h-9 items-center gap-2 text-sm text-masa-900">
-                <input
-                  type="checkbox"
-                  checked={form.porPeso}
-                  onChange={(e) => campo('porPeso', e.target.checked)}
-                  disabled={!editando}
-                  className="h-4 w-4"
-                />
-                <span>Se vende por peso</span>
-              </label>
-            </Campo>
+              form.precios.filter((x) => !LISTAS_PRINCIPALES.includes(x.listaNombre)).length > 0 && (
+                <p className="col-span-12 mt-1 text-micro font-semibold uppercase tracking-wide text-masa-700">
+                  Otras listas de precio
+                </p>
+              )}
+            {form.tipo === 'producto_terminado' &&
+              form.precios
+                .filter((x) => !LISTAS_PRINCIPALES.includes(x.listaNombre))
+                .map((precio) => (
+                  <div key={precio.listaPrecioId} className="col-span-4 grid grid-cols-4 gap-x-2">
+                    <Campo columnas="col-span-2" rotulo={`P. ${precio.listaNombre}`}>
+                      <input
+                        value={precio.valor}
+                        onChange={(e) =>
+                          campo(
+                            'precios',
+                            form.precios.map((x) =>
+                              x.listaPrecioId === precio.listaPrecioId
+                                ? { ...x, valor: e.target.value }
+                                : x,
+                            ),
+                          )
+                        }
+                        disabled={!editando}
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        className={`${CLASE_INPUT} text-right font-mono tabular-nums`}
+                      />
+                    </Campo>
+                    <Campo columnas="col-span-2" rotulo="Utilidad">
+                      <ValorCalculado>{utilidad(precio.valor, form.costoActual)}</ValorCalculado>
+                    </Campo>
+                  </div>
+                ))}
 
             {/* Notas */}
             <Campo columnas="col-span-12" rotulo="Notas">

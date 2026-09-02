@@ -155,7 +155,12 @@ export function BarraAccesos({
     // h-24/h-20: el tile apila icono (28) + etiqueta (14) + tecla (18) con sus
     // separaciones = 68px; el alto anterior (64px) no alcanzaba y la tecla
     // F1/F2 se montaba sobre el texto.
-    <div className="flex h-24 shrink-0 items-center gap-1.5 overflow-x-auto border-b border-masa-200 bg-white px-3">
+    // Los 12 accesos se REPARTEN el ancho disponible en vez de tener uno fijo.
+    // Con 112px cada uno sumaban ~1400px y en el monitor de la fabrica (1366)
+    // no entraban: aparecia una barra de scroll y el ultimo modulo quedaba
+    // cortado. Ahora se comprimen hasta 68px, que es lo que necesita el icono
+    // con su tecla, y en una pantalla grande se ven igual que antes.
+    <div className="flex h-24 shrink-0 items-center gap-1 border-b border-masa-200 bg-white px-2">
       {ACCESOS_DIRECTOS.map((acceso) => {
         const definicion = definicionDeModulo(acceso.clave);
         return (
@@ -168,7 +173,7 @@ export function BarraAccesos({
             // (5.25rem) la envolvia a dos lineas, aplastando el icono dentro del
             // alto fijo del tile. Con 112px la etiqueta mas larga entra en una
             // linea y el icono conserva siempre su tamaño completo.
-            className="group flex h-20 w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-ficha px-1 outline-none transition-colors hover:bg-dulce-500 hover:text-white focus-visible:bg-dulce-500 focus-visible:text-white"
+            className="group flex h-20 min-w-[68px] max-w-28 flex-1 basis-0 flex-col items-center justify-center gap-1 rounded-ficha px-1 outline-none transition-colors hover:bg-dulce-500 hover:text-white focus-visible:bg-dulce-500 focus-visible:text-white"
           >
             <Icono
               nombre={definicion.icono}
@@ -230,39 +235,13 @@ export function BarraEstado({
         </span>
       </div>
 
+      {/* Solo lo que le sirve a quien trabaja: si el sistema responde y, si
+          algo falla, el motivo. Los datos tecnicos (ruta de la base, tablas,
+          entorno) no le dicen nada al operario y ensucian la barra; la version
+          ya se ve en la barra de titulo. */}
       <div className="min-w-0 flex-1">
-        {salud !== null && (
-          <span
-            className="block truncate font-mono text-micro text-masa-700"
-            title={salud.db.rutaDb}
-          >
-            {salud.db.rutaDb}
-          </span>
-        )}
         {error !== null && <span className="text-micro text-peligro-600">{error}</span>}
       </div>
-
-      {salud !== null && (
-        <span className="shrink-0 font-mono text-micro text-masa-700">
-          {salud.db.tablas} tablas · {salud.entorno}
-        </span>
-      )}
-
-      {/*
-        La version se muestra SIEMPRE y en las dos plataformas. Antes vivia solo
-        en la barra de titulo propia de macOS: en Windows, que usa la barra
-        nativa del sistema, no habia forma de saber que version estaba corriendo
-        sin entrar a Ayuda, y despues de una actualizacion nadie sabia si se
-        habia aplicado.
-      */}
-      {salud !== null && (
-        <span
-          className="shrink-0 rounded-pastilla bg-masa-200 px-2 py-0.5 font-mono text-micro font-semibold text-masa-800"
-          title="Version instalada"
-        >
-          v{salud.version}
-        </span>
-      )}
 
       <span className="shrink-0 font-mono text-xs tabular-nums text-masa-700">{hora}</span>
     </div>
@@ -368,6 +347,18 @@ export function Escritorio({
     <div className="flex h-full flex-col items-center justify-center bg-gradient-to-br from-masa-50 to-masa-200 px-8">
       <Logo tamano={148} conNombre />
       <p className="mt-2 text-sm text-masa-700">Gestión y producción de alfajores</p>
+
+      {/* La marca del cliente debajo de la del sistema: el sistema es de BPSG,
+          la fabrica es de ellos. Separadas por una linea fina para que se lea
+          como "hecho para", no como un mismo logo de dos pisos. */}
+      <div className="mt-8 flex flex-col items-center border-t border-masa-300/70 pt-6">
+        <img
+          src="./anyulin-logo.png"
+          alt="Anyulin — Alfajores Corondinos"
+          className="h-16 w-auto select-none opacity-90"
+          draggable={false}
+        />
+      </div>
     </div>
   );
 }

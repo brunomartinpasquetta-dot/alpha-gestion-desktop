@@ -29,6 +29,7 @@ import {
   type UnidadMedidaVista,
 } from '../../compartido/contratos';
 import {
+  CampoFecha,
   CampoMoneda,
   CampoNumero,
   CampoOpciones,
@@ -470,6 +471,13 @@ export function FormularioCobroPago({
   const [entidadId, setEntidadId] = useState<number | ''>('');
   const [monto, setMonto] = useState(0);
   const [medio, setMedio] = useState<MedioCobroPago>('efectivo');
+  // Datos del cheque: sin ellos el cobro bajaba la deuda y el cheque no
+  // entraba a la cartera, asi que la plata desaparecia del sistema.
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [chequeNumero, setChequeNumero] = useState('');
+  const [chequeBanco, setChequeBanco] = useState('');
+  const [chequeFechaPago, setChequeFechaPago] = useState(hoy);
+  const [chequeFormato, setChequeFormato] = useState<'fisico' | 'echeq'>('fisico');
   const [notas, setNotas] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -495,7 +503,22 @@ export function FormularioCobroPago({
     if (entidadId === '') return;
     setGuardando(true);
     setError(null);
-    registrarCobroPago({ entidadTipo, entidadId, monto, medio, notas: notas.trim() || null })
+    registrarCobroPago({
+      entidadTipo,
+      entidadId,
+      monto,
+      medio,
+      cheque:
+        medio === 'cheque'
+          ? {
+              numero: chequeNumero.trim(),
+              fechaPago: chequeFechaPago,
+              banco: chequeBanco.trim() || null,
+              formato: chequeFormato,
+            }
+          : null,
+      notas: notas.trim() || null,
+    })
       .then((r) =>
         alGuardar(
           `${esCobro ? 'Cobro' : 'Pago'} de ${formatearMoneda(r.monto)} a ${r.entidadNombre} registrado.`,
@@ -518,7 +541,9 @@ export function FormularioCobroPago({
       }
       error={error}
       guardando={guardando}
-      puedeGuardar={entidadId !== '' && monto > 0}
+      puedeGuardar={
+        entidadId !== '' && monto > 0 && (medio !== 'cheque' || chequeNumero.trim() !== '')
+      }
       etiquetaGuardar={esCobro ? 'Registrar cobro' : 'Registrar pago'}
       alCerrar={alCerrar}
       alGuardar={guardar}
@@ -552,9 +577,53 @@ export function FormularioCobroPago({
             etiqueta: ETIQUETA_MEDIO_COBRO[m],
           }))}
           alCambiar={(v) => setMedio((v === '' ? 'efectivo' : v) as MedioCobroPago)}
-          ayuda={medio === 'efectivo' ? 'Impacta la caja abierta.' : 'No toca la caja.'}
+          ayuda={
+            medio === 'efectivo'
+              ? 'Impacta la caja abierta.'
+              : medio === 'cheque'
+                ? 'No toca la caja: entra a la cartera de cheques.'
+                : 'No toca la caja.'
+          }
         />
       </Fila>
+      {medio === 'cheque' && (
+        <>
+          <Fila>
+            <CampoTexto
+              id="cp-cheque-numero"
+              rotulo="Numero de cheque"
+              valor={chequeNumero}
+              alCambiar={setChequeNumero}
+              maximo={40}
+            />
+            <CampoTexto
+              id="cp-cheque-banco"
+              rotulo="Banco"
+              valor={chequeBanco}
+              alCambiar={setChequeBanco}
+              maximo={80}
+            />
+          </Fila>
+          <Fila>
+            <CampoFecha
+              id="cp-cheque-fecha"
+              rotulo={esCobro ? 'Fecha de cobro' : 'Fecha de pago'}
+              valor={chequeFechaPago}
+              alCambiar={setChequeFechaPago}
+            />
+            <CampoSelector
+              id="cp-cheque-formato"
+              rotulo="Formato"
+              valor={chequeFormato}
+              opciones={[
+                { valor: 'fisico', etiqueta: 'Fisico' },
+                { valor: 'echeq', etiqueta: 'ECHEQ' },
+              ]}
+              alCambiar={(v) => setChequeFormato(v === 'echeq' ? 'echeq' : 'fisico')}
+            />
+          </Fila>
+        </>
+      )}
       {monto > deuda && deuda >= 0 && monto > 0 && (
         <p className="rounded-ficha border border-alerta-200 bg-alerta-50 px-3 py-2 text-sm text-alerta-700">
           El importe supera la deuda: va a quedar un saldo a favor.
@@ -794,6 +863,10 @@ function FormularioPedidoClasico({
   const [clienteId, setClienteId] = useState<number | ''>(pedido?.clienteId ?? '');
   const [notas, setNotas] = useState(pedido?.notas ?? '');
   const [seleccion, setSeleccion] = useState<Record<number, number>>({});
+  // Cantidades exactas con las que se abrio el pedido, y el valor en cajas que
+  // se le mostro al operador: juntos permiten saber que renglon no toco.
+  const [cantidadesOriginales, setCantidadesOriginales] = useState<Record<number, number>>({});
+  const [seleccionInicial, setSeleccionInicial] = useState<Record<number, number>>({});
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -806,21 +879,40 @@ function FormularioPedidoClasico({
         // Al editar, las cantidades guardadas (en unidades) vuelven a docenas o cajas.
         if (pedido !== null) {
           const inicial: Record<number, number> = {};
+          const exactas: Record<number, number> = {};
           for (const item of pedido.items) {
             const upc = activos.find((x) => x.id === item.articuloId)?.unidadesPorCaja ?? null;
             inicial[item.articuloId] = upc === null ? item.cantidad : Math.round(item.cantidad / upc);
+            // La cantidad ORIGINAL en unidades, tal como se pidio.
+            exactas[item.articuloId] = item.cantidad;
           }
           setSeleccion(inicial);
+          setCantidadesOriginales(exactas);
+          setSeleccionInicial(inicial);
         }
       })
       .catch((causa: unknown) => setError(mensajeDeError(causa)));
   }, [pedido]);
 
-  // Lo que viaja al servidor va SIEMPRE en unidades base.
+  /*
+   * Lo que viaja al servidor va SIEMPRE en unidades base.
+   *
+   * El renglon que el operador NO toco conserva su cantidad exacta. Antes se
+   * reconstruia siempre como cajas x unidadesPorCaja, y como al abrir el
+   * formulario las unidades se habian redondeado a cajas, editar cualquier cosa
+   * —aunque fuera solo el cliente— reescribia las cantidades pedidas: 30 u con
+   * cajas de 12 volvian como 24, y 12 u con cajas de 36 se redondeaban a 0 y el
+   * renglon DESAPARECIA del pedido.
+   */
   const items = Object.entries(seleccion)
     .map(([id, cargado]) => {
       const articuloId = Number(id);
       const upc = productos.find((p) => p.id === articuloId)?.unidadesPorCaja ?? null;
+      const original = cantidadesOriginales[articuloId];
+      const sinTocar = seleccionInicial[articuloId] === cargado;
+      if (original !== undefined && sinTocar) {
+        return { articuloId, cantidad: original };
+      }
       return { articuloId, cantidad: upc === null ? cargado : cargado * upc };
     })
     .filter((i) => i.cantidad > 0);

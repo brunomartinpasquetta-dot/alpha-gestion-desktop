@@ -26,7 +26,7 @@ import {
 } from '../componentes/filtros';
 import { usarEventos } from '../ganchos/usarEventos';
 import { usarRecurso } from '../ganchos/usarRecurso';
-import { ajustarStock, obtenerMovimientosDeGrupo, obtenerStock } from '../servicios/cliente';
+import { ajustarStockEnLote, obtenerMovimientosDeGrupo, obtenerStock } from '../servicios/cliente';
 import { formatearCantidad, formatearFecha } from '../utiles/formato';
 
 /* ------------------------------ Ajustes ------------------------------------ */
@@ -66,13 +66,19 @@ export function PantallaAjustesStock({ grupo }: { readonly grupo: GrupoStock }):
     setGuardando(true);
     setAviso(null);
     try {
-      for (const fila of cambiadas) {
-        await ajustarStock({
+      /*
+       * Todos juntos y en UNA transaccion. Antes se mandaban de a uno en un for:
+       * si el tercero fallaba, los dos primeros ya estaban asentados y el
+       * operador, al ver el error, volvia a confirmar todo — duplicando los que
+       * ya habian entrado. Ahora o entran todos o no entra ninguno.
+       */
+      await ajustarStockEnLote(
+        cambiadas.map((fila) => ({
           articuloId: fila.articuloId,
           cantidad: diferenciaDe(fila),
           motivo: 'Toma de inventario (ajuste de stock)',
-        });
-      }
+        })),
+      );
       setAviso({ tono: 'ok', texto: `${cambiadas.length} ajuste(s) registrados en el historial.` });
       estado.recargar();
     } catch (causa) {

@@ -201,6 +201,14 @@ export const pedidosServicio = {
       notas: entrada.notas?.trim() || null,
       claveIdempotencia: clave,
       items,
+      // Van en la MISMA transaccion que la cabecera: antes se escribian en una
+      // aparte y un fallo entre las dos dejaba el pedido sin su talonario.
+      renglones: (entrada.renglones ?? []).map((renglon) => ({
+        presentacionId: renglon.presentacionId ?? null,
+        descripcion: renglon.descripcion?.trim() || null,
+        cantidad: redondearCantidad(renglon.cantidad),
+        componentes: renglon.componentes ?? [],
+      })),
     });
 
     // El pedido recien cargado se atiende SOLO, en este orden:
@@ -211,40 +219,6 @@ export const pedidosServicio = {
     // reservar ni de planificar; el sistema deja el trabajo servido.
     // Los renglones del talonario se guardan tal cual: son la verdad comercial
     // (que pidio y como lo pidio) y la fuente del remito y la orden impresa.
-    if (entrada.renglones && entrada.renglones.length > 0) {
-      ejecutarSeguro('guardar los renglones del pedido', () =>
-        obtenerDb().transaction((tx) => {
-          for (const renglon of entrada.renglones!) {
-            const fila = tx
-              .insert(pedidoRenglones)
-              .values({
-                pedidoId: pedido.id,
-                presentacionId: renglon.presentacionId ?? null,
-                descripcion: renglon.descripcion?.trim() || null,
-                cantidad: redondearCantidad(renglon.cantidad),
-              })
-              .returning({ id: pedidoRenglones.id })
-              .all()[0];
-            // La composicion propia del renglon (mezcla a medida o caja con
-            // sabores elegidos) se guarda con el: es lo que arma la orden de
-            // elaboracion y el remito.
-            if (fila && renglon.componentes && renglon.componentes.length > 0) {
-              for (const componente of renglon.componentes) {
-                tx.insert(pedidoRenglonComponentes)
-                  .values({
-                    renglonId: fila.id,
-                    articuloId: componente.articuloId,
-                    unidades: componente.unidades,
-                  })
-                  .run();
-              }
-            }
-          }
-          return true;
-        }),
-      );
-    }
-
     const cobertura = reservasServicio.cubrirConStock(pedido.id);
     const generadas = produccionServicio.generarOrdenesParaPedido(pedido.id);
 

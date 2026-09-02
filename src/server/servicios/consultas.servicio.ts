@@ -235,6 +235,8 @@ export const consultasServicio = {
       id: lista.id,
       nombre: lista.nombre,
       activa: lista.activa,
+      baseListaId: lista.baseListaId,
+      recargoPct: lista.recargoPct,
       precios: (porLista.get(lista.id) ?? []).map<PrecioVista>((precio) => ({
         id: precio.id,
         articuloId: precio.articuloId,

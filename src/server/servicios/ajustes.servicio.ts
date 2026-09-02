@@ -42,6 +42,77 @@ import {
 import { emitir } from '../eventos';
 import { esCentavosValido, redondearCantidad } from '../utiles/numeros';
 
+type Tx = Parameters<Parameters<ReturnType<typeof obtenerDb>['transaction']>[0]>[0];
+
+/**
+ * Valida y asienta UN ajuste dentro de una transaccion ya abierta.
+ *
+ * Vive aparte para que el ajuste suelto y la toma de inventario en lote pasen
+ * exactamente por las mismas validaciones: si una de las dos tuviera su propia
+ * copia, tarde o temprano una se toca y la otra queda vieja.
+ */
+function asentarAjuste(tx: Tx, entrada: EntradaAjusteStock): ResultadoAjuste {
+  const cantidad = redondearCantidad(entrada.cantidad);
+  if (!Number.isFinite(cantidad) || cantidad === 0) {
+    throw new ErrorValidacion('El ajuste tiene que ser distinto de cero.');
+  }
+  const motivo = entrada.motivo.trim();
+  if (motivo.length < 3) {
+    throw new ErrorValidacion('El motivo del ajuste es obligatorio: explica por que se ajusta.');
+  }
+
+  const articulo = tx
+    .select({ id: articulos.id, nombre: articulos.nombre, activo: articulos.activo })
+    .from(articulos)
+    .where(eq(articulos.id, entrada.articuloId))
+    .get();
+  if (!articulo) throw new ErrorNoEncontrado('articulo', entrada.articuloId);
+
+  const saldoPrevio =
+    tx
+      .select({ s: sql<number>`COALESCE(SUM(${movimientosStock.cantidad}), 0)`.mapWith(Number) })
+      .from(movimientosStock)
+      .where(eq(movimientosStock.articuloId, entrada.articuloId))
+      .get()?.s ?? 0;
+
+  /*
+   * Una MERMA siempre resta: es mercaderia que se descarto. Nada validaba el
+   * signo contra el tipo, asi que un recuento que daba de MAS con el tilde
+   * "Es merma" puesto de la correccion anterior persistia una merma POSITIVA:
+   * un asiento que dice que se descarto mercaderia y sin embargo suma stock.
+   */
+  if (entrada.esMerma === true && cantidad > 0) {
+    throw new ErrorReglaNegocio(
+      `Una merma descarta mercaderia, asi que no puede sumar ${cantidad}. ` +
+        'Si el recuento dio de mas, es un ajuste, no una merma.',
+    );
+  }
+
+  const saldoNuevo = redondearCantidad(saldoPrevio + cantidad);
+  if (saldoNuevo < 0) {
+    throw new ErrorReglaNegocio(
+      `El ajuste dejaria a ${articulo.nombre} con stock negativo (${saldoNuevo}). ` +
+        `Hoy hay ${saldoPrevio}.`,
+    );
+  }
+
+  tx.insert(movimientosStock)
+    .values({
+      articuloId: entrada.articuloId,
+      // 'merma' cuando se descarta mercaderia, 'ajuste' para el resto.
+      tipo: entrada.esMerma === true ? 'merma' : 'ajuste',
+      cantidad,
+      costoUnitario: null,
+      documentoTipo: 'ajuste',
+      documentoId: null,
+      fecha: new Date().toISOString(),
+      notas: motivo,
+    })
+    .run();
+
+  return { articuloNombre: articulo.nombre, saldoPrevio, saldoNuevo, advertencias: [] };
+}
+
 export const ajustesServicio = {
   /* ----------------------------- Ajustes de stock -------------------------- */
 
@@ -50,54 +121,48 @@ export const ajustesServicio = {
    * (aparecio mercaderia, carga inicial), negativo resta (rotura, merma).
    */
   ajustarStock(entrada: EntradaAjusteStock): ResultadoAjuste {
-    const cantidad = redondearCantidad(entrada.cantidad);
-    if (!Number.isFinite(cantidad) || cantidad === 0) {
-      throw new ErrorValidacion('El ajuste tiene que ser distinto de cero.');
-    }
-    const motivo = entrada.motivo.trim();
-    if (motivo.length < 3) {
-      throw new ErrorValidacion('El motivo del ajuste es obligatorio: explica por que se ajusta.');
-    }
-
     const resultado = ejecutarSeguro('ajustar el stock', () =>
+      obtenerDb().transaction((tx) => asentarAjuste(tx, entrada)),
+    );
+
+    emitir('maestros:cambio');
+    return resultado;
+  },
+
+  /**
+   * Toma de inventario: N ajustes en UNA sola transaccion.
+   *
+   * La pantalla los mandaba de a uno en un for. Si el tercero fallaba —un
+   * articulo que quedo inactivo desde otra ventana, un ajuste que dejaria stock
+   * negativo—, los dos primeros ya estaban asentados y el operador, al ver el
+   * error, volvia a confirmar todo: los dos primeros se aplicaban DE NUEVO y el
+   * inventario quedaba peor que antes de empezar. Aca o entran todos o no entra
+   * ninguno.
+   */
+  ajustarStockEnLote(entradas: readonly EntradaAjusteStock[]): {
+    aplicados: number;
+    detalle: ResultadoAjuste[];
+  } {
+    if (entradas.length === 0) {
+      throw new ErrorValidacion('No hay ajustes para registrar.');
+    }
+    const repetidos = new Set<number>();
+    for (const entrada of entradas) {
+      if (repetidos.has(entrada.articuloId)) {
+        throw new ErrorValidacion(
+          'Un mismo articulo aparece dos veces en la toma de inventario: dejalo en un solo renglon.',
+        );
+      }
+      repetidos.add(entrada.articuloId);
+    }
+
+    const resultado = ejecutarSeguro('registrar una toma de inventario', () =>
       obtenerDb().transaction((tx) => {
-        const articulo = tx
-          .select({ id: articulos.id, nombre: articulos.nombre, activo: articulos.activo })
-          .from(articulos)
-          .where(eq(articulos.id, entrada.articuloId))
-          .get();
-        if (!articulo) throw new ErrorNoEncontrado('articulo', entrada.articuloId);
-
-        const saldoPrevio =
-          tx
-            .select({ s: sql<number>`COALESCE(SUM(${movimientosStock.cantidad}), 0)`.mapWith(Number) })
-            .from(movimientosStock)
-            .where(eq(movimientosStock.articuloId, entrada.articuloId))
-            .get()?.s ?? 0;
-
-        const saldoNuevo = redondearCantidad(saldoPrevio + cantidad);
-        if (saldoNuevo < 0) {
-          throw new ErrorReglaNegocio(
-            `El ajuste dejaria a ${articulo.nombre} con stock negativo (${saldoNuevo}). ` +
-              `Hoy hay ${saldoPrevio}.`,
-          );
+        const detalle: ResultadoAjuste[] = [];
+        for (const entrada of entradas) {
+          detalle.push(asentarAjuste(tx, entrada));
         }
-
-        tx.insert(movimientosStock)
-          .values({
-            articuloId: entrada.articuloId,
-            // 'merma' cuando se descarta mercaderia, 'ajuste' para el resto.
-            tipo: entrada.esMerma === true ? 'merma' : 'ajuste',
-            cantidad,
-            costoUnitario: null,
-            documentoTipo: 'ajuste',
-            documentoId: null,
-            fecha: new Date().toISOString(),
-            notas: motivo,
-          })
-          .run();
-
-        return { articuloNombre: articulo.nombre, saldoPrevio, saldoNuevo, advertencias: [] };
+        return { aplicados: detalle.length, detalle };
       }),
     );
 

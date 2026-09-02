@@ -7,7 +7,7 @@
 
 import path from 'node:path';
 
-import { BrowserWindow, shell, type BrowserWindowConstructorOptions } from 'electron';
+import { BrowserWindow, screen, shell, type BrowserWindowConstructorOptions } from 'electron';
 
 import {
   ALTO_BARRA_TITULO,
@@ -21,6 +21,26 @@ const ANCHO_DEFAULT = 1440;
 const ALTO_DEFAULT = 900;
 const ANCHO_MINIMO = 1024;
 const ALTO_MINIMO = 680;
+
+/**
+ * Tamanio que de verdad entra en ESTA pantalla.
+ *
+ * Los valores de arriba son para un monitor grande. En el de la fabrica
+ * (1366x768) una ventana de 1440x900 no entra: Windows la recorta y el sistema
+ * se ve cortado por abajo y por la derecha. Se toma el area util —descontando
+ * la barra de tareas— y se usa lo que sea mas chico.
+ */
+function tamanioQueEntra(ancho: number, alto: number): { width: number; height: number } {
+  try {
+    const util = screen.getPrimaryDisplay().workAreaSize;
+    return {
+      width: Math.min(ancho, util.width),
+      height: Math.min(alto, util.height),
+    };
+  } catch {
+    return { width: ancho, height: alto };
+  }
+}
 
 /**
  * Neutro calido sobrio: evita el flash blanco puro mientras el renderer monta y
@@ -132,8 +152,7 @@ export function opcionesBarraTitulo(): Pick<
 /** Crea la ventana principal del ERP, ya endurecida y con la URL cargada. */
 export function crearVentanaPrincipal(opciones: OpcionesVentana): BrowserWindow {
   const ventana = new BrowserWindow({
-    width: ANCHO_DEFAULT,
-    height: ALTO_DEFAULT,
+    ...tamanioQueEntra(ANCHO_DEFAULT, ALTO_DEFAULT),
     minWidth: ANCHO_MINIMO,
     minHeight: ALTO_MINIMO,
     title: NOMBRE_PRODUCTO,

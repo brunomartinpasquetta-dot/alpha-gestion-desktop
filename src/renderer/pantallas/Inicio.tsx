@@ -14,7 +14,7 @@ import { usarRecurso } from '../ganchos/usarRecurso';
 import { usarEventos } from '../ganchos/usarEventos';
 import { obtenerOrdenesProduccion, obtenerPedidos, obtenerResumen } from '../servicios/cliente';
 import { PantallaEstadisticas } from './Gestion';
-import { formatearEntero, formatearMoneda, formatearMonedaConSigno } from '../utiles/formato';
+import { formatearEntero } from '../utiles/formato';
 import { definicionDeModulo, type ClaveModulo } from '../ventanas';
 
 /**
@@ -46,7 +46,7 @@ function PestanaTableroGeneral(): JSX.Element {
   if (error !== null) return <EstadoError mensaje={error} alReintentar={recargar} />;
   if (datos === null) return <EstadoCargando que="el tablero" />;
 
-  const { articulos, pedidos, produccion, compras, ventas, caja, cuentasCorrientes } = datos;
+  const { articulos, pedidos, produccion } = datos;
 
   return (
     <div className="space-y-6">
@@ -97,33 +97,6 @@ function PestanaTableroGeneral(): JSX.Element {
         </div>
       </Seccion>
 
-      <Seccion titulo="Movimiento del mes">
-        <div className="grid grid-cols-2 items-stretch gap-3 lg:grid-cols-4 [&>button]:h-full [&>button>*]:h-full">
-          <Atajo clave="ventas"><TarjetaIndicador
-            rotulo="Ventas del mes"
-            valor={formatearMoneda(ventas.totalMes)}
-            detalle={`${formatearEntero(ventas.cantidadMes)} comprobante(s)`}
-            tono="positivo"
-          /></Atajo>
-          <Atajo clave="compras"><TarjetaIndicador
-            rotulo="Compras del mes"
-            valor={formatearMoneda(compras.totalMes)}
-            detalle={`${formatearEntero(compras.pendientes)} pendiente(s) de recibir`}
-          /></Atajo>
-          <Atajo clave="caja"><TarjetaIndicador
-            rotulo="Caja"
-            valor={caja.abierta ? formatearMoneda(caja.saldoEstimado) : 'Cerrada'}
-            detalle={caja.abierta ? `Caja #${caja.cajaId ?? '?'} abierta` : 'No hay caja abierta'}
-            tono={caja.abierta ? 'info' : 'neutro'}
-          /></Atajo>
-          <Atajo clave="cuentas-corrientes"><TarjetaIndicador
-            rotulo="Nos deben / debemos"
-            valor={formatearMonedaConSigno(cuentasCorrientes.saldoClientes)}
-            detalle={`A proveedores: ${formatearMonedaConSigno(cuentasCorrientes.saldoProveedores)}`}
-            tono={cuentasCorrientes.saldoClientes > 0 ? 'alerta' : 'neutro'}
-          /></Atajo>
-        </div>
-      </Seccion>
     </div>
   );
 }

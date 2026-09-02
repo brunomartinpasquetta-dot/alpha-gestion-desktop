@@ -46,7 +46,7 @@ export const GRUPOS_NAVEGACION: readonly GrupoNavegacion[] = [
         clave: 'inicio',
         etiqueta: 'Inicio',
         titulo: 'Tablero',
-        descripcion: 'Indicadores del dia: stock, pedidos, produccion, ventas, caja y cuentas corrientes.',
+        descripcion: 'Indicadores del dia: stock, pedidos y produccion.',
       },
     ],
   },

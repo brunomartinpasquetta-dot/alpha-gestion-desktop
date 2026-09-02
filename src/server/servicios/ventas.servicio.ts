@@ -19,6 +19,7 @@ import path from 'node:path';
 
 import { and, eq, sql } from 'drizzle-orm';
 
+import { TRANSICIONES_CHEQUE } from '../../compartido/contratos';
 import type { EntradaNuevaVenta, ResultadoVenta, VentaVista } from '../../compartido/contratos';
 import { obtenerDb, obtenerRutaDb } from '../db/conexion';
 import {
@@ -157,6 +158,25 @@ export const ventasServicio = {
       if (!esCentavosValido(item.precioUnitario)) {
         throw new ErrorValidacion(
           `El precio del articulo ${item.articuloId} tiene que ser un entero de centavos (>= 0).`,
+        );
+      }
+      /*
+       * Un renglon en $0 casi nunca es un regalo: es un articulo que no tiene
+       * precio cargado en la lista del cliente. La pantalla resolvia el precio
+       * con `?? 0` y no avisaba nada, asi que la venta se cerraba, se descontaba
+       * el stock y —si el comprobante era una Factura B— se le pedia a ARCA un
+       * CAE por $0,00. Un regalo real se marca; lo demas se frena aca, que es
+       * por donde pasan todos los caminos (escritorio, pedido facturado, API).
+       */
+      if (item.precioUnitario === 0 && item.bonificado !== true) {
+        const articulo = obtenerDb()
+          .select({ nombre: articulos.nombre })
+          .from(articulos)
+          .where(eq(articulos.id, item.articuloId))
+          .get();
+        throw new ErrorReglaNegocio(
+          `${articulo?.nombre ?? `El articulo ${item.articuloId}`} no tiene precio en la lista de este cliente. ` +
+            'Cargalo en Listas de precio, o marcalo como bonificado si de verdad va sin cargo.',
         );
       }
       return {
@@ -588,7 +608,17 @@ export const ventasServicio = {
                 })
                 .run();
 
-              if (caja !== undefined) {
+              /*
+               * El CHEQUE no entra a la caja: entra a la cartera, y ya se creo
+               * arriba. Escribirlo en los dos lados contaba la misma plata dos
+               * veces —el cheque figuraba en `chequesEnCartera` Y como ingreso
+               * del dia—, y si despues rebotaba, la deuda del cliente volvia
+               * pero el ingreso de caja quedaba ahi para siempre.
+               * El arqueo fisico no se rompia (filtra por es_efectivo_fisico),
+               * pero si todo lo que lee caja_movimientos sin filtrar: el teorico
+               * de la pantalla de Caja, totalIngresos y el resumen general.
+               */
+              if (caja !== undefined && medio.tipo !== 'cheque') {
                 tx.insert(cajaMovimientos)
                   .values({
                     cajaId: caja.id,
@@ -604,6 +634,31 @@ export const ventasServicio = {
                     notas: null,
                   })
                   .run();
+
+                /*
+                 * La comision del medio de pago es plata que NO llega. Se
+                 * calculaba y se guardaba en venta_pagos (comision_importe,
+                 * neto_importe) y despues no se restaba de ningun lado: la caja
+                 * mostraba el bruto, el neto quedaba como dato muerto y el
+                 * costo de cobrar con tarjeta era invisible en todo el sistema.
+                 * Se asienta como egreso, que es lo que realmente pasa: entra el
+                 * bruto y el procesador se queda con su parte.
+                 */
+                if (comisionImporte > 0) {
+                  tx.insert(cajaMovimientos)
+                    .values({
+                      cajaId: caja.id,
+                      tipo: 'egreso',
+                      concepto: `Comision ${medio.nombre} — venta #${venta.id}`,
+                      monto: comisionImporte,
+                      documentoTipo: 'venta',
+                      documentoId: venta.id,
+                      medioPagoId: medio.id,
+                      fecha: ahora,
+                      notas: `${medio.comisionPct}% sobre ${(pago.importe / 100).toFixed(2)}`,
+                    })
+                    .run();
+                }
               }
             }
           }
@@ -701,6 +756,13 @@ export const ventasServicio = {
             advertencias.push('No hay caja abierta: la devolucion del efectivo no quedo asentada en ninguna caja.');
           } else if (pagosDeLaVenta.length > 0) {
             for (const pago of pagosDeLaVenta) {
+              /*
+               * El pago con cheque no genero ingreso de caja (entro a la
+               * cartera), asi que tampoco genera egreso al anular: el cheque se
+               * devuelve y se marca 'anulado' mas abajo. Sin este salteo la
+               * anulacion sacaba de la caja plata que nunca habia entrado.
+               */
+              if (pago.chequeId !== null) continue;
               const nombreMedio = tx
                 .select({ n: mediosPago.nombre, fisico: mediosPago.esEfectivoFisico })
                 .from(mediosPago)
@@ -745,9 +807,18 @@ export const ventasServicio = {
         for (const pago of pagosDeLaVenta) {
           if (pago.chequeId === null) continue;
           const cheque = tx.select().from(cheques).where(eq(cheques.id, pago.chequeId)).get();
-          if (cheque !== undefined && cheque.estado === 'en_cartera') {
+          /*
+           * El UPDATE es directo porque estamos dentro de la transaccion de la
+           * anulacion y chequesServicio.cambiarEstado abre la suya. Pero la
+           * transicion se valida igual contra la misma tabla que usa el modulo
+           * de cheques: sin eso, este era un camino que escribia estados sin
+           * pasar por ninguna regla.
+           */
+          const permitidas =
+            cheque === undefined ? [] : TRANSICIONES_CHEQUE[cheque.tipo][cheque.estado];
+          if (cheque !== undefined && permitidas.includes('anulado')) {
             tx.update(cheques)
-              .set({ estado: 'rechazado', notas: `Venta #${ventaId} anulada: cheque devuelto al cliente` })
+              .set({ estado: 'anulado', notas: `Venta #${ventaId} anulada: cheque devuelto al cliente` })
               .where(eq(cheques.id, pago.chequeId))
               .run();
             advertencias.push(`El cheque ${cheque.numero} salio de la cartera (venta anulada).`);
@@ -762,16 +833,33 @@ export const ventasServicio = {
         // mercaderia reingreso al deposito y sigue siendo del cliente del
         // pedido. Sin esto, otro le compraba la mercaderia devuelta.
         if (venta.pedidoId !== null) {
-          tx.update(reservasStock)
-            .set({ estado: 'activa', ventaId: null })
-            .where(and(eq(reservasStock.ventaId, ventaId), eq(reservasStock.estado, 'entregada')))
-            .run();
           const pedido = tx
             .select({ estado: pedidos.estado })
             .from(pedidos)
             .where(eq(pedidos.id, venta.pedidoId))
             .get();
-          if (pedido !== undefined && pedido.estado === 'entregado') {
+
+          /*
+           * Si el pedido ya se CANCELO, la mercaderia devuelta no tiene dueño:
+           * volver a marcarla 'activa' dejaba reservas vivas de un pedido
+           * cancelado, o sea stock apartado que la aplicacion no ofrece a nadie
+           * y que ninguna pantalla puede liberar. Se libera de una vez.
+           */
+          const pedidoCancelado = pedido !== undefined && pedido.estado === 'cancelado';
+          tx.update(reservasStock)
+            .set(
+              pedidoCancelado
+                ? { estado: 'liberada', ventaId: null }
+                : { estado: 'activa', ventaId: null },
+            )
+            .where(and(eq(reservasStock.ventaId, ventaId), eq(reservasStock.estado, 'entregada')))
+            .run();
+
+          if (pedidoCancelado) {
+            advertencias.push(
+              `El pedido #${venta.pedidoId} estaba cancelado: la mercaderia devuelta volvio al stock libre.`,
+            );
+          } else if (pedido !== undefined && pedido.estado === 'entregado') {
             tx.update(pedidos).set({ estado: 'listo' }).where(eq(pedidos.id, venta.pedidoId)).run();
             advertencias.push(`El pedido #${venta.pedidoId} volvio a LISTO con su mercaderia apartada.`);
           }

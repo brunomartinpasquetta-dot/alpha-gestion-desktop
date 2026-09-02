@@ -338,6 +338,12 @@ export interface CajaVista {
   usuario: string | null;
   totalIngresos: number;
   totalEgresos: number;
+  /**
+   * Neto de efectivo fisico (sin transferencias ni tarjetas). Es el unico
+   * teorico que tiene sentido comparar contra los billetes del cajon, y el
+   * mismo que usa el servidor al cerrar.
+   */
+  netoEfectivo: number;
   cantidadMovimientos?: number;
 }
 
@@ -424,6 +430,9 @@ export interface ListaPrecioVista {
   id: number;
   nombre: string;
   activa: boolean;
+  /** Si esta lista sale de otra + recargo: en ese caso no se le cargan precios. */
+  baseListaId: number | null;
+  recargoPct: number | null;
   precios: PrecioVista[];
 }
 
@@ -812,8 +821,17 @@ export const TRANSICIONES_CHEQUE: Readonly<
     en_cartera: ['depositado', 'endosado', 'anulado'],
     depositado: ['acreditado', 'rechazado'],
     acreditado: [],
-    rechazado: ['depositado'],
-    endosado: [],
+    // Un rechazado se puede volver a presentar, o cerrarse si el cliente lo
+    // reemplaza por otro medio.
+    rechazado: ['depositado', 'anulado'],
+    /*
+     * 'endosado' NO es terminal. El cheque que le pasamos a un proveedor sigue
+     * siendo de un tercero y puede rebotar: cuando eso pasa el proveedor nos lo
+     * devuelve y volvemos a deberle, y el cliente que lo libro nos vuelve a
+     * deber a nosotros. Antes no habia ninguna transicion posible desde aca, asi
+     * que esas dos cuentas corrientes quedaban mal para siempre.
+     */
+    endosado: ['rechazado', 'acreditado'],
     entregado: [],
     anulado: [],
   },
@@ -821,9 +839,9 @@ export const TRANSICIONES_CHEQUE: Readonly<
     en_cartera: [],
     depositado: [],
     acreditado: [],
-    rechazado: [],
+    rechazado: ['acreditado', 'anulado'],
     endosado: [],
-    entregado: ['rechazado', 'anulado'],
+    entregado: ['acreditado', 'rechazado', 'anulado'],
     anulado: [],
   },
 };
@@ -846,6 +864,13 @@ export interface EntradaItemVenta {
   cantidad: number;
   /** Centavos por unidad base. Sugerido desde la lista del cliente, editable. */
   precioUnitario: number;
+  /**
+   * Regalo o bonificacion: la UNICA forma de vender a precio cero.
+   * Sin esta marca un renglon en $0 se rechaza, porque el caso normal de un
+   * precio cero no es un regalo sino un articulo sin precio cargado en la
+   * lista del cliente — y eso terminaba en una factura de $0,00 con CAE.
+   */
+  bonificado?: boolean;
 }
 
 /**
@@ -913,6 +938,34 @@ export interface PresentacionVista {
     unidades: number;
   }[];
   unidadesTotales: number;
+  /** true = es una promocion (presentacion con ventana de vigencia). */
+  esPromocion: boolean;
+  vigenciaDesde: string | null;
+  vigenciaHasta: string | null;
+}
+
+/* -------------------------------- Promociones ------------------------------ */
+
+/** Una promo con su precio por lista y si hoy esta liquidando o no. */
+export interface PromocionVista extends PresentacionVista {
+  /** Calculado contra la fecha de hoy: activa + dentro de la ventana. */
+  vigenteHoy: boolean;
+  /** Por que no esta vigente, para mostrarlo sin que el usuario adivine. */
+  motivoNoVigente: string | null;
+  precios: { listaPrecioId: number; listaNombre: string; precio: number }[];
+  /** Suma del costo de los componentes: para ver si la promo deja margen. */
+  costoComponentes: number;
+}
+
+export interface EntradaPromocion {
+  nombre: string;
+  codigo: string;
+  vigenciaDesde?: string | null;
+  vigenciaHasta?: string | null;
+  activo?: boolean;
+  componentes: { articuloId: number; unidades: number }[];
+  /** Precio de la promo en cada lista, en centavos. */
+  precios: { listaPrecioId: number; precio: number }[];
 }
 
 export type TipoMedioPago =
@@ -1047,6 +1100,7 @@ export type TipoEventoSse =
   | 'compras:cambio'
   | 'caja:cambio'
   | 'cc:cambio'
+  | 'promociones:cambio'
   | 'maestros:cambio';
 
 export interface UnidadMedidaVista {
@@ -1201,19 +1255,114 @@ export const ETIQUETA_MEDIO_COBRO: Record<MedioCobroPago, string> = {
   transferencia: 'Transferencia',
 };
 
+/**
+ * Datos del cheque cuando se cobra o se paga con uno. Sin esto el cheque
+ * bajaba la deuda pero no entraba a la cartera: la plata desaparecia del
+ * sistema hasta que alguien la cargaba a mano.
+ */
+export interface DetalleChequeCobroPago {
+  numero: string;
+  fechaPago: string;
+  banco?: string | null;
+  cuitEmisor?: string | null;
+  formato?: FormatoCheque;
+}
+
+/**
+ * Un tramo del cobro: cuanto entra por cada medio. Un cliente que paga mitad
+ * efectivo y mitad transferencia es lo normal, y antes habia que cargar dos
+ * cobros separados —con lo cual la imputacion a la factura quedaba partida.
+ */
+export interface TramoCobroPago {
+  medio: MedioCobroPago;
+  importe: number;
+  /** Obligatorio cuando el medio del tramo es 'cheque'. */
+  cheque?: DetalleChequeCobroPago | null;
+}
+
 /** Cobro a un cliente o pago a un proveedor. */
 export interface EntradaCobroPago {
   entidadTipo: TipoEntidadCc;
   entidadId: number;
   monto: number;
+  /** Medio unico. Se mantiene por compatibilidad: si viene `tramos`, manda `tramos`. */
   medio: MedioCobroPago;
+  /** Obligatorio cuando `medio` es 'cheque'. */
+  cheque?: DetalleChequeCobroPago | null;
+  /** Composicion del pago. Si va, la suma tiene que dar `monto`. */
+  tramos?: TramoCobroPago[] | null;
+  /**
+   * false = el cobro NO se imputa a comprobantes, queda como saldo a favor.
+   * Por defecto se imputa FIFO (del comprobante mas viejo al mas nuevo).
+   */
+  imputarFifo?: boolean;
   notas?: string | null;
+}
+
+/**
+ * Cambio de estado de un cheque. El endoso necesita saber A QUIEN se endosa:
+ * entregarle un cheque a un proveedor le baja lo que le debemos, y sin el
+ * destino ese asiento no se podia hacer.
+ */
+export interface EntradaCambioEstadoCheque {
+  estado: EstadoCheque;
+  destinoEntidadTipo?: TipoEntidadCc | null;
+  destinoEntidadId?: number | null;
+}
+
+/** Un comprobante que todavia tiene saldo sin cancelar. */
+export interface ComprobanteConSaldoVista {
+  documentoTipo: string;
+  documentoId: number;
+  fecha: string;
+  total: number;
+  imputado: number;
+  saldo: number;
+  notas: string | null;
+}
+
+export interface MovimientoCcDetalleVista {
+  id: number;
+  fecha: string;
+  tipoMovimiento: 'debe' | 'haber';
+  monto: number;
+  documentoTipo: string;
+  documentoId: number | null;
+  notas: string | null;
+  saldoAcumulado: number;
+}
+
+/** Ficha completa de una cuenta corriente. */
+export interface DetalleCuentaCorrienteVista {
+  entidadTipo: TipoEntidadCc;
+  entidadId: number;
+  entidadNombre: string;
+  saldo: number;
+  comprobantes: ComprobanteConSaldoVista[];
+  saldoAFavor: number;
+  movimientos: MovimientoCcDetalleVista[];
+}
+
+/** Como se repartiria un cobro, para mostrarlo antes de confirmar. */
+export interface SimulacionImputacion {
+  imputaciones: {
+    documentoTipo: string;
+    documentoId: number;
+    importe: number;
+    fecha: string;
+    total: number;
+  }[];
+  sobrante: number;
 }
 
 export interface ResultadoCobroPago {
   entidadNombre: string;
   monto: number;
   advertencias: string[];
+  /** Que comprobantes cerro o descargo este cobro, en orden FIFO. */
+  imputaciones?: { documentoTipo: string; documentoId: number; importe: number }[];
+  /** Lo que sobro despues de cancelar todo: queda a favor. */
+  sobrante?: number;
 }
 
 /* ========================= PRODUCCION (escritura) ======================== */

@@ -110,7 +110,13 @@ export async function obtenerCatalogo(): Promise<{ catalogo: Catalogo; desdeCach
 
 /* --------------------------------- Envio ----------------------------------- */
 
-export type ResultadoEnvio = 'ok' | 'rechazado' | 'pin-invalido';
+export type ResultadoEnvio =
+  | 'ok'
+  /** El servidor lo rechazo por invalido: reintentarlo no cambia nada. */
+  | 'rechazado'
+  /** Falla transitoria (5xx / 429): el pedido se conserva y se reintenta. */
+  | 'reintentar'
+  | 'pin-invalido';
 
 /**
  * Envia un pedido. Devuelve el resultado semantico; SOLO lanza ante fallo de
@@ -129,5 +135,12 @@ export async function enviarPedido(pedido: EntradaNuevoPedido): Promise<Resultad
   // 201 = creado; 200 = la clave de idempotencia ya se habia procesado (reintento).
   if (respuesta.status === 201 || respuesta.status === 200) return 'ok';
   if (respuesta.status === 401) return 'pin-invalido';
+  /*
+   * 5xx y 429 son TRANSITORIOS: la computadora de la fabrica esta apagada, el
+   * tunel se cayo o el servidor esta saturado. Antes caian en 'rechazado' y el
+   * pedido se BORRABA de la cola: el vendedor lo cargaba, la app le decia que
+   * salio, y el pedido no llegaba nunca. Ahora se reintenta.
+   */
+  if (respuesta.status >= 500 || respuesta.status === 429) return 'reintentar';
   return 'rechazado';
 }

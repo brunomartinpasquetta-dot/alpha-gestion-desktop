@@ -45,7 +45,7 @@ export const REPO_GITHUB = {
 } as const;
 
 /** Version del producto. */
-export const VERSION_APP = '1.8.2';
+export const VERSION_APP = '1.9.5';
 
 /* ------------------------- Barra de titulo propia ------------------------- */
 

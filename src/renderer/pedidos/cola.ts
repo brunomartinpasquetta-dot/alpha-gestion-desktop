@@ -61,22 +61,38 @@ export function sacarDeCola(idLocal: string): void {
  * siempre bloquearia la cola entera detras de un pedido invalido.
  */
 export async function sincronizar(
-  enviar: (pedido: EntradaNuevoPedido) => Promise<'ok' | 'rechazado'>,
-): Promise<{ enviados: number; rechazados: number; quedan: number }> {
+  enviar: (pedido: EntradaNuevoPedido) => Promise<'ok' | 'rechazado' | 'reintentar'>,
+): Promise<{ enviados: number; rechazados: number; quedan: number; descartados: string[] }> {
   let enviados = 0;
   let rechazados = 0;
+  // Que pedidos se tiraron, para poder DECIRSELO al vendedor: antes
+  // desaparecian en silencio y el unico que se enteraba era el cliente que no
+  // recibia la mercaderia.
+  const descartados: string[] = [];
 
   for (const encolado of leerCola()) {
     try {
       const resultado = await enviar(encolado.pedido);
+      if (resultado === 'reintentar') {
+        // El servidor esta caido o saturado: el pedido SE QUEDA en la cola.
+        break;
+      }
       sacarDeCola(encolado.idLocal);
-      if (resultado === 'ok') enviados += 1;
-      else rechazados += 1;
+      if (resultado === 'ok') {
+        enviados += 1;
+      } else {
+        rechazados += 1;
+        const cuantos = encolado.pedido.renglones?.length ?? 0;
+        descartados.push(
+          `Pedido de ${cuantos} renglon${cuantos === 1 ? '' : 'es'} cargado el ` +
+            new Date(encolado.creadoEn).toLocaleString('es-AR'),
+        );
+      }
     } catch {
       // Error de red: el servidor no esta. Se reintenta en la proxima pasada.
       break;
     }
   }
 
-  return { enviados, rechazados, quedan: leerCola().length };
+  return { enviados, rechazados, quedan: leerCola().length, descartados };
 }

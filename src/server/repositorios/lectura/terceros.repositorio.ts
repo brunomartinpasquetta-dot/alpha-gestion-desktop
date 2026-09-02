@@ -41,6 +41,8 @@ export interface FilaListaPrecio {
   id: number;
   nombre: string;
   activa: boolean;
+  baseListaId: number | null;
+  recargoPct: number | null;
 }
 
 export interface FilaPrecio {
@@ -122,7 +124,13 @@ export function listarProveedores(): FilaProveedor[] {
 export function listarListasPrecio(): FilaListaPrecio[] {
   return ejecutarSeguro('listar listas de precio', () =>
     obtenerDb()
-      .select({ id: listasPrecio.id, nombre: listasPrecio.nombre, activa: listasPrecio.activa })
+      .select({
+        id: listasPrecio.id,
+        nombre: listasPrecio.nombre,
+        activa: listasPrecio.activa,
+        baseListaId: listasPrecio.baseListaId,
+        recargoPct: listasPrecio.recargoPct,
+      })
       .from(listasPrecio)
       .orderBy(asc(listasPrecio.nombre))
       .all(),

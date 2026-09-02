@@ -9,7 +9,13 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 
-import type { CajaMovimientoVista, CajaVista, ResumenCuentaCorriente } from '../../compartido/contratos';
+import type {
+  CajaMovimientoVista,
+  CajaVista,
+  ResumenCuentaCorriente,
+  TipoEntidadCc,
+} from '../../compartido/contratos';
+import { FichaCuentaCorriente } from './CuentaCorrienteDetalle';
 import { Pastilla } from '../componentes/comunes';
 import { Aviso, BotonPrimario } from '../componentes/Formulario';
 import { Tabla, type Columna } from '../componentes/Tabla';
@@ -138,9 +144,15 @@ export function PantallaCaja(): JSX.Element {
   usarEventos('caja:cambio', estado.recargar);
 
   const abierta = estado.datos?.find((c) => c.estado === 'abierta');
-  // Teorico de la caja abierta: apertura mas lo que entro, menos lo que salio.
-  const teorico =
-    abierta === undefined ? 0 : abierta.montoApertura + abierta.totalIngresos - abierta.totalEgresos;
+  /*
+   * Teorico de la caja abierta: apertura mas el neto de EFECTIVO FISICO.
+   * Antes sumaba todos los ingresos y egresos, incluidas transferencias y
+   * tarjetas, mientras que el servidor al cerrar compara los billetes contados
+   * contra el efectivo solamente: el modal de cierre anunciaba un faltante
+   * inexistente del tamanio de lo cobrado por medios electronicos. Ahora los
+   * dos numeros salen de la misma cuenta.
+   */
+  const teorico = abierta === undefined ? 0 : abierta.montoApertura + abierta.netoEfectivo;
 
   const cerrar = (mensaje: string): void => {
     setModal(null);
@@ -282,15 +294,32 @@ const COLUMNAS_CC: readonly Columna<ResumenCuentaCorriente>[] = [
 export function PantallaCuentasCorrientes(): JSX.Element {
   const estado = usarRecurso(() => obtenerCuentasCorrientes(), []);
   const [modal, setModal] = useState<'cliente' | 'proveedor' | null>(null);
+  // Al clickear una cuenta se abre su ficha: comprobantes abiertos, libro y
+  // cobranza con imputacion. Es la vista que reemplaza al "saldo y nada mas".
+  const [ficha, setFicha] = useState<{ tipo: TipoEntidadCc; id: number } | null>(null);
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
 
   usarEventos('cc:cambio', estado.recargar);
+
+  if (ficha !== null) {
+    return (
+      <FichaCuentaCorriente
+        entidadTipo={ficha.tipo}
+        entidadId={ficha.id}
+        alVolver={() => {
+          setFicha(null);
+          estado.recargar();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-masa-800">
-          Saldo = debe − haber. Positivo: nos deben. Negativo: debemos.
+          Saldo = debe − haber. Positivo: nos deben. Negativo: debemos. Hace click en una cuenta
+          para ver que comprobantes quedaron sin cancelar.
         </p>
         <div className="flex shrink-0 gap-2">
           <BotonPrimario onClick={() => setModal('cliente')}>
@@ -321,6 +350,7 @@ export function PantallaCuentasCorrientes(): JSX.Element {
             columnas={COLUMNAS_CC}
             filas={filas}
             claveDeFila={(c) => `${c.entidadTipo}-${c.entidadId}`}
+            alSeleccionar={(c) => setFicha({ tipo: c.entidadTipo, id: c.entidadId })}
           />
         )}
       </Vista>

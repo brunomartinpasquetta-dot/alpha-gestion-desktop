@@ -75,6 +75,13 @@ export function PantallaActualizacionPrecios(): JSX.Element {
   const [redondeo, setRedondeo] = useState('ninguno');
 
   const [previa, setPrevia] = useState<VistaPreviaPrecio[] | null>(null);
+  /*
+   * Los datos EXACTOS que generaron la previa. "Aplicar" volvia a leer el
+   * formulario, asi que si el operador tocaba cualquier control despues de
+   * mirar la previa —el tipo de cambio, el porcentaje, la lista— se aplicaba
+   * algo distinto de lo que habia confirmado, sobre todos los precios a la vez.
+   */
+  const [datosDePrevia, setDatosDePrevia] = useState<ReturnType<typeof entrada>>(null);
   const [trabajando, setTrabajando] = useState(false);
   const [aviso, setAviso] = useState<{ tono: 'ok' | 'alerta' | 'mal'; texto: string } | null>(null);
   const [lotes, setLotes] = useState<LotePrecio[]>([]);
@@ -145,13 +152,17 @@ export function PantallaActualizacionPrecios(): JSX.Element {
     setTrabajando(true);
     setAviso(null);
     vistaPreviaPrecios(datos)
-      .then(setPrevia)
+      .then((filas) => {
+        setPrevia(filas);
+        setDatosDePrevia(datos);
+      })
       .catch((c: unknown) => setAviso({ tono: 'mal', texto: mensajeDeError(c) }))
       .finally(() => setTrabajando(false));
   };
 
   const aplicar = (): void => {
-    const datos = entrada();
+    // Se aplica lo que se mostro, no lo que dice el formulario ahora.
+    const datos = datosDePrevia;
     if (datos === null || previa === null) return;
     const suben = previa.filter((p) => p.precioNuevo > p.precioActual).length;
     if (!window.confirm(`¿Aplicar el cambio a ${previa.length} articulo(s)? (${suben} suben de precio)`)) return;
@@ -159,6 +170,7 @@ export function PantallaActualizacionPrecios(): JSX.Element {
     aplicarPrecios(datos)
       .then((r) => {
         setPrevia(null);
+        setDatosDePrevia(null);
         setElegidos(new Set());
         setAviso({
           tono: 'ok',

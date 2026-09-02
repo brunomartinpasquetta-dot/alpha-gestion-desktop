@@ -203,14 +203,14 @@ function PestanaPedidos(): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-masa-800">
-          Los pedidos del celular entran solos. Desde aca tambien se cargan a mano.
-        </p>
+      <div className="flex flex-wrap items-center gap-3">
         <BotonPrimario onClick={() => setEnEdicion(null)}>
           <Plus className="h-4 w-4" aria-hidden="true" />
           Nuevo pedido
         </BotonPrimario>
+        <p className="text-sm text-masa-800">
+          Los pedidos del celular entran solos. Desde aca tambien se cargan a mano.
+        </p>
       </div>
 
       {aviso !== null && (
@@ -235,6 +235,19 @@ function PestanaPedidos(): JSX.Element {
         </div>
       )}
 
+      {/*
+        La lista se lleva 2 de 5 columnas y el detalle las otras 3: los renglones
+        de un pedido son anchos (articulo, cajas, unidades, apartado, en
+        produccion) y no entran comodos abajo de la lista.
+      */}
+      <div className="grid gap-3 lg:grid-cols-5 lg:items-start">
+      <div className="lg:col-span-2">
+        {/* Las dos columnas llevan rotulo para que arranquen a la misma altura:
+            con rotulo solo a la derecha, la lista quedaba corrida hacia arriba
+            y los bordes de arriba no coincidian. */}
+        <p className="mb-1.5 text-micro font-semibold uppercase tracking-wide text-masa-700">
+          Pedidos del dia
+        </p>
       <Vista
       estado={estado}
       que="los pedidos"
@@ -262,7 +275,8 @@ function PestanaPedidos(): JSX.Element {
                 key={pedido.id}
                 className={[
                   'overflow-hidden rounded-ficha border bg-white shadow-ficha',
-                  desdeCelular ? 'border-dulce-300' : 'border-masa-200',
+                  // El elegido se marca, porque su detalle es el que se ve al lado.
+                  abierto ? 'border-dulce-500 ring-1 ring-dulce-300' : desdeCelular ? 'border-dulce-300' : 'border-masa-200',
                 ].join(' ')}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -296,7 +310,7 @@ function PestanaPedidos(): JSX.Element {
                       <p className="font-mono tabular-nums text-masa-900">
                         {pluralizar(pedido.items.length, 'articulo', 'articulos')}
                       </p>
-                      <p className="text-micro text-masa-700">{abierto ? 'ocultar' : 'ver detalle'}</p>
+                      <p className="text-micro text-masa-700">{abierto ? 'elegido' : 'ver detalle'}</p>
                     </div>
                   </button>
 
@@ -325,79 +339,23 @@ function PestanaPedidos(): JSX.Element {
                   alCambiar={(destino) => aplicarTransicion(pedido.id, destino)}
                 />
 
-                {abierto && (
-                  <div className="border-t border-masa-200 bg-masa-50 px-4 py-3">
-                    {/* Solo lo que compete al PEDIDO: que pidio, que esta
-                        apartado y que esta en produccion. La gestion de la
-                        elaboracion (Elaborar, Finalizar) vive en Produccion. */}
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-micro uppercase tracking-wide text-masa-700">
-                          <th scope="col" className="pb-1 text-left">Articulo</th>
-                          <th scope="col" className="pb-1 text-right">Cajas</th>
-                          <th scope="col" className="pb-1 text-right">Unidades</th>
-                          <th scope="col" className="pb-1 text-right">Apartado</th>
-                          <th scope="col" className="pb-1 text-right">En produccion</th>
-                          {pedido.items.some((i) => i.notas !== null) && (
-                            <th scope="col" className="pb-1 text-left">Notas</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pedido.items.map((item) => {
-                          const apartado = Math.min(item.reservado, item.cantidad);
-                          const enProduccion = Math.max(0, item.cantidad - item.reservado);
-                          return (
-                            <tr key={item.id} className="border-t border-masa-200">
-                              <td className="py-1.5 text-masa-900">
-                                <span className="font-mono text-xs text-masa-700">{item.codigo}</span>{' '}
-                                {item.nombre}
-                              </td>
-                              <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
-                                {cajasYUnidades(item.cantidad, item.unidadesPorCaja).cajas}
-                              </td>
-                              <td className="py-1.5 text-right font-mono font-semibold tabular-nums text-masa-900">
-                                {cajasYUnidades(item.cantidad, item.unidadesPorCaja).unidades}
-                              </td>
-                              <td className="py-1.5 text-right">
-                                {apartado >= item.cantidad ? (
-                                  <Pastilla texto="Completo" tono="positivo" />
-                                ) : apartado > 0 ? (
-                                  <span className="font-mono tabular-nums text-masa-900">
-                                    {enUnidadVenta(apartado, item.unidadesPorCaja, item.unidadAbreviatura)}
-                                  </span>
-                                ) : (
-                                  <span className="text-masa-700">—</span>
-                                )}
-                              </td>
-                              <td className="py-1.5 text-right">
-                                {enProduccion > 0 ? (
-                                  <span className="font-mono tabular-nums text-alerta-700">
-                                    {enUnidadVenta(enProduccion, item.unidadesPorCaja, item.unidadAbreviatura)}
-                                  </span>
-                                ) : (
-                                  <span className="text-masa-700">—</span>
-                                )}
-                              </td>
-                              {pedido.items.some((i) => i.notas !== null) && (
-                                <td className="py-1.5 text-masa-700">{formatearTexto(item.notas)}</td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {pedido.notas !== null && (
-                      <p className="mt-2 text-xs text-masa-700">Nota: {pedido.notas}</p>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       )}
       </Vista>
+      </div>
+
+      <div className="lg:col-span-3">
+        <p className="mb-1.5 text-micro font-semibold uppercase tracking-wide text-masa-700">
+          Detalle del pedido
+        </p>
+        <DetalleDelPedido
+          pedido={(estado.datos ?? []).find((x) => x.id === expandido) ?? null}
+        />
+      </div>
+      </div>
 
       {vendiendo !== null && (
         <FormularioVenta
@@ -1063,6 +1021,99 @@ function FilaConDetalle({
 }
 
 /* --------------------------- Pantalla con pestanias ------------------------ */
+
+
+/**
+ * Detalle del pedido elegido, en su propio panel al lado de la lista.
+ *
+ * Antes se desplegaba DENTRO de la fila: la lista se corria para abajo cada vez
+ * que se abria uno y comparar dos pedidos obligaba a abrir y cerrar. Aca la
+ * lista queda quieta y el detalle siempre en el mismo lugar.
+ */
+function DetalleDelPedido({ pedido }: { readonly pedido: PedidoVista | null }): JSX.Element {
+  if (pedido === null) {
+    return (
+      <div className="flex h-full min-h-[12rem] items-center justify-center rounded-ficha border border-dashed border-masa-300 bg-masa-50 px-4 py-8 text-center">
+        <p className="text-sm text-masa-700">
+          Elegi un pedido de la lista para ver que pidio, que esta apartado y que falta elaborar.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-ficha border border-masa-200 bg-white p-4 shadow-ficha">
+      <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-masa-200 pb-2">
+        <span className="font-mono text-xs text-masa-700">#{pedido.id}</span>
+        <span className="font-semibold text-masa-900">{pedido.clienteNombre ?? 'Mostrador'}</span>
+        <Pastilla texto={ETIQUETA_ESTADO_PEDIDO[pedido.estado]} tono={tonoDePedido(pedido.estado)} />
+        <span className="ml-auto text-xs text-masa-700">{formatearFecha(pedido.fechaPedido)}</span>
+      </div>
+  {/* Solo lo que compete al PEDIDO: que pidio, que esta
+      apartado y que esta en produccion. La gestion de la
+      elaboracion (Elaborar, Finalizar) vive en Produccion. */}
+  <table className="w-full text-sm">
+    <thead>
+      <tr className="text-micro uppercase tracking-wide text-masa-700">
+        <th scope="col" className="pb-1 text-left">Articulo</th>
+        <th scope="col" className="pb-1 text-right">Cajas</th>
+        <th scope="col" className="pb-1 text-right">Unidades</th>
+        <th scope="col" className="pb-1 text-right">Apartado</th>
+        <th scope="col" className="pb-1 text-right">En produccion</th>
+        {pedido.items.some((i) => i.notas !== null) && (
+          <th scope="col" className="pb-1 text-left">Notas</th>
+        )}
+      </tr>
+    </thead>
+    <tbody>
+      {pedido.items.map((item) => {
+        const apartado = Math.min(item.reservado, item.cantidad);
+        const enProduccion = Math.max(0, item.cantidad - item.reservado);
+        return (
+          <tr key={item.id} className="border-t border-masa-200">
+            <td className="py-1.5 text-masa-900">
+              <span className="font-mono text-xs text-masa-700">{item.codigo}</span>{' '}
+              {item.nombre}
+            </td>
+            <td className="py-1.5 text-right font-mono tabular-nums text-masa-900">
+              {cajasYUnidades(item.cantidad, item.unidadesPorCaja).cajas}
+            </td>
+            <td className="py-1.5 text-right font-mono font-semibold tabular-nums text-masa-900">
+              {cajasYUnidades(item.cantidad, item.unidadesPorCaja).unidades}
+            </td>
+            <td className="py-1.5 text-right">
+              {apartado >= item.cantidad ? (
+                <Pastilla texto="Completo" tono="positivo" />
+              ) : apartado > 0 ? (
+                <span className="font-mono tabular-nums text-masa-900">
+                  {enUnidadVenta(apartado, item.unidadesPorCaja, item.unidadAbreviatura)}
+                </span>
+              ) : (
+                <span className="text-masa-700">—</span>
+              )}
+            </td>
+            <td className="py-1.5 text-right">
+              {enProduccion > 0 ? (
+                <span className="font-mono tabular-nums text-alerta-700">
+                  {enUnidadVenta(enProduccion, item.unidadesPorCaja, item.unidadAbreviatura)}
+                </span>
+              ) : (
+                <span className="text-masa-700">—</span>
+              )}
+            </td>
+            {pedido.items.some((i) => i.notas !== null) && (
+              <td className="py-1.5 text-masa-700">{formatearTexto(item.notas)}</td>
+            )}
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+  {pedido.notas !== null && (
+    <p className="mt-2 text-xs text-masa-700">Nota: {pedido.notas}</p>
+  )}
+    </div>
+  );
+}
 
 export function PantallaPedidos(): JSX.Element {
   const [pestania, setPestania] = useState<'pedidos' | 'gestion'>('pedidos');

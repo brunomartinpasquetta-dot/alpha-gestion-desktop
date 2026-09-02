@@ -26,6 +26,7 @@ export type ClaveModulo =
   | 'vendedores'
   | 'proveedores'
   | 'listas-precio'
+  | 'promociones'
   | 'caja-general'
   | 'estadisticas'
   | 'contabilidad'
@@ -66,7 +67,7 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     titulo: 'Ver tablero',
     etiqueta: 'Tablero',
     icono: 'tablero',
-    descripcion: 'Indicadores del dia: stock, pedidos, produccion, ventas, caja y cuentas corrientes.',
+    descripcion: 'Indicadores del dia: stock, pedidos y produccion.',
   },
   'stock-insumos': {
     clave: 'stock-insumos',
@@ -163,6 +164,13 @@ export const MODULOS: Readonly<Record<ClaveModulo, DefinicionModulo>> = {
     etiqueta: 'Proveedores',
     icono: 'proveedores',
     descripcion: 'Datos de contacto y saldo en cuenta corriente.',
+  },
+  promociones: {
+    clave: 'promociones',
+    titulo: 'Promociones',
+    etiqueta: 'Promos',
+    icono: 'promociones',
+    descripcion: 'Combos con precio propio y vigencia.',
   },
   'listas-precio': {
     clave: 'listas-precio',
@@ -370,6 +378,7 @@ export const MENUS: readonly MenuSuperior[] = [
       { clave: 'vendedores' },
       { clave: 'clientes' },
       { clave: 'listas-precio' },
+      { clave: 'promociones' },
       { clave: 'actualizacion-precios' },
     ],
   },

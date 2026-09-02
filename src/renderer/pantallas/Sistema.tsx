@@ -170,8 +170,8 @@ function SeccionTunel(): JSX.Element {
             </p>
             <p className="select-all font-mono text-base font-bold text-menta-800">{tunel.url}/pedidos</p>
             <p className="mt-1 text-xs text-masa-700">
-              OJO: esta direccion CAMBIA cada vez que el tunel se levanta. Para una direccion fija
-              hace falta una cuenta de Cloudflare con dominio (pedirselo a BPSG).
+              Esta direccion es FIJA: se puede guardar en el celular de cada vendedor una sola vez.
+              Anda desde cualquier red, con datos o con otro WiFi.
             </p>
           </div>
         ) : tunel?.activo === true ? (

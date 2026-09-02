@@ -26,6 +26,7 @@ import { cerrarDb, obtenerDb, obtenerRutaDb, obtenerSqlite } from '../db/conexio
 import { leerConfig } from '../config';
 import { escribirConfigLocal } from '../config-local';
 import { detenerTunel, estadoTunel, iniciarTunel } from '../tunel';
+import { promocionesServicio } from '../servicios/promociones.servicio';
 import { cajaGeneralServicio } from '../servicios/caja-general.servicio';
 import { eq } from 'drizzle-orm';
 
@@ -140,13 +141,55 @@ const esquemaMovimientoCaja = z.object({
   notas: textoOpcional(300),
 });
 
+const esquemaChequeCobro = z.object({
+  numero: z.string().min(1).max(40),
+  fechaPago: z.string().min(10).max(10),
+  banco: textoOpcional(80),
+  cuitEmisor: textoOpcional(20),
+  formato: z.enum(['fisico', 'echeq']).optional(),
+});
+
 const esquemaCobroPago = z.object({
   entidadTipo: z.enum(TIPOS_ENTIDAD_CC),
   entidadId: z.number().int().positive(),
   monto: z.number().int().positive(),
   medio: z.enum(['efectivo', 'cheque', 'transferencia']),
+  // Va solo cuando el medio es cheque; el servicio lo exige en ese caso.
+  cheque: esquemaChequeCobro.nullable().optional(),
+  // Composicion del pago: cuanto entra por cada medio. La suma tiene que dar
+  // `monto`, y eso lo valida el servicio.
+  tramos: z
+    .array(
+      z.object({
+        medio: z.enum(['efectivo', 'cheque', 'transferencia']),
+        importe: z.number().int().positive(),
+        cheque: esquemaChequeCobro.nullable().optional(),
+      }),
+    )
+    .nullable()
+    .optional(),
+  imputarFifo: z.boolean().optional(),
   notas: textoOpcional(300),
 });
+
+/** Promocion: composicion + precio por lista + ventana de vigencia. */
+const esquemaPromocion = z.object({
+  nombre: z.string().trim().min(2).max(120),
+  codigo: z.string().trim().min(1).max(30),
+  vigenciaDesde: z.string().length(10).nullable().optional(),
+  vigenciaHasta: z.string().length(10).nullable().optional(),
+  activo: z.boolean().optional(),
+  componentes: z
+    .array(z.object({ articuloId: z.number().int().positive(), unidades: z.number().positive() }))
+    .min(1),
+  precios: z
+    .array(
+      z.object({ listaPrecioId: z.number().int().positive(), precio: z.number().int().positive() }),
+    )
+    .min(1),
+});
+
+const esquemaPromocionActivo = z.object({ activo: z.boolean() });
 
 const esquemaAjuste = z.object({
   articuloId: z.number().int().positive(),
@@ -413,11 +456,40 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     return reply.status(201).send({ datos: tesoreriaServicio.registrarCobroPago(entrada) });
   });
 
+  /* ------------------------------- Promociones ----------------------------- */
+
+  app.post('/api/promociones', (request: FastifyRequest, reply: FastifyReply) => {
+    const entrada = validarOFallar(esquemaPromocion, request.body, 'La promocion enviada no es valida.');
+    return reply.status(201).send({ datos: promocionesServicio.crear(entrada) });
+  });
+
+  app.put('/api/promociones/:id', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la promocion no es valido.');
+    const entrada = validarOFallar(esquemaPromocion, request.body, 'La promocion enviada no es valida.');
+    return reply.status(200).send({ datos: promocionesServicio.actualizar(id, entrada) });
+  });
+
+  app.patch('/api/promociones/:id/activo', (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = validarOFallar(esquemaId, request.params, 'El identificador de la promocion no es valido.');
+    const { activo } = validarOFallar(esquemaPromocionActivo, request.body, 'El estado enviado no es valido.');
+    return reply.status(200).send({ datos: promocionesServicio.cambiarActivo(id, activo) });
+  });
+
   /* ---------------------------- Ajustes de stock --------------------------- */
 
   app.post('/api/stock/ajustes', (request: FastifyRequest, reply: FastifyReply) => {
     const entrada = validarOFallar(esquemaAjuste, request.body, 'El ajuste enviado no es valido.');
     return reply.status(201).send({ datos: ajustesServicio.ajustarStock(entrada) });
+  });
+
+  // Toma de inventario: todos los ajustes en una transaccion, o ninguno.
+  app.post('/api/stock/ajustes/lote', (request: FastifyRequest, reply: FastifyReply) => {
+    const { ajustes } = validarOFallar(
+      z.object({ ajustes: z.array(esquemaAjuste).min(1).max(500) }),
+      request.body,
+      'La toma de inventario enviada no es valida.',
+    );
+    return reply.status(201).send({ datos: ajustesServicio.ajustarStockEnLote(ajustes) });
   });
 
   /* --------------------------------- Recetas ------------------------------- */
@@ -545,12 +617,40 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
     }
     const rutaDb = obtenerRutaDb();
     const sello = Date.now();
-    fs.copyFileSync(rutaDb, `${rutaDb}.antes-de-restaurar-${sello}`);
+    const resguardo = `${rutaDb}.antes-de-restaurar-${sello}`;
+
+    /*
+     * El resguardo "antes de restaurar" es la unica red que tiene el operador
+     * cuando elige el respaldo equivocado. Antes se copiaba el archivo
+     * principal SIN volcar el WAL, y acto seguido se borraba el -wal: todo lo
+     * escrito desde el ultimo checkpoint —una maniana entera de ventas, si no
+     * se llegaron a las 1000 paginas— no estaba ni en el resguardo ni en la
+     * base. Se perdia sin manera de volver.
+     * El checkpoint vuelca el WAL al archivo antes de copiarlo.
+     */
+    obtenerSqlite().pragma('wal_checkpoint(TRUNCATE)');
+    fs.copyFileSync(rutaDb, resguardo);
+
     cerrarDb();
-    fs.copyFileSync(ruta, rutaDb);
-    fs.rmSync(`${rutaDb}-wal`, { force: true });
-    fs.rmSync(`${rutaDb}-shm`, { force: true });
-    return reply.status(200).send({ datos: { ok: true, resguardo: `${rutaDb}.antes-de-restaurar-${sello}` } });
+
+    /*
+     * A un temporal y despues rename: copiar directo sobre la base viva deja
+     * un archivo truncado si el disco se llena o el respaldo esta en un pendrive
+     * que se desconecta a mitad. El rename dentro del mismo directorio es
+     * atomico, asi que la base o es la vieja o es la nueva, nunca media.
+     */
+    const temporal = `${rutaDb}.restaurando-${sello}`;
+    try {
+      fs.copyFileSync(ruta, temporal);
+      fs.rmSync(`${rutaDb}-wal`, { force: true });
+      fs.rmSync(`${rutaDb}-shm`, { force: true });
+      fs.renameSync(temporal, rutaDb);
+    } catch (causa) {
+      fs.rmSync(temporal, { force: true });
+      throw causa;
+    }
+
+    return reply.status(200).send({ datos: { ok: true, resguardo } });
   });
 
   app.post('/api/sistema/empezar-de-cero', (request: FastifyRequest, reply: FastifyReply) => {

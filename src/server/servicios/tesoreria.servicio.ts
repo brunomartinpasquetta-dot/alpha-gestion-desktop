@@ -28,6 +28,7 @@ import {
   cajaMovimientos,
   cajas,
   clientes,
+  cheques,
   cuentasCorrientes,
   proveedores,
 } from '../db/schema';
@@ -39,6 +40,7 @@ import {
 } from '../dominio/errores';
 import { emitir } from '../eventos';
 import { esCentavosValido } from '../utiles/numeros';
+import { comprobantesAbiertosEnTx, resolverFifo } from './cc-detalle.servicio';
 
 type Tx = Parameters<Parameters<ReturnType<typeof obtenerDb>['transaction']>[0]>[0];
 
@@ -57,6 +59,9 @@ function vistaCaja(tx: Tx, cajaId: number): CajaVista {
       cantidadMovimientos: sql<number>`(SELECT COUNT(*) FROM caja_movimientos WHERE caja_id = ${cajas.id})`.mapWith(Number),
       totalIngresos: sql<number>`COALESCE((SELECT SUM(monto) FROM caja_movimientos WHERE caja_id = ${cajas.id} AND tipo = 'ingreso'), 0)`.mapWith(Number),
       totalEgresos: sql<number>`COALESCE((SELECT SUM(monto) FROM caja_movimientos WHERE caja_id = ${cajas.id} AND tipo = 'egreso'), 0)`.mapWith(Number),
+      // Mismo criterio que saldoTeorico(): solo efectivo fisico, que es contra
+      // lo que se arquea el cajon. Sin este campo la pantalla lo leia undefined.
+      netoEfectivo: sql<number>`COALESCE((SELECT SUM(CASE WHEN tipo = 'ingreso' THEN monto ELSE -monto END) FROM caja_movimientos WHERE caja_id = ${cajas.id} AND (medio_pago_id IS NULL OR medio_pago_id IN (SELECT id FROM medios_pago WHERE es_efectivo_fisico = 1))), 0)`.mapWith(Number),
     })
     .from(cajas)
     .where(eq(cajas.id, cajaId))
@@ -213,6 +218,25 @@ export const tesoreriaServicio = {
       throw new ErrorValidacion('El importe tiene que ser un entero de centavos mayor a cero.');
     }
 
+    // Composicion del pago: un cobro puede entrar por varios medios. Si no se
+    // manda ninguna, es un tramo unico con el medio de siempre.
+    const tramos =
+      entrada.tramos !== undefined && entrada.tramos !== null && entrada.tramos.length > 0
+        ? entrada.tramos
+        : [{ medio: entrada.medio, importe: entrada.monto, cheque: entrada.cheque ?? null }];
+    const sumaTramos = tramos.reduce((suma, tramo) => suma + tramo.importe, 0);
+    if (sumaTramos !== entrada.monto) {
+      throw new ErrorValidacion(
+        `La composicion del pago suma ${(sumaTramos / 100).toFixed(2)} y el importe es ` +
+          `${(entrada.monto / 100).toFixed(2)}: tienen que coincidir.`,
+      );
+    }
+    for (const tramo of tramos) {
+      if (!esCentavosValido(tramo.importe) || tramo.importe <= 0) {
+        throw new ErrorValidacion('Cada tramo del pago tiene que ser un entero de centavos mayor a cero.');
+      }
+    }
+
     const esCobro = entrada.entidadTipo === 'cliente';
     const resultado = ejecutarSeguro('registrar un cobro o pago', () =>
       obtenerDb().transaction((tx) => {
@@ -248,60 +272,148 @@ export const tesoreriaServicio = {
           );
         }
 
-        tx.insert(cuentasCorrientes)
-          .values({
-            entidadTipo: entrada.entidadTipo,
-            entidadId: entrada.entidadId,
-            tipoMovimiento: esCobro ? 'haber' : 'debe',
-            monto: entrada.monto,
-            documentoTipo: esCobro ? 'cobro' : 'pago',
-            documentoId: null,
-            fecha: ahora,
-            notas: entrada.notas?.trim() || (esCobro ? 'Cobro' : 'Pago'),
-          })
-          .run();
+        /*
+         * IMPUTACION FIFO: en vez de un solo asiento suelto, el cobro se
+         * reparte entre los comprobantes abiertos del mas viejo al mas nuevo.
+         * Cada tramo imputado lleva el documento de la factura que cancela, y
+         * asi el saldo de cada comprobante sale de la misma tabla, sin una
+         * tabla de imputaciones que haya que mantener en sincronia.
+         *
+         * Lo que sobra despues de cerrar todo va como asiento sin documento:
+         * baja el saldo total y queda a favor del cliente.
+         */
+        const imputarFifo = entrada.imputarFifo !== false;
+        const abiertos = imputarFifo
+          ? comprobantesAbiertosEnTx(tx, entrada.entidadTipo, entrada.entidadId)
+          : [];
+        const { imputaciones, sobrante } = resolverFifo(abiertos, entrada.monto);
+        const notaBase = entrada.notas?.trim() || (esCobro ? 'Cobro' : 'Pago');
 
-        if (entrada.medio === 'efectivo') {
-          const abierta = buscarCajaAbierta(tx);
-          if (abierta === undefined) {
-            advertencias.push(
-              'No hay caja abierta: el movimiento quedo en la cuenta corriente pero no entro ni salio de ninguna caja.',
-            );
-          } else {
-            if (!esCobro) {
-              // No se bloquea: el pago ya se hizo y el sistema registra hechos.
-              // Bloquearlo lograria que el operador no lo cargue, que es peor
-              // que una caja en negativo bien visible.
-              const disponible = saldoTeorico(tx, abierta.id);
-              if (entrada.monto > disponible) {
-                advertencias.push(
-                  `La caja queda en ${((disponible - entrada.monto) / 100).toFixed(2)}: tenia ` +
-                    `${(disponible / 100).toFixed(2)}. Revisa si falta registrar un ingreso.`,
-                );
-              }
+        for (const imputacion of imputaciones) {
+          tx.insert(cuentasCorrientes)
+            .values({
+              entidadTipo: entrada.entidadTipo,
+              entidadId: entrada.entidadId,
+              tipoMovimiento: esCobro ? 'haber' : 'debe',
+              monto: imputacion.importe,
+              documentoTipo: imputacion.documentoTipo,
+              documentoId: imputacion.documentoId,
+              fecha: ahora,
+              notas: `${notaBase} · imputado a ${imputacion.documentoTipo} #${String(imputacion.documentoId)}`,
+            })
+            .run();
+        }
+        if (sobrante > 0) {
+          tx.insert(cuentasCorrientes)
+            .values({
+              entidadTipo: entrada.entidadTipo,
+              entidadId: entrada.entidadId,
+              tipoMovimiento: esCobro ? 'haber' : 'debe',
+              monto: sobrante,
+              documentoTipo: esCobro ? 'cobro' : 'pago',
+              documentoId: null,
+              fecha: ahora,
+              notas: imputaciones.length > 0 ? `${notaBase} · excedente a favor` : notaBase,
+            })
+            .run();
+        }
+        if (imputaciones.length > 0) {
+          advertencias.push(
+            `Se imputo a ${String(imputaciones.length)} comprobante(s): ` +
+              imputaciones
+                .map((i) => `${i.documentoTipo} #${String(i.documentoId)} (${(i.importe / 100).toFixed(2)})`)
+                .join(', ') +
+              '.',
+          );
+        }
+
+        /*
+         * Cada TRAMO deja su propio rastro segun por donde entro la plata:
+         *   - efectivo      -> movimiento en la caja abierta
+         *   - cheque        -> un cheque en la cartera (antes se perdia)
+         *   - transferencia -> nada fuera de la cuenta corriente
+         * Se recorre tramo a tramo y no una sola vez con el medio "principal",
+         * porque un cobro mitad efectivo mitad cheque tiene que dejar las DOS
+         * cosas: si no, el arqueo cierra mal o el cheque no existe.
+         */
+        for (const tramo of tramos) {
+          if (tramo.medio === 'cheque') {
+            const detalle = tramo.cheque ?? null;
+            if (detalle === null || detalle.numero.trim() === '' || detalle.fechaPago.trim() === '') {
+              throw new ErrorValidacion(
+                'El cheque necesita numero y fecha de cobro para entrar a la cartera.',
+              );
             }
-            tx.insert(cajaMovimientos)
+            tx.insert(cheques)
               .values({
-                cajaId: abierta.id,
-                tipo: esCobro ? 'ingreso' : 'egreso',
-                concepto: `${esCobro ? 'Cobro a' : 'Pago a'} ${nombre}`,
-                monto: entrada.monto,
+                tipo: esCobro ? 'recibido' : 'emitido',
+                formato: detalle.formato ?? 'fisico',
+                numero: detalle.numero.trim(),
+                banco: detalle.banco?.trim() || null,
+                cuitEmisor: detalle.cuitEmisor?.trim() || null,
+                contraparte: nombre,
+                entidadTipo: entrada.entidadTipo,
+                entidadId: entrada.entidadId,
+                importe: tramo.importe,
+                fechaEmision: ahora.slice(0, 10),
+                fechaPago: detalle.fechaPago,
+                // Uno recibido queda por cobrar; uno propio ya salio de casa.
+                estado: esCobro ? 'en_cartera' : 'entregado',
                 documentoTipo: esCobro ? 'cobro' : 'pago',
                 documentoId: null,
-                fecha: ahora,
-                usuario: null,
                 notas: entrada.notas?.trim() || null,
               })
               .run();
+            advertencias.push(
+              esCobro
+                ? `El cheque ${detalle.numero.trim()} entro a la cartera con vencimiento ${detalle.fechaPago}.`
+                : `El cheque ${detalle.numero.trim()} quedo registrado como entregado.`,
+            );
+          }
+
+          if (tramo.medio === 'efectivo') {
+            const abierta = buscarCajaAbierta(tx);
+            if (abierta === undefined) {
+              advertencias.push(
+                'No hay caja abierta: el movimiento quedo en la cuenta corriente pero no entro ni salio de ninguna caja.',
+              );
+            } else {
+              if (!esCobro) {
+                // No se bloquea: el pago ya se hizo y el sistema registra hechos.
+                // Bloquearlo lograria que el operador no lo cargue, que es peor
+                // que una caja en negativo bien visible.
+                const disponible = saldoTeorico(tx, abierta.id);
+                if (tramo.importe > disponible) {
+                  advertencias.push(
+                    `La caja queda en ${((disponible - tramo.importe) / 100).toFixed(2)}: tenia ` +
+                      `${(disponible / 100).toFixed(2)}. Revisa si falta registrar un ingreso.`,
+                  );
+                }
+              }
+              tx.insert(cajaMovimientos)
+                .values({
+                  cajaId: abierta.id,
+                  tipo: esCobro ? 'ingreso' : 'egreso',
+                  concepto: `${esCobro ? 'Cobro a' : 'Pago a'} ${nombre}`,
+                  monto: tramo.importe,
+                  documentoTipo: esCobro ? 'cobro' : 'pago',
+                  documentoId: null,
+                  fecha: ahora,
+                  usuario: null,
+                  notas: entrada.notas?.trim() || null,
+                })
+                .run();
+            }
           }
         }
 
-        return { entidadNombre: nombre, monto: entrada.monto, advertencias };
+        return { entidadNombre: nombre, monto: entrada.monto, advertencias, imputaciones, sobrante };
       }),
     );
 
     emitir('cc:cambio');
     emitir('caja:cambio');
+    emitir('cheques:cambio');
     return resultado;
   },
 };

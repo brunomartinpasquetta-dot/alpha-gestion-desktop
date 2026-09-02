@@ -207,16 +207,43 @@ export function reservadoParaPedido(tx: Tx, pedidoId: number, articuloId: number
   return redondearCantidad(fila?.s ?? 0);
 }
 
-/** Cuanto falta cubrir de un articulo en un pedido: lo pedido menos lo ya reservado. */
+/**
+ * Lo ya ENTREGADO de un articulo en un pedido: reservas que se convirtieron en
+ * mercaderia que el cliente se llevo.
+ */
+function entregadoDelPedido(tx: Tx, pedidoId: number, articuloId: number): number {
+  const fila = tx
+    .select({ s: sql<number>`COALESCE(SUM(${reservasStock.cantidad}), 0)`.mapWith(Number) })
+    .from(reservasStock)
+    .where(
+      and(
+        eq(reservasStock.pedidoId, pedidoId),
+        eq(reservasStock.articuloId, articuloId),
+        eq(reservasStock.estado, 'entregada'),
+      ),
+    )
+    .get();
+  return redondearCantidad(fila?.s ?? 0);
+}
+
+/**
+ * Cuanto falta cubrir de un articulo en un pedido: lo pedido, menos lo ya
+ * reservado, MENOS LO YA ENTREGADO.
+ *
+ * Lo ultimo faltaba y es lo que rompia la entrega parcial: al facturar, las
+ * reservas entregadas dejan de estar 'activa', asi que el pedido volvia a
+ * figurar descubierto por esa cantidad. El sistema reservaba de nuevo y mandaba
+ * a elaborar mercaderia que el cliente ya se habia llevado.
+ */
 export function faltaCubrir(tx: Tx, pedidoId: number, articuloId: number): number {
   const pedido = tx
     .select({ s: sql<number>`COALESCE(SUM(${pedidoItems.cantidad}), 0)`.mapWith(Number) })
     .from(pedidoItems)
     .where(and(eq(pedidoItems.pedidoId, pedidoId), eq(pedidoItems.articuloId, articuloId)))
     .get();
-  return redondearCantidad(
-    Math.max(0, (pedido?.s ?? 0) - reservadoParaPedido(tx, pedidoId, articuloId)),
-  );
+  const cubierto =
+    reservadoParaPedido(tx, pedidoId, articuloId) + entregadoDelPedido(tx, pedidoId, articuloId);
+  return redondearCantidad(Math.max(0, (pedido?.s ?? 0) - cubierto));
 }
 
 export interface AltaReserva {

@@ -12,6 +12,7 @@ import { VERSION_APP } from '../../compartido/config';
 // La forma de la respuesta vive en el contrato compartido con el renderer:
 // un desajuste aca es un error de compilacion, no una sorpresa en runtime.
 import type { RespuestaSalud } from '../../compartido/contratos';
+import { esRemota } from '../plugins/guardia-pin';
 import { leerConfig } from '../config';
 import { verificarSaludDb } from '../db/conexion';
 
@@ -31,7 +32,17 @@ function ipLan(): string | null {
 }
 
 export function registrarRutasSalud(app: FastifyInstance): void {
-  app.get('/health', (_request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/health', (request: FastifyRequest, reply: FastifyReply) => {
+    /*
+     * /health no pasa por la guardia (no es una ruta /api/), asi que por el
+     * tunel quedaba publico. Contaba de mas: la ruta de la base en el disco,
+     * el nombre de usuario del sistema, la IP de la LAN de la fabrica y si hay
+     * PIN configurado —un mapa para quien quiera entrar—. Al de afuera le
+     * alcanza con saber si el sistema esta vivo.
+     */
+    if (esRemota(request)) {
+      return reply.status(200).send({ ok: verificarSaludDb().ok });
+    }
     const config = leerConfig();
     const salud = verificarSaludDb();
 

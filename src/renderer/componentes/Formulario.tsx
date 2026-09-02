@@ -134,6 +134,43 @@ export function CampoTexto({
   );
 }
 
+/** Campo de fecha (AAAA-MM-DD), con el mismo alto y borde que el resto. */
+export function CampoFecha({
+  id,
+  rotulo,
+  valor,
+  alCambiar,
+  ayuda,
+  requerido = false,
+  deshabilitado = false,
+}: {
+  readonly id: string;
+  readonly rotulo: string;
+  readonly valor: string;
+  readonly alCambiar: (valor: string) => void;
+  readonly ayuda?: string;
+  readonly requerido?: boolean;
+  readonly deshabilitado?: boolean;
+}): JSX.Element {
+  return (
+    <div>
+      <label htmlFor={id} className={CLASE_ROTULO}>
+        {rotulo}
+        {requerido && <span className="ml-1 text-peligro-600">*</span>}
+      </label>
+      <input
+        id={id}
+        type="date"
+        value={valor}
+        onChange={(e) => alCambiar(e.target.value)}
+        disabled={deshabilitado}
+        className={CLASE_CAMPO}
+      />
+      {ayuda !== undefined && <p className="mt-1 text-xs text-masa-700">{ayuda}</p>}
+    </div>
+  );
+}
+
 /**
  * Campo de dinero. Trabaja en PESOS de cara al usuario y entrega CENTAVOS
  * enteros: la conversion vive aca y no en cada pantalla, que es donde se

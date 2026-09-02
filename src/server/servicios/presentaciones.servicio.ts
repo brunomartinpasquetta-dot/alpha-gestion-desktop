@@ -89,6 +89,9 @@ export const presentacionesServicio = {
         unidadesTotales: componentes
           .filter((c) => c.presentacionId === fila.id)
           .reduce((suma, c) => suma + c.unidades, 0),
+        esPromocion: fila.esPromocion,
+        vigenciaDesde: fila.vigenciaDesde,
+        vigenciaHasta: fila.vigenciaHasta,
       }));
     });
   },
@@ -109,6 +112,26 @@ export const presentacionesServicio = {
       if (!presentacion) throw new ErrorNoEncontrado('presentacion', presentacionId);
 
       const { listaEfectivaId, factor } = resolverLista(listaId);
+
+      // Una promo fuera de su ventana deja de valer lo que valia. Cortar aca
+      // —y no en la pantalla— es lo que evita que se cuele por el talonario,
+      // por el pedido del celular o por una venta cargada a mano.
+      if (presentacion.esPromocion) {
+        const hoy = new Date().toISOString().slice(0, 10);
+        if (!presentacion.activo) {
+          throw new ErrorReglaNegocio(`La promocion ${presentacion.nombre} esta desactivada.`);
+        }
+        if (presentacion.vigenciaDesde !== null && hoy < presentacion.vigenciaDesde) {
+          throw new ErrorReglaNegocio(
+            `La promocion ${presentacion.nombre} arranca el ${presentacion.vigenciaDesde}.`,
+          );
+        }
+        if (presentacion.vigenciaHasta !== null && hoy > presentacion.vigenciaHasta) {
+          throw new ErrorReglaNegocio(
+            `La promocion ${presentacion.nombre} vencio el ${presentacion.vigenciaHasta}.`,
+          );
+        }
+      }
 
       if (presentacion.precioPropio) {
         const filas = db

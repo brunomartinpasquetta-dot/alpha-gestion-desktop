@@ -11,6 +11,7 @@
  */
 
 import {
+  BadgePercent,
   Banknote,
   BarChart3,
   BookText,
@@ -62,6 +63,7 @@ const ICONOS: Readonly<Record<string, LucideIcon>> = {
   clientes: Users,
   proveedores: Building2,
   precios: Tag,
+  promociones: BadgePercent,
   estadisticas: BarChart3,
   /** Trazabilidad: buscar la historia de un lote. */
   trazabilidad: ScanSearch,

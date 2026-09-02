@@ -28,13 +28,25 @@ export const CONFIRMACION_REQUERIDA = 'EMPEZAR DE CERO';
  * Orden de borrado: primero lo que referencia, despues lo referenciado. Con las
  * claves foraneas activas, invertir este orden falla — que es justamente la red
  * de seguridad que confirma que no queda nada colgando.
+ *
+ * La lista tiene que estar COMPLETA o la operacion no termina nunca: faltaban
+ * siete tablas, y una de ellas —`vendedores`, que apunta a su cliente asociado
+ * desde la migracion 0017— hacia fallar el borrado de clientes por foreign key.
+ * El resultado era que "empezar de cero" no se podia completar en ninguna
+ * instalacion real: cada intento dejaba una copia de seguridad nueva en disco y
+ * no borraba nada. Si se agrega una tabla al schema, va aca.
  */
 const TABLAS_A_VACIAR: readonly string[] = [
   'comprobantes',
+  'venta_pagos',
   'venta_items',
+  // Antes de ventas, pedidos y clientes: los referencia a los tres.
+  'reservas_stock',
   'ventas',
   'compra_items',
   'compras',
+  'pedido_renglon_componentes',
+  'pedido_renglones',
   'pedido_items',
   'pedidos',
   'produccion_consumos',
@@ -45,9 +57,16 @@ const TABLAS_A_VACIAR: readonly string[] = [
   'cuentas_corrientes',
   'caja_movimientos',
   'cajas',
+  'caja_general_movimientos',
+  'caja_general',
   'cheques',
+  'precios_presentacion',
+  'presentacion_componentes',
+  'presentaciones',
+  'lotes_precio',
   'precios',
   'clientes',
+  'vendedores',
   'proveedores',
   'articulos',
 ];
@@ -152,6 +171,17 @@ export const inicializacionServicio = {
 
       const detalle: { tabla: string; filas: number }[] = [];
       const vaciar = sqlite.transaction(() => {
+        /*
+         * Clientes y vendedores se apuntan MUTUAMENTE: el cliente tiene su
+         * vendedor asignado y el vendedor tiene su cliente asociado (migracion
+         * 0017). Con las foreign keys activas ese ciclo no lo desarma ningun
+         * orden de borrado —cual vaya primero, el otro lo bloquea—, y por eso
+         * "empezar de cero" fallaba siempre con FOREIGN KEY constraint failed.
+         * Se corta el ciclo poniendo los vinculos en NULL antes de borrar.
+         */
+        sqlite.prepare('UPDATE clientes SET vendedor_id = NULL').run();
+        sqlite.prepare('UPDATE vendedores SET cliente_id = NULL').run();
+
         for (const tabla of TABLAS_A_VACIAR) {
           const antes = sqlite.prepare(`SELECT COUNT(*) AS n FROM ${tabla}`).get() as { n: number };
           if (antes.n > 0) {

@@ -682,6 +682,19 @@ export const presentaciones = sqliteTable(
     precioPropio: integer('precio_propio', { mode: 'boolean' }).notNull().default(false),
     activo: integer('activo', { mode: 'boolean' }).notNull().default(true),
     orden: integer('orden').notNull().default(0),
+    /*
+     * Una PROMOCION es una presentacion con precio propio y vigencia: "2 cajas
+     * surtidas + 1 docena a $X hasta el 30/09". Se modela aca y no en una tabla
+     * aparte porque es exactamente lo mismo que una presentacion —composicion
+     * de articulos que descuentan stock, precio por lista con historia— y dos
+     * tablas que hacen lo mismo terminan divergiendo. Lo unico que agrega la
+     * promo es la ventana de fechas.
+     */
+    esPromocion: integer('es_promocion', { mode: 'boolean' }).notNull().default(false),
+    /** AAAA-MM-DD inclusive. NULL = sin fecha de inicio (arranca ya). */
+    vigenciaDesde: text('vigencia_desde'),
+    /** AAAA-MM-DD inclusive. NULL = sin vencimiento. */
+    vigenciaHasta: text('vigencia_hasta'),
   },
   (tabla) => [uniqueIndex('ux_presentaciones_codigo').on(tabla.codigo)],
 );
@@ -1101,7 +1114,7 @@ export type TipoEntidadCc = (typeof TIPOS_ENTIDAD_CC)[number];
 export const TIPOS_MOVIMIENTO_CC = ['debe', 'haber'] as const;
 export type TipoMovimientoCc = (typeof TIPOS_MOVIMIENTO_CC)[number];
 
-export const TIPOS_DOCUMENTO_CC = ['venta', 'compra', 'cobro', 'pago'] as const;
+export const TIPOS_DOCUMENTO_CC = ['venta', 'compra', 'cobro', 'pago', 'cheque'] as const;
 export type TipoDocumentoCc = (typeof TIPOS_DOCUMENTO_CC)[number];
 
 export const cuentasCorrientes = sqliteTable(
@@ -1126,7 +1139,7 @@ export const cuentasCorrientes = sqliteTable(
     check('ck_cuentas_corrientes_tipo_movimiento', sql`${tabla.tipoMovimiento} IN ('debe','haber')`),
     check(
       'ck_cuentas_corrientes_documento_tipo',
-      sql`${tabla.documentoTipo} IN ('venta','compra','cobro','pago')`,
+      sql`${tabla.documentoTipo} IN ('venta','compra','cobro','pago','cheque')`,
     ),
     check('ck_cuentas_corrientes_monto', sql`${tabla.monto} >= 0`),
   ],
@@ -1248,11 +1261,21 @@ export const cheques = sqliteTable(
     estado: text('estado', { enum: ESTADOS_CHEQUE }).notNull(),
     documentoTipo: text('documento_tipo'),
     documentoId: integer('documento_id'),
+    /*
+     * A que proveedor se endoso. Antes esto solo quedaba escrito en las notas,
+     * asi que cuando un cheque endosado rebotaba no habia forma confiable de
+     * saber a quien volver a deberle: la cuenta del proveedor quedaba mal.
+     */
+    endosadoAId: integer('endosado_a_id'),
     notas: text('notas'),
     createdAt: text('created_at').notNull().default(AHORA),
   },
   (tabla) => [
     index('ix_cheques_tipo_estado').on(tabla.tipo, tabla.estado),
+    // Un mismo cheque no puede entrar dos veces a la cartera: el numero de un
+    // banco es unico por tipo. Antes nada lo frenaba y el operador que venia de
+    // anotarlos a mano podia cargar de nuevo uno que ya habia entrado con la venta.
+    uniqueIndex('ux_cheques_tipo_numero').on(tabla.tipo, tabla.numero),
     index('ix_cheques_fecha_pago').on(tabla.fechaPago),
     check('ck_cheques_tipo', sql`${tabla.tipo} IN ('recibido','emitido')`),
     check('ck_cheques_formato', sql`${tabla.formato} IN ('fisico','echeq')`),

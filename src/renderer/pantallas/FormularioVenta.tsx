@@ -87,6 +87,15 @@ export function FormularioVenta({
     CODIGO_RECEPTOR_CONSUMIDOR_FINAL,
   );
   const [seleccion, setSeleccion] = useState<Seleccion>({});
+  /*
+   * Lo pendiente exacto del pedido en unidades, y las cajas que se le mostraron
+   * al operador. Con los dos se sabe que renglon no toco, y ese se factura por
+   * su cantidad EXACTA: la venta solo sabia operar en cajas enteras, asi que un
+   * pedido con unidades sueltas —una caja surtida, el resto de una entrega
+   * parcial— no se podia facturar nunca y sus reservas quedaban retenidas.
+   */
+  const [pendientesExactos, setPendientesExactos] = useState<Seleccion>({});
+  const [seleccionInicial, setSeleccionInicial] = useState<Seleccion>({});
   const [preciosEditados, setPreciosEditados] = useState<PreciosEditados>({});
   const [restoPedido, setRestoPedido] = useState<'liberar' | 'mantener'>('mantener');
   // A quien se le factura el pedido de un revendedor: al cliente final (lo
@@ -160,30 +169,77 @@ export function FormularioVenta({
       pedidoId === '' ? undefined : catalogos.pedidosListos.find((p) => p.id === pedidoId);
     const listaPedido = catalogos.listas.find((l) => l.id === pedidoElegido?.listaPrecioId);
 
-    // El mas reciente vigente; el orden hace que la mas especifica pise.
+    /*
+     * Una lista DERIVADA ("Lista 1 + 20%") no tiene ni una fila propia en
+     * `precios`: su precio es el de la lista base con el recargo aplicado.
+     * Como aca solo se miraba `lista.precios`, para un cliente en una lista
+     * derivada el mapa quedaba vacio y todos los renglones salian en $0.
+     */
+    const conRecargo: { lista: ListaPrecioVista | undefined; factor: number }[] = [];
     for (const lista of [listaGeneral, listaCliente, listaPedido]) {
+      if (!lista) {
+        conRecargo.push({ lista: undefined, factor: 1 });
+        continue;
+      }
+      if (lista.baseListaId !== null && lista.recargoPct !== null) {
+        conRecargo.push({
+          lista: catalogos.listas.find((l) => l.id === lista.baseListaId),
+          factor: 1 + lista.recargoPct / 100,
+        });
+      } else {
+        conRecargo.push({ lista, factor: 1 });
+      }
+    }
+
+    // El mas reciente vigente; el orden hace que la mas especifica pise.
+    for (const { lista, factor } of conRecargo) {
       if (!lista) continue;
-      const ultimoPorArticulo = new Map<number, { precio: number; desde: string }>();
+      const ultimoPorArticulo = new Map<number, { precio: number; desde: string; id: number }>();
       for (const precio of lista.precios) {
         const previo = ultimoPorArticulo.get(precio.articuloId);
-        if (!previo || precio.vigenteDesde > previo.desde) {
-          ultimoPorArticulo.set(precio.articuloId, { precio: precio.precio, desde: precio.vigenteDesde });
+        // Con la misma fecha gana el de id mayor: dos precios cargados el mismo
+        // dia dejaban ganar al primero, o sea al VIEJO, y se cobraba de menos
+        // para siempre.
+        const gana =
+          !previo || precio.vigenteDesde > previo.desde ||
+          (precio.vigenteDesde === previo.desde && precio.id > previo.id);
+        if (gana) {
+          ultimoPorArticulo.set(precio.articuloId, {
+            precio: precio.precio,
+            desde: precio.vigenteDesde,
+            id: precio.id,
+          });
         }
       }
       // La lista del cliente pisa a la General (se procesa despues).
-      for (const [articuloId, dato] of ultimoPorArticulo) mapa.set(articuloId, dato.precio);
+      for (const [articuloId, dato] of ultimoPorArticulo) {
+        mapa.set(articuloId, Math.round(dato.precio * factor));
+      }
     }
     return mapa;
   }, [catalogos, clienteId, pedidoId]);
 
-  /** Precio efectivo en centavos: el editado a mano gana; si no, el sugerido. */
-  const precioEfectivo = (articuloId: number): number => {
+  /**
+   * Precio efectivo en centavos: el editado a mano gana; si no, el sugerido.
+   * Devuelve null cuando NO hay precio, en vez de 0: un cero se confundia con
+   * "es gratis" y la venta se cerraba a $0 sin que nadie lo notara.
+   */
+  const precioEfectivoONulo = (articuloId: number): number | null => {
     const editado = preciosEditados[articuloId];
     if (editado !== undefined && editado.trim() !== '') {
       return aCentavos(Number(editado.replace(',', '.')));
     }
-    return precioSugerido.get(articuloId) ?? 0;
+    return precioSugerido.get(articuloId) ?? null;
   };
+
+  const precioEfectivo = (articuloId: number): number => precioEfectivoONulo(articuloId) ?? 0;
+
+  /** Articulos elegidos que todavia no tienen precio: bloquean la venta. */
+  const sinPrecio = (): number[] =>
+    Object.entries(seleccion)
+      .filter(([, cantidad]) => Number(cantidad) > 0)
+      .map(([id]) => Number(id))
+      .filter((id) => precioEfectivoONulo(id) === null);
 
   /* ------------------------- Precarga desde un pedido ----------------------- */
 
@@ -195,6 +251,7 @@ export function FormularioVenta({
     if (!pedido) return;
     setClienteId(pedido.clienteId ?? '');
     const nueva: Record<number, number> = {};
+    const exactas: Record<number, number> = {};
     for (const item of pedido.items) {
       const producto = catalogos.productos.find((a) => a.id === item.articuloId);
       const upc = producto?.unidadesPorCaja ?? null;
@@ -206,8 +263,12 @@ export function FormularioVenta({
       // las 4 sueltas quedan a la vista como "sin llevar" — redondear a 2
       // cajas vendia mercaderia apartada para OTRO pedido y cobraba de mas.
       nueva[item.articuloId] = upc === null ? pendiente : Math.floor(pendiente / upc);
+      // Lo pendiente EXACTO en unidades, para poder facturarlo completo.
+      exactas[item.articuloId] = pendiente;
     }
     setSeleccion(nueva);
+    setPendientesExactos(exactas);
+    setSeleccionInicial(nueva);
   };
 
   // El boton "Vender" del pedido entra con el pedido ya elegido.
@@ -225,7 +286,10 @@ export function FormularioVenta({
         const articuloId = Number(id);
         const producto = catalogos.productos.find((a) => a.id === articuloId);
         const upc = producto?.unidadesPorCaja ?? null;
-        const cantidad = upc === null ? elegido : elegido * upc;
+        const exacto = pendientesExactos[articuloId];
+        const sinTocar = seleccionInicial[articuloId] === elegido;
+        const cantidad =
+          exacto !== undefined && sinTocar ? exacto : upc === null ? elegido : elegido * upc;
         return { articuloId, cantidad, precioUnitario: precioEfectivo(articuloId) };
       })
       .filter((item) => item.cantidad > 0);
@@ -321,8 +385,16 @@ export function FormularioVenta({
     mediosActivos.length === 0 ||
     (modoMixto ? sumaMixta === total : medioElegido !== undefined);
 
+  // Renglones sin precio en la lista del cliente: frenan la venta antes de
+  // llegar al servidor, y se nombran para que el operador sepa cual cargar.
+  const articulosSinPrecio = sinPrecio();
+  const nombresSinPrecio = articulosSinPrecio
+    .map((id) => catalogos?.productos.find((a) => a.id === id)?.nombre ?? `#${id}`)
+    .join(', ');
+
   const valido =
     items.length > 0 &&
+    articulosSinPrecio.length === 0 &&
     !(formaPago === 'cuenta_corriente' && clienteId === '') &&
     !faltaCuitParaA &&
     pagoContadoValido &&
@@ -376,7 +448,13 @@ export function FormularioVenta({
   const rotulo = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-masa-900/50 p-4" onMouseDown={alCerrar}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-masa-900/50 p-4"
+      onMouseDown={() => {
+        // Mismo criterio que el boton: con una venta en vuelo no se cierra.
+        if (!guardando) alCerrar();
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -389,6 +467,17 @@ export function FormularioVenta({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {/* Sin precio la venta no sale: se dice cual falta y donde cargarlo,
+              en vez de dejarlo pasar en $0 como hacia antes. */}
+          {articulosSinPrecio.length > 0 && (
+            <p
+              role="alert"
+              className="mb-3 rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-700"
+            >
+              Sin precio en la lista de este cliente: <strong>{nombresSinPrecio}</strong>. Cargalo en
+              Listas de precio o sacalo de la venta.
+            </p>
+          )}
           {errorCarga !== null ? (
             <p role="alert" className="rounded-ficha border border-peligro-200 bg-peligro-50 px-3 py-2 text-sm text-peligro-600">
               {errorCarga}
@@ -934,10 +1023,19 @@ export function FormularioVenta({
             )}
           </div>
           <div className="flex gap-2">
+{/*
+              Con una venta en vuelo, Cancelar NO cierra. Antes desmontaba el
+              modal mientras la peticion seguia: si ARCA tardaba y despues
+              rechazaba —CUIT mal cargado, certificado vencido— el error se
+              perdia con el componente y el operador nunca se enteraba de si la
+              factura habia salido o no.
+            */}
             <button
               type="button"
               onClick={alCerrar}
-              className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-dulce-400"
+              disabled={guardando}
+              title={guardando ? 'Esperando la respuesta de ARCA: no se puede cancelar ahora.' : undefined}
+              className="rounded-ficha border border-masa-300 px-4 py-2 text-sm font-medium text-masa-800 outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-dulce-400 disabled:opacity-40"
             >
               Cancelar
             </button>

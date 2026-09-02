@@ -132,7 +132,7 @@ export function PaletaComandos({
         aria-label="Buscar modulo"
         onMouseDown={(evento) => evento.stopPropagation()}
         onKeyDown={alTeclear}
-        className="w-full max-w-xl overflow-hidden rounded-panel border border-masa-300 bg-white shadow-panel"
+        className="flex max-h-[calc(100vh-8rem)] w-full max-w-xl flex-col overflow-hidden rounded-panel border border-masa-300 bg-white shadow-panel"
       >
         <div className="flex items-center gap-2 border-b border-masa-200 px-3">
           <Search className="h-4 w-4 shrink-0 text-masa-700" aria-hidden="true" />

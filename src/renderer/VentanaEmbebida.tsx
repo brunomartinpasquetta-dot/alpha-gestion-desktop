@@ -37,6 +37,7 @@ import { PantallaCheques } from './pantallas/Cheques';
 import { PantallaTrazabilidad } from './pantallas/Trazabilidad';
 import { PantallaPrecios } from './pantallas/Maestros';
 import { PantallaCompras, PantallaPedidos, PantallaVentas } from './pantallas/Comercial';
+import { PantallaPromociones } from './pantallas/Promociones';
 import { PantallaInicio } from './pantallas/Inicio';
 import { PantallaOrdenes, PantallaRecetas } from './pantallas/Produccion';
 
@@ -108,6 +109,8 @@ function contenidoDe(clave: ClaveModulo, params: URLSearchParams): JSX.Element {
       return <MaestroTerceros que="proveedores" />;
     case 'listas-precio':
       return <Simple><PantallaPrecios /></Simple>;
+    case 'promociones':
+      return <Simple><PantallaPromociones /></Simple>;
     case 'caja-general':
       return <Simple><PantallaCajaGeneral /></Simple>;
     case 'estadisticas':

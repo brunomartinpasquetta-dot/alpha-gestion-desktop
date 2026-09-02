@@ -14,19 +14,23 @@
  * Idempotente: se busca por codigo/nombre antes de insertar.
  */
 
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 import type { obtenerDb } from '../server/db/conexion';
 import {
   articulos,
   clientes,
+  cuentasCorrientes,
+  reservasStock,
   listasPrecio,
+  pedidos,
   precios,
   preciosPresentacion,
   presentacionComponentes,
   presentaciones,
   unidadesMedida,
   vendedores,
+  ventas,
 } from '../server/db/schema';
 
 type BaseDatos = ReturnType<typeof obtenerDb>;
@@ -99,26 +103,30 @@ const DEF_PRESENTACIONES: DefPresentacion[] = [
   // Por variedad: caja 36 / docena 12 / bolsa 6 / unidad
   ...VARIEDADES.flatMap((v, i) => [
     { codigo: `CAJA-${v.codigo}`, nombre: `Caja x36 ${v.nombre}`, precioPropio: false, orden: 10 + i, componentes: { [v.codigo]: 36 } },
-    { codigo: `DOC-${v.codigo}`, nombre: `Docena ${v.nombre}`, precioPropio: false, orden: 20 + i, componentes: { [v.codigo]: 12 } },
+    { codigo: `DOC-${v.codigo}`, nombre: `Caja x12 ${v.nombre}`, precioPropio: false, orden: 20 + i, componentes: { [v.codigo]: 12 } },
     { codigo: `BOL-${v.codigo}`, nombre: `Bolsa x6 ${v.nombre}`, precioPropio: false, orden: 30 + i, componentes: { [v.codigo]: 6 } },
+    { codigo: `BOL12-${v.codigo}`, nombre: `Bolsa x12 ${v.nombre}`, precioPropio: false, orden: 40 + i, componentes: { [v.codigo]: 12 } },
     { codigo: `UNI-${v.codigo}`, nombre: `Unidad ${v.nombre}`, precioPropio: false, orden: 40 + i, componentes: { [v.codigo]: 1 } },
   ]),
   // Surtida B-N-FB: 12+12+12 / 4+4+4 / 2+2+2
   { codigo: 'CAJA-BNFB', nombre: 'Caja surtida B-N-FB', precioPropio: false, orden: 50, componentes: { 'ALF-B': 12, 'ALF-N': 12, 'ALF-FB': 12 } },
-  { codigo: 'DOC-BNFB', nombre: 'Docena surtida B-N-FB', precioPropio: false, orden: 51, componentes: { 'ALF-B': 4, 'ALF-N': 4, 'ALF-FB': 4 } },
+  { codigo: 'DOC-BNFB', nombre: 'Caja x12 surtida B-N-FB', precioPropio: false, orden: 51, componentes: { 'ALF-B': 4, 'ALF-N': 4, 'ALF-FB': 4 } },
   { codigo: 'BOL-BNFB', nombre: 'Bolsa surtida B-N-FB', precioPropio: false, orden: 52, componentes: { 'ALF-B': 2, 'ALF-N': 2, 'ALF-FB': 2 } },
+  { codigo: 'BOL12-BNFB', nombre: 'Bolsa x12 surtida B-N-FB', precioPropio: false, orden: 53, componentes: { 'ALF-B': 4, 'ALF-N': 4, 'ALF-FB': 4 } },
   // Surtida B-N-FN: 12+12+12 / 4+4+4 / 2+2+2
   { codigo: 'CAJA-BNFN', nombre: 'Caja surtida B-N-FN', precioPropio: false, orden: 55, componentes: { 'ALF-B': 12, 'ALF-N': 12, 'ALF-FN': 12 } },
-  { codigo: 'DOC-BNFN', nombre: 'Docena surtida B-N-FN', precioPropio: false, orden: 56, componentes: { 'ALF-B': 4, 'ALF-N': 4, 'ALF-FN': 4 } },
+  { codigo: 'DOC-BNFN', nombre: 'Caja x12 surtida B-N-FN', precioPropio: false, orden: 56, componentes: { 'ALF-B': 4, 'ALF-N': 4, 'ALF-FN': 4 } },
   { codigo: 'BOL-BNFN', nombre: 'Bolsa surtida B-N-FN', precioPropio: false, orden: 57, componentes: { 'ALF-B': 2, 'ALF-N': 2, 'ALF-FN': 2 } },
+  { codigo: 'BOL12-BNFN', nombre: 'Bolsa x12 surtida B-N-FN', precioPropio: false, orden: 58, componentes: { 'ALF-B': 4, 'ALF-N': 4, 'ALF-FN': 4 } },
   // Surtida B-N-FN-FB: caja 9+9+9+9 / doc 3+3+3+3 / pack X4 = 1 de cada
   { codigo: 'CAJA-BNFNFB', nombre: 'Caja surtida B-N-FN-FB', precioPropio: false, orden: 60, componentes: { 'ALF-B': 9, 'ALF-N': 9, 'ALF-FN': 9, 'ALF-FB': 9 } },
-  { codigo: 'DOC-BNFNFB', nombre: 'Docena surtida B-N-FN-FB', precioPropio: false, orden: 61, componentes: { 'ALF-B': 3, 'ALF-N': 3, 'ALF-FN': 3, 'ALF-FB': 3 } },
+  { codigo: 'DOC-BNFNFB', nombre: 'Caja x12 surtida B-N-FN-FB', precioPropio: false, orden: 61, componentes: { 'ALF-B': 3, 'ALF-N': 3, 'ALF-FN': 3, 'ALF-FB': 3 } },
   { codigo: 'X4-BNFNFB', nombre: 'Pack x4 surtido (1 de cada)', precioPropio: false, orden: 62, componentes: { 'ALF-B': 1, 'ALF-N': 1, 'ALF-FN': 1, 'ALF-FB': 1 } },
   // Surtida FN-FB: caja 18+18 / doc 6+6 / bolsa 3+3
   { codigo: 'CAJA-FNFB', nombre: 'Caja surtida FN-FB', precioPropio: false, orden: 65, componentes: { 'ALF-FN': 18, 'ALF-FB': 18 } },
-  { codigo: 'DOC-FNFB', nombre: 'Docena surtida FN-FB', precioPropio: false, orden: 66, componentes: { 'ALF-FN': 6, 'ALF-FB': 6 } },
+  { codigo: 'DOC-FNFB', nombre: 'Caja x12 surtida FN-FB', precioPropio: false, orden: 66, componentes: { 'ALF-FN': 6, 'ALF-FB': 6 } },
   { codigo: 'BOL-FNFB', nombre: 'Bolsa surtida FN-FB', precioPropio: false, orden: 67, componentes: { 'ALF-FN': 3, 'ALF-FB': 3 } },
+  { codigo: 'BOL12-FNFB', nombre: 'Bolsa x12 surtida FN-FB', precioPropio: false, orden: 68, componentes: { 'ALF-FN': 6, 'ALF-FB': 6 } },
   // Caja Anyulin: 3 de cada variedad y el ENVASE se cobra aparte (precio propio)
   { codigo: 'CAJA-ANY', nombre: 'Caja Anyulin (3 de cada + envase)', precioPropio: true, orden: 70, componentes: { 'ALF-B': 3, 'ALF-N': 3, 'ALF-FN': 3, 'ALF-FB': 3, 'ENV-ANY': 1 } },
   // Caja vacia: solo el envase, mismo renglon de precio
@@ -437,10 +445,54 @@ export function sembrarPadronAnyulin(db: BaseDatos): ResumenPadron {
   );
   const nombresPadron = new Set(PADRON_ANYULIN.map((c) => c.nombre));
 
-  // Afuera los clientes que no son del padron: borrar si no tienen historia,
-  // desactivar si la tienen.
+  /*
+   * Afuera los clientes que no son del padron: borrar si no tienen historia,
+   * DESACTIVAR si la tienen.
+   *
+   * Antes esto se delegaba en el try/catch, confiando en que la foreign key
+   * frenara el borrado de un cliente con movimientos. No lo frena: ventas,
+   * pedidos y reservas tienen onDelete SET NULL, y cuentas_corrientes ni
+   * siquiera tiene FK fisica (es polimorfica, entidad_tipo + entidad_id). O sea
+   * que el delete SALIA BIEN y se llevaba puesta la historia: las ventas
+   * quedaban sin cliente y los asientos de cuenta corriente apuntando a un id
+   * que ya no existe. El resumen general seguia sumando esa deuda —porque hace
+   * SUM sobre toda la tabla, sin join— mientras la pantalla de clientes no
+   * mostraba a nadie que la debiera. Plata por cobrar sin dueño.
+   *
+   * Ahora se pregunta explicitamente, tabla por tabla, antes de borrar.
+   */
+  const tieneHistoria = (clienteId: number): boolean => {
+    const hayVenta = db.select({ id: ventas.id }).from(ventas).where(eq(ventas.clienteId, clienteId)).get();
+    if (hayVenta !== undefined) return true;
+    const hayPedido = db.select({ id: pedidos.id }).from(pedidos).where(eq(pedidos.clienteId, clienteId)).get();
+    if (hayPedido !== undefined) return true;
+    const hayReserva = db
+      .select({ id: reservasStock.id })
+      .from(reservasStock)
+      .where(eq(reservasStock.clienteId, clienteId))
+      .get();
+    if (hayReserva !== undefined) return true;
+    // Cuenta corriente: sin FK, hay que mirarla a mano o la deuda queda huerfana.
+    const hayAsiento = db
+      .select({ id: cuentasCorrientes.id })
+      .from(cuentasCorrientes)
+      .where(
+        and(
+          eq(cuentasCorrientes.entidadTipo, 'cliente'),
+          eq(cuentasCorrientes.entidadId, clienteId),
+        ),
+      )
+      .get();
+    return hayAsiento !== undefined;
+  };
+
   for (const viejo of db.select().from(clientes).all()) {
     if (nombresPadron.has(viejo.nombre)) continue;
+    if (tieneHistoria(viejo.id)) {
+      db.update(clientes).set({ activo: false }).where(eq(clientes.id, viejo.id)).run();
+      resumen.clientesDesactivados += 1;
+      continue;
+    }
     try {
       db.delete(clientes).where(eq(clientes.id, viejo.id)).run();
       resumen.clientesBorrados += 1;

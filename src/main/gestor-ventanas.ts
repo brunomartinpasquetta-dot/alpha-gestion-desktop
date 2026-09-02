@@ -18,7 +18,7 @@
 import path from 'node:path';
 
 import { opcionesBarraTitulo } from './ventana';
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, shell, screen } from 'electron';
 
 /** Lo que la barra de tareas necesita saber de cada ventana abierta. */
 export interface DescriptorVentana {
@@ -49,6 +49,20 @@ interface VentanaModulo {
 
 const ANCHO_DEFAULT = 1180;
 const ALTO_DEFAULT = 760;
+
+/**
+ * Lo que entra en la pantalla real. En el monitor de la fabrica (1366x768) una
+ * ventana de 760 de alto mas la barra de tareas se pasa del borde y el modulo
+ * queda cortado abajo, justo donde estan los botones de guardar.
+ */
+function tamanioQueEntra(ancho: number, alto: number): { width: number; height: number } {
+  try {
+    const util = screen.getPrimaryDisplay().workAreaSize;
+    return { width: Math.min(ancho, util.width), height: Math.min(alto, util.height) };
+  } catch {
+    return { width: ancho, height: alto };
+  }
+}
 /** Cada ventana nueva se corre un poco, para que no se tapen entre si. */
 const DESPLAZAMIENTO = 26;
 
@@ -140,10 +154,11 @@ export function abrirVentana(solicitud: SolicitudApertura): number {
     // Ver Menu.setApplicationMenu(null) en index.ts: ademas se pide por ventana
     // porque en Windows la barra nativa se dibuja por ventana, no por app.
     autoHideMenuBar: true,
-    width: ANCHO_DEFAULT,
-    height: ALTO_DEFAULT,
-    minWidth: 900,
-    minHeight: 560,
+    ...tamanioQueEntra(ANCHO_DEFAULT, ALTO_DEFAULT),
+    // El minimo tambien se acota: si la pantalla es mas chica que el minimo,
+    // Windows ignora el minimo y la ventana igual sale del borde.
+    minWidth: Math.min(900, tamanioQueEntra(900, 560).width),
+    minHeight: Math.min(560, tamanioQueEntra(900, 560).height),
     ...(posicion
       ? { x: posicion.x + 48 + corrimiento, y: posicion.y + 48 + corrimiento }
       : {}),
