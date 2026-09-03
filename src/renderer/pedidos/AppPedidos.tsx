@@ -50,11 +50,15 @@ const VARIEDADES_ALFAJOR = [
   { codigo: 'ALF-FB', etiqueta: 'FRUT. BLANCO' },
   { codigo: 'ALF-FN', etiqueta: 'FRUT. NEGRO' },
 ] as const;
+// Cada contenedor aparece dos veces en el desplegable: comun (UNA variedad,
+// se elige cual y cuantas cajas) y "surtida" (composicion libre por variedad
+// que tiene que sumar lo que lleva el envase). "Unidades" va suelto por sabor.
 const TIPOS_ALFAJOR = [
+  { prefijo: 'DOC', etiqueta: 'Caja x12', unidades: 12 },
   { prefijo: 'CAJA', etiqueta: 'Caja x36', unidades: 36 },
-  { prefijo: 'DOC', etiqueta: 'Docena', unidades: 12 },
+  { prefijo: 'BOL12', etiqueta: 'Bolsa x12', unidades: 12 },
   { prefijo: 'BOL', etiqueta: 'Bolsa x6', unidades: 6 },
-  { prefijo: 'UNI', etiqueta: 'Unidad suelta', unidades: 1 },
+  { prefijo: 'UNI', etiqueta: 'Unidades', unidades: 1 },
 ] as const;
 const VARIEDADES_ALMENDRA = [
   { codigo: 'ALM-CL', etiqueta: 'C/LECHE' },
@@ -108,7 +112,8 @@ export function AppPedidos(): JSX.Element {
   const [notas, setNotas] = useState('');
   // Talonario movil.
   const [producto, setProducto] = useState<ProductoTalonario>('ALFAJORES');
-  const [presentacionSel, setPresentacionSel] = useState<string>('CAJA');
+  const [presentacionSel, setPresentacionSel] = useState<string>('DOC');
+  const [variedadSel, setVariedadSel] = useState<string>('');
   const [cantidades, setCantidades] = useState<Record<string, number | ''>>({});
   const [cantidadCajas, setCantidadCajas] = useState<number | ''>(1);
   const [renglones, setRenglones] = useState<RenglonMovil[]>([]);
@@ -213,10 +218,16 @@ export function AppPedidos(): JSX.Element {
       : producto === 'CUBANITOS'
         ? VARIEDADES_CUBANITO
         : VARIEDADES_ALFAJOR;
-  const tipoAlfajor = producto === 'ALFAJORES' ? TIPOS_ALFAJOR.find((x) => x.prefijo === presentacionSel) : undefined;
+  const esSurtidaSel = presentacionSel.endsWith('-S');
+  const prefijoSel = esSurtidaSel ? presentacionSel.slice(0, -2) : presentacionSel;
+  const tipoAlfajor = producto === 'ALFAJORES' ? TIPOS_ALFAJOR.find((x) => x.prefijo === prefijoSel) : undefined;
   const tipoCubanito = producto === 'CUBANITOS' ? TIPOS_CUBANITO.find((x) => x.sel === presentacionSel) : undefined;
+  // Contenedor de UNA variedad: variedad + cuantas cajas/bolsas.
+  const envaseVariedadUnica =
+    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1 && !esSurtidaSel ? tipoAlfajor : undefined;
+  // Surtida de alfajores o caja de cubanitos: la composicion llena el envase.
   const envase =
-    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1
+    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1 && esSurtidaSel
       ? { unidades: tipoAlfajor.unidades, etiqueta: tipoAlfajor.etiqueta }
       : tipoCubanito !== undefined
         ? { unidades: tipoCubanito.unidades, etiqueta: tipoCubanito.etiqueta }
@@ -224,6 +235,7 @@ export function AppPedidos(): JSX.Element {
   const esAlmendras = producto === 'ALMENDRAS';
   const esUnidadSuelta = tipoAlfajor !== undefined && tipoAlfajor.unidades === 1;
   const esDirecto = presentacionSel.startsWith('P');
+  const esBolsa = (tipoAlfajor?.etiqueta ?? '').startsWith('Bolsa');
 
   const numero = (clave: string): number => {
     const v = cantidades[clave];
@@ -231,15 +243,24 @@ export function AppPedidos(): JSX.Element {
   };
   const suma = variedades.reduce((s, v) => s + numero(v.codigo), 0);
   const cajas = typeof cantidadCajas === 'number' && cantidadCajas > 0 ? cantidadCajas : 0;
-  const puedeAgregar = envase !== undefined
-    ? suma === envase.unidades && cajas > 0
-    : esDirecto
-      ? numero('CANT') > 0
-      : variedades.some((v) => numero(v.codigo) > 0) && (!esAlmendras || cajas > 0);
+  const puedeAgregar = envaseVariedadUnica !== undefined
+    ? variedadSel !== '' && cajas > 0
+    : envase !== undefined
+      ? suma === envase.unidades && cajas > 0
+      : esDirecto
+        ? numero('CANT') > 0
+        : variedades.some((v) => numero(v.codigo) > 0) && (!esAlmendras || cajas > 0);
 
   const opcionesPresentacion = useMemo(() => {
     if (producto === 'ALFAJORES') {
-      return TIPOS_ALFAJOR.filter((x) => porCodigo.has(`${x.prefijo}-ALF-B`)).map((x) => ({ valor: x.prefijo as string, etiqueta: x.etiqueta }));
+      return TIPOS_ALFAJOR.filter((x) => porCodigo.has(`${x.prefijo}-ALF-B`)).flatMap((x) =>
+        x.unidades > 1
+          ? [
+              { valor: x.prefijo as string, etiqueta: x.etiqueta },
+              { valor: `${x.prefijo}-S`, etiqueta: `${x.etiqueta} surtida` },
+            ]
+          : [{ valor: x.prefijo as string, etiqueta: x.etiqueta }],
+      );
     }
     if (producto === 'CUBANITOS') {
       return TIPOS_CUBANITO.filter((x) => porCodigo.has(x.codigoPres)).map((x) => ({ valor: x.sel as string, etiqueta: x.etiqueta }));
@@ -267,7 +288,12 @@ export function AppPedidos(): JSX.Element {
       unidades: pr.unidadesTotales,
       componentes: pr.componentes.map((c) => ({ articuloId: c.articuloId, unidades: c.unidades })),
     });
-    if (envase !== undefined) {
+    if (envaseVariedadUnica !== undefined) {
+      // Contenedor de una sola variedad: renglon de catalogo directo.
+      const pr = porCodigo.get(`${envaseVariedadUnica.prefijo}-${variedadSel}`);
+      if (pr === undefined) return;
+      nuevos.push(deCatalogo(pr, cajas));
+    } else if (envase !== undefined) {
       const partes = variedades.filter((v) => numero(v.codigo) > 0);
       const comps = partes.flatMap((v) => {
         const id = articuloPorCodigo.get(v.codigo);
@@ -311,6 +337,7 @@ export function AppPedidos(): JSX.Element {
     });
     setCantidades({});
     setCantidadCajas(1);
+    setVariedadSel('');
   };
 
   const items = useMemo(() => {
@@ -370,6 +397,7 @@ export function AppPedidos(): JSX.Element {
       setRenglones([]);
       setCantidades({});
       setCantidadCajas(1);
+      setVariedadSel('');
       setNotas('');
       setClienteId('');
       setVendedorId('');
@@ -548,8 +576,9 @@ export function AppPedidos(): JSX.Element {
                     setProducto(nuevoProducto);
                     setCantidades({});
                     setCantidadCajas(1);
+                    setVariedadSel('');
                     setPresentacionSel(
-                      nuevoProducto === 'ALFAJORES' ? 'CAJA'
+                      nuevoProducto === 'ALFAJORES' ? 'DOC'
                         : nuevoProducto === 'CUBANITOS' ? 'CUB10'
                           : nuevoProducto === 'ALMENDRAS' ? 'VAR' : '',
                     );
@@ -570,6 +599,7 @@ export function AppPedidos(): JSX.Element {
                     setPresentacionSel(e.target.value);
                     setCantidades({});
                     setCantidadCajas(1);
+                    setVariedadSel('');
                   }}
                   className="h-12 w-full rounded-ficha border border-masa-300 bg-white px-3 text-base text-masa-900"
                 >
@@ -578,7 +608,48 @@ export function AppPedidos(): JSX.Element {
                   ))}
                 </select>
 
-                {esDirecto ? (
+                {envaseVariedadUnica !== undefined ? (
+                  <>
+                    <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-masa-700">
+                      Variedad ({envaseVariedadUnica.unidades} u por {esBolsa ? 'bolsa' : 'caja'})
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {VARIEDADES_ALFAJOR.map((v) => (
+                        <button
+                          key={v.codigo}
+                          type="button"
+                          aria-pressed={variedadSel === v.codigo}
+                          onClick={() => setVariedadSel(v.codigo)}
+                          className={[
+                            'h-12 rounded-ficha border text-sm font-bold uppercase tracking-wide',
+                            variedadSel === v.codigo
+                              ? 'border-dulce-500 bg-dulce-500 text-white'
+                              : 'border-masa-300 bg-white text-masa-800',
+                          ].join(' ')}
+                        >
+                          {v.etiqueta}
+                        </button>
+                      ))}
+                      <label className="col-span-2 flex flex-col gap-0.5 border-t border-masa-200 pt-2">
+                        <span className="text-xs font-bold uppercase tracking-wide text-dulce-700">
+                          {esBolsa ? 'CANTIDAD DE BOLSAS' : 'CANTIDAD DE CAJAS'}
+                        </span>
+                        <input
+                          inputMode="numeric"
+                          value={cantidadCajas === '' ? '' : String(cantidadCajas)}
+                          onChange={(e) => {
+                            const n = Number.parseInt(e.target.value, 10);
+                            setCantidadCajas(Number.isFinite(n) ? n : '');
+                          }}
+                          className="h-14 w-full rounded-ficha border-2 border-dulce-400 bg-dulce-50 text-center text-xl font-bold tabular-nums"
+                        />
+                      </label>
+                    </div>
+                    {variedadSel === '' && (
+                      <p className="mt-1.5 text-xs font-medium text-alerta-700">Elegi la variedad.</p>
+                    )}
+                  </>
+                ) : esDirecto ? (
                   <div className="mt-3">
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-masa-700">
                       Cantidad
@@ -598,7 +669,7 @@ export function AppPedidos(): JSX.Element {
                   <>
                     <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-masa-700">
                       {envase !== undefined
-                        ? `Unidades por variedad (suman ${envase.unidades})`
+                        ? `Composicion de la ${esBolsa ? 'bolsa' : 'caja'} surtida (suman ${envase.unidades})`
                         : esAlmendras
                           ? 'Bolsas de cada variedad'
                           : 'Unidades de cada variedad'}
@@ -622,7 +693,7 @@ export function AppPedidos(): JSX.Element {
                       {(envase !== undefined || esAlmendras) && (
                         <label className="col-span-2 flex flex-col gap-0.5 border-t border-masa-200 pt-2">
                           <span className="text-xs font-bold uppercase tracking-wide text-dulce-700">
-                            {esAlmendras ? 'CANTIDAD DE BOLSAS' : 'CANTIDAD DE CAJAS'}
+                            {esAlmendras || esBolsa ? 'CANTIDAD DE BOLSAS' : 'CANTIDAD DE CAJAS'}
                           </span>
                           <input
                             inputMode="numeric"
@@ -638,7 +709,7 @@ export function AppPedidos(): JSX.Element {
                     </div>
                     {envase !== undefined && suma !== envase.unidades && suma > 0 && (
                       <p className="mt-1.5 text-xs font-medium text-alerta-700">
-                        Van {suma} de {envase.unidades} unidades: ajusta para que la caja cierre.
+                        Van {suma} de {envase.unidades} unidades: ajusta para que {esBolsa ? 'la bolsa' : 'la caja'} cierre.
                       </p>
                     )}
                   </>

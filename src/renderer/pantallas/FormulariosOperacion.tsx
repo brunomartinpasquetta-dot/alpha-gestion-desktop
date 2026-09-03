@@ -1125,11 +1125,18 @@ const VARIEDADES_ALFAJOR = [
   { codigo: 'ALF-FN', etiqueta: 'FRUTILLA NEGRO' },
 ] as const;
 
+/**
+ * Cada contenedor genera DOS opciones en el desplegable: la comun (una sola
+ * variedad: se elige variedad + cantidad de cajas) y la "surtida" (se arma la
+ * composicion por variedad y las unidades tienen que sumar lo que lleva el
+ * envase). "Unidades" no tiene envase: unidades sueltas por variedad.
+ */
 const TIPOS_ALFAJOR = [
+  { prefijo: 'DOC', etiqueta: 'Caja x12', unidades: 12 },
   { prefijo: 'CAJA', etiqueta: 'Caja x36', unidades: 36 },
-  { prefijo: 'DOC', etiqueta: 'Docena', unidades: 12 },
+  { prefijo: 'BOL12', etiqueta: 'Bolsa x12', unidades: 12 },
   { prefijo: 'BOL', etiqueta: 'Bolsa x6', unidades: 6 },
-  { prefijo: 'UNI', etiqueta: 'Unidad suelta', unidades: 1 },
+  { prefijo: 'UNI', etiqueta: 'Unidades', unidades: 1 },
 ] as const;
 
 const VARIEDADES_ALMENDRA = [
@@ -1248,7 +1255,8 @@ function FormularioPedidoTalonario({
     }),
   );
   const [producto, setProducto] = useState<ProductoTalonario>('ALFAJORES');
-  const [presentacionSel, setPresentacionSel] = useState<string>('CAJA');
+  const [presentacionSel, setPresentacionSel] = useState<string>('DOC');
+  const [variedadSel, setVariedadSel] = useState<string>('');
   const [cantidades, setCantidades] = useState<Record<string, number | ''>>({});
   const [cantidadCajas, setCantidadCajas] = useState<number | ''>(1);
   const [error, setError] = useState<string | null>(null);
@@ -1297,13 +1305,19 @@ function FormularioPedidoTalonario({
   }, [presentaciones, productos]);
 
 
-  // Opciones de presentacion segun el producto elegido.
+  // Opciones de presentacion segun el producto elegido. Cada contenedor de
+  // alfajores aparece dos veces: comun (una variedad) y surtida (composicion).
   const opcionesPresentacion = useMemo(() => {
     if (producto === 'ALFAJORES') {
-      return TIPOS_ALFAJOR.filter((tipo) => porCodigo.has(`${tipo.prefijo}-ALF-B`)).map((tipo) => ({
-        valor: tipo.prefijo as string,
-        etiqueta: tipo.etiqueta,
-      }));
+      return TIPOS_ALFAJOR.filter((tipo) => porCodigo.has(`${tipo.prefijo}-ALF-B`)).flatMap(
+        (tipo) =>
+          tipo.unidades > 1
+            ? [
+                { valor: tipo.prefijo as string, etiqueta: tipo.etiqueta },
+                { valor: `${tipo.prefijo}-S`, etiqueta: `${tipo.etiqueta} surtida` },
+              ]
+            : [{ valor: tipo.prefijo as string, etiqueta: tipo.etiqueta }],
+      );
     }
     if (producto === 'CUBANITOS') {
       return TIPOS_CUBANITO.filter((tipo) => porCodigo.has(tipo.codigoPres)).map((tipo) => ({
@@ -1324,7 +1338,8 @@ function FormularioPedidoTalonario({
     setProducto(nuevo);
     setCantidades({});
     setCantidadCajas(1);
-    if (nuevo === 'ALFAJORES') setPresentacionSel('CAJA');
+    setVariedadSel('');
+    if (nuevo === 'ALFAJORES') setPresentacionSel('DOC');
     else if (nuevo === 'CUBANITOS') setPresentacionSel('CUB10');
     else if (nuevo === 'ALMENDRAS') setPresentacionSel('VAR');
     else setPresentacionSel('');
@@ -1337,19 +1352,25 @@ function FormularioPedidoTalonario({
       : producto === 'CUBANITOS'
         ? VARIEDADES_CUBANITO
         : VARIEDADES_ALFAJOR;
+  const esSurtidaSel = presentacionSel.endsWith('-S');
+  const prefijoSel = esSurtidaSel ? presentacionSel.slice(0, -2) : presentacionSel;
   const tipoAlfajor =
     producto === 'ALFAJORES'
-      ? TIPOS_ALFAJOR.find((t) => t.prefijo === presentacionSel)
+      ? TIPOS_ALFAJOR.find((t) => t.prefijo === prefijoSel)
       : undefined;
   const tipoCubanito =
     producto === 'CUBANITOS'
       ? TIPOS_CUBANITO.find((t) => t.sel === presentacionSel)
       : undefined;
-  // Caja cerrada (caja/docena/bolsa de alfajores, caja de cubanitos): las
-  // variedades LLENAN la caja (la suma tiene que dar lo que lleva el envase)
-  // y aparte se dice CUANTAS cajas asi van.
+  // Contenedor de UNA variedad: se elige la variedad y cuantas cajas/bolsas van.
+  const envaseVariedadUnica =
+    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1 && !esSurtidaSel
+      ? tipoAlfajor
+      : undefined;
+  // Caja surtida (alfajores) o caja de cubanitos: las variedades LLENAN el
+  // envase (la suma tiene que dar lo que lleva) y aparte se dice CUANTAS van.
   const envaseCerrado =
-    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1
+    tipoAlfajor !== undefined && tipoAlfajor.unidades > 1 && esSurtidaSel
       ? { unidades: tipoAlfajor.unidades, etiqueta: tipoAlfajor.etiqueta }
       : tipoCubanito !== undefined
         ? { unidades: tipoCubanito.unidades, etiqueta: tipoCubanito.etiqueta }
@@ -1358,6 +1379,7 @@ function FormularioPedidoTalonario({
   const esUnidadSuelta = tipoAlfajor !== undefined && tipoAlfajor.unidades === 1;
   const esPorUnidades = esUnidadSuelta || producto === 'ALMENDRAS';
   const esCatalogoDirecto = presentacionSel.startsWith('P');
+  const esBolsa = (tipoAlfajor?.etiqueta ?? '').startsWith('Bolsa');
 
   const numero = (clave: string): number => {
     const valor = cantidades[clave];
@@ -1368,11 +1390,13 @@ function FormularioPedidoTalonario({
   const cajas = typeof cantidadCajas === 'number' && cantidadCajas > 0 ? cantidadCajas : 0;
 
   const esAlmendras = producto === 'ALMENDRAS';
-  const puedeAgregar = esCajaCerrada
-    ? sumaVariedades === (envaseCerrado?.unidades ?? 0) && cajas > 0
-    : esCatalogoDirecto
-      ? cantidadDirecta > 0
-      : variedades.some((v) => numero(v.codigo) > 0) && (!esAlmendras || cajas > 0);
+  const puedeAgregar = envaseVariedadUnica !== undefined
+    ? variedadSel !== '' && cajas > 0
+    : esCajaCerrada
+      ? sumaVariedades === (envaseCerrado?.unidades ?? 0) && cajas > 0
+      : esCatalogoDirecto
+        ? cantidadDirecta > 0
+        : variedades.some((v) => numero(v.codigo) > 0) && (!esAlmendras || cajas > 0);
 
   // Si el contenido cargado coincide con una presentacion del catalogo (36 de
   // blanco = la caja de blanco; 12+12+12 = la surtida), el renglon sale con
@@ -1391,7 +1415,15 @@ function FormularioPedidoTalonario({
 
   const agregar = (): void => {
     const nuevos: RenglonTalonario[] = [];
-    if (esCajaCerrada && envaseCerrado !== undefined) {
+    if (envaseVariedadUnica !== undefined) {
+      // Contenedor de UNA variedad: renglon de catalogo directo (DOC-ALF-N...).
+      const pres = porCodigo.get(`${envaseVariedadUnica.prefijo}-${variedadSel}`);
+      if (pres === undefined) {
+        setError('Esa variedad no esta en el catalogo: recarga el catalogo Anyulin.');
+        return;
+      }
+      nuevos.push(renglonDeCatalogo(pres, cajas));
+    } else if (esCajaCerrada && envaseCerrado !== undefined) {
       const partes = variedades.filter((v) => numero(v.codigo) > 0);
       const componentes = partes.flatMap((v) => {
         const articulo = articuloPorCodigo.get(v.codigo);
@@ -1471,6 +1503,7 @@ function FormularioPedidoTalonario({
     });
     setCantidades({});
     setCantidadCajas(1);
+    setVariedadSel('');
     setError(null);
   };
 
@@ -1505,11 +1538,28 @@ function FormularioPedidoTalonario({
     return false;
   };
 
+  // Con dos contenedores de 12 (Caja x12 y Bolsa x12) las unidades solas no
+  // identifican el envase: primero el codigo de catalogo, despues la etiqueta.
+  const prefijoDeRenglon = (r: RenglonTalonario): string | undefined => {
+    if (r.presentacionId !== null) {
+      const codigo = porId.get(r.presentacionId)?.codigo ?? '';
+      const corte = codigo.indexOf('-ALF-');
+      if (corte > 0) return codigo.slice(0, corte);
+    }
+    const porEtiqueta = TIPOS_ALFAJOR.find((x) => r.etiqueta.startsWith(x.etiqueta));
+    if (porEtiqueta !== undefined) return porEtiqueta.prefijo;
+    return TIPOS_ALFAJOR.find((x) => x.unidades === r.unidadesPorUnidad)?.prefijo;
+  };
+
   const editarRenglon = (r: RenglonTalonario): void => {
     const cual = productoDeRenglon(r);
+    // Se reabre siempre en el armador surtido: es donde se ve y toca la mezcla.
     const sel =
       cual === 'ALFAJORES'
-        ? TIPOS_ALFAJOR.find((x) => x.unidades === r.unidadesPorUnidad)?.prefijo
+        ? (() => {
+            const prefijo = prefijoDeRenglon(r);
+            return prefijo === undefined ? undefined : `${prefijo}-S`;
+          })()
         : cual === 'CUBANITOS'
           ? TIPOS_CUBANITO.find((x) => x.unidades === r.unidadesPorUnidad)?.sel
           : undefined;
@@ -1679,15 +1729,59 @@ function FormularioPedidoTalonario({
               setPresentacionSel(String(v));
               setCantidades({});
               setCantidadCajas(1);
+              setVariedadSel('');
             }}
           />
         </Fila>
+
+        {envaseVariedadUnica !== undefined && (
+          <div className="mt-3">
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-masa-700">
+              Variedad ({envaseVariedadUnica.unidades} unidades por {esBolsa ? 'bolsa' : 'caja'})
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              {VARIEDADES_ALFAJOR.map((v) => (
+                <button
+                  key={v.codigo}
+                  type="button"
+                  onClick={() => setVariedadSel(v.codigo)}
+                  className={[
+                    'h-10 rounded-none border px-3 text-xs font-bold uppercase tracking-wide',
+                    variedadSel === v.codigo
+                      ? 'border-dulce-500 bg-dulce-500 text-white'
+                      : 'border-masa-300 bg-white text-masa-800',
+                  ].join(' ')}
+                >
+                  {v.etiqueta}
+                </button>
+              ))}
+              <label className="ml-2 flex flex-col gap-0.5">
+                <span className="text-micro font-bold uppercase tracking-wide text-dulce-700">
+                  {esBolsa ? 'Cantidad de bolsas' : 'Cantidad de cajas'}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={cantidadCajas}
+                  onChange={(e) =>
+                    setCantidadCajas(e.target.value === '' ? '' : Number(e.target.value))
+                  }
+                  className={claseCampo}
+                />
+              </label>
+            </div>
+            {variedadSel === '' && (
+              <p className="mt-1.5 text-xs font-medium text-alerta-700">Elegi la variedad.</p>
+            )}
+          </div>
+        )}
 
         {(esCajaCerrada || esPorUnidades) && (
           <div className="mt-3">
             <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-masa-700">
               {esCajaCerrada
-                ? `Unidades de cada variedad que lleva la caja (suman ${envaseCerrado?.unidades ?? 0})`
+                ? `Composicion de la ${esBolsa ? 'bolsa' : 'caja'} surtida (las variedades suman ${envaseCerrado?.unidades ?? 0})`
                 : producto === 'ALMENDRAS'
                   ? 'Cantidad de bolsas de cada variedad'
                   : 'Cantidad de unidades de cada variedad'}
@@ -1716,7 +1810,7 @@ function FormularioPedidoTalonario({
               {(esCajaCerrada || esAlmendras) && (
                 <label className="flex flex-col gap-0.5">
                   <span className="text-micro font-bold uppercase tracking-wide text-dulce-700">
-                    {esAlmendras ? 'Cantidad de bolsas' : 'Cantidad de cajas'}
+                    {esAlmendras || esBolsa ? 'Cantidad de bolsas' : 'Cantidad de cajas'}
                   </span>
                   <input
                     type="number"
@@ -1740,7 +1834,7 @@ function FormularioPedidoTalonario({
               <p className="mt-1.5 text-xs font-medium text-alerta-700">
                 {sumaVariedades === 0
                   ? 'Completa las unidades de cada variedad.'
-                  : `Van ${sumaVariedades} de ${envaseCerrado?.unidades ?? 0} unidades: ajusta para que la caja cierre.`}
+                  : `Van ${sumaVariedades} de ${envaseCerrado?.unidades ?? 0} unidades: ajusta para que ${esBolsa ? 'la bolsa' : 'la caja'} cierre.`}
               </p>
             )}
           </div>
