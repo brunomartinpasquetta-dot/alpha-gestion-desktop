@@ -17,6 +17,12 @@ export interface ConfigLocal {
   pinPedidos?: string;
   /** true = el tunel de pedidos remotos se levanta al iniciar el sistema. */
   tunelActivado?: boolean;
+  /**
+   * Marca de la correccion por unica vez de la 1.9.6: las 1.9.4/1.9.5 guardaban
+   * tunelActivado=false cuando el primer intento fallaba aunque el duenio lo
+   * hubiera activado. Con esta marca puesta, no se vuelve a re-armar.
+   */
+  tunelAutoarmado?: boolean;
 }
 
 function rutaArchivo(): string {
@@ -30,6 +36,7 @@ export function leerConfigLocal(): ConfigLocal {
     return {
       pinPedidos: typeof dato.pinPedidos === 'string' && dato.pinPedidos.trim() !== '' ? dato.pinPedidos.trim() : undefined,
       tunelActivado: dato.tunelActivado === true,
+      tunelAutoarmado: dato.tunelAutoarmado === true,
     };
   } catch {
     return {};

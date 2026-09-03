@@ -10,8 +10,8 @@ import path from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 
 import { leerConfig, type ConfigServidor } from './config';
-import { leerConfigLocal } from './config-local';
-import { detenerTunel, iniciarTunel } from './tunel';
+import { escribirConfigLocal, leerConfigLocal } from './config-local';
+import { detenerTunel, iniciarTunel, tunelDisponible } from './tunel';
 import { registrarEstaticos } from './plugins/estaticos';
 import { registrarGuardiaPin } from './plugins/guardia-pin';
 import { registrarManejadorErrores } from './plugins/manejador-errores';
@@ -141,6 +141,23 @@ export async function iniciarServidor(opciones: OpcionesServidor = {}): Promise<
       const hostNavegable = host === '0.0.0.0' ? '127.0.0.1' : host;
       const url = `http://${hostNavegable}:${puerto}`;
       app.log.info({ url, puerto, host }, 'Servidor del ERP escuchando');
+
+      // Correccion por unica vez (1.9.6): versiones previas anotaban el tunel
+      // como desactivado cuando el primer intento fallaba, aunque el duenio lo
+      // hubiera activado. En una instalacion Windows con PIN y clave de tunel
+      // presentes (la fabrica), se re-arma una sola vez; la marca evita pisar
+      // un apagado deliberado posterior.
+      const configLocal = leerConfigLocal();
+      if (
+        configLocal.tunelAutoarmado !== true &&
+        process.platform === 'win32' &&
+        leerConfig().pinPedidos !== undefined &&
+        tunelDisponible()
+      ) {
+        escribirConfigLocal({ tunelAutoarmado: true, tunelActivado: true });
+      } else if (configLocal.tunelAutoarmado !== true) {
+        escribirConfigLocal({ tunelAutoarmado: true });
+      }
 
       // Si el duenio dejo el tunel de pedidos remotos activado, se levanta
       // solo con el sistema (la URL publica nueva se ve en Configuracion LAN).

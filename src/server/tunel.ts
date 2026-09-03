@@ -83,18 +83,29 @@ export function estadoTunel(): EstadoTunel {
   return { ...estado };
 }
 
+/** true si esta instalacion tiene la clave del tunel (viaja aparte del instalador). */
+export function tunelDisponible(): boolean {
+  return rutaClave() !== null;
+}
+
 function programarReintento(puertoLocal: number): void {
-  if (!quiereActivo) return;
+  // Un solo timer pendiente a la vez, y nunca mientras hay un hijo vivo:
+  // si se apilan, dos ssh corren carrera por el puerto del VPS y el que
+  // pierde escribe "se corto la conexion" aunque el otro este sosteniendo
+  // el tunel (paso en la fabrica, 2026-09-03).
+  if (!quiereActivo || temporizador !== null || proceso !== null) return;
   intentos += 1;
   const espera = Math.min(5000 * 2 ** (intentos - 1), 60_000);
   estado = { activo: false, url: null, error: estado.error, reconectando: true };
   temporizador = setTimeout(() => {
-    if (quiereActivo) void levantar(puertoLocal);
+    temporizador = null;
+    if (quiereActivo && proceso === null) void levantar(puertoLocal);
   }, espera);
 }
 
 /** Lanza el proceso ssh. La promesa resuelve cuando el tunel quedo en pie. */
 function levantar(puertoLocal: number): Promise<EstadoTunel> {
+  if (proceso !== null) return Promise.resolve(estadoTunel());
   const clave = rutaClave();
   if (clave === null) {
     quiereActivo = false;
@@ -152,6 +163,9 @@ function levantar(puertoLocal: number): Promise<EstadoTunel> {
     });
 
     hijo.on('exit', (codigo) => {
+      // Solo el hijo vigente puede tocar el estado compartido: uno viejo que
+      // muere tarde no debe pisar el tunel del que lo reemplazo.
+      if (proceso !== hijo) return;
       proceso = null;
       const motivo = salida.trim().split('\n').pop() ?? '';
       estado = {
@@ -169,6 +183,7 @@ function levantar(puertoLocal: number): Promise<EstadoTunel> {
       programarReintento(puertoLocal);
     });
     hijo.on('error', (causa) => {
+      if (proceso !== hijo) return;
       proceso = null;
       estado = { activo: false, url: null, error: `No se pudo abrir el tunel: ${causa.message}` };
       if (!resuelto) {
@@ -192,9 +207,15 @@ function levantar(puertoLocal: number): Promise<EstadoTunel> {
 }
 
 export function iniciarTunel(puertoLocal: number): Promise<EstadoTunel> {
-  if (proceso !== null && estado.activo) return Promise.resolve(estadoTunel());
+  // Si ya hay un ssh vivo (activo o dentro de sus 3 segundos de gracia), no
+  // se lanza otro: dos a la vez compiten por el mismo puerto del VPS.
+  if (proceso !== null) return Promise.resolve(estadoTunel());
   quiereActivo = true;
   intentos = 0;
+  if (temporizador !== null) {
+    clearTimeout(temporizador);
+    temporizador = null;
+  }
   return levantar(puertoLocal);
 }
 

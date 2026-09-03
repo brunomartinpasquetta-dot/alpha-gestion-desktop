@@ -582,7 +582,10 @@ export function registrarRutasEscritura(app: FastifyInstance): void {
       throw new ErrorValidacion('Antes de abrir el tunel configura el PIN: es lo unico que protege el acceso desde internet.');
     }
     const estado = activar ? await iniciarTunel(leerConfig().puerto) : detenerTunel();
-    escribirConfigLocal({ tunelActivado: activar && estado.activo });
+    // Se guarda la INTENCION, no el resultado del primer intento: si el duenio
+    // lo activo y justo fallo (sin internet, puerto tomado), el tunel reintenta
+    // solo y ademas se vuelve a levantar en el proximo arranque de la PC.
+    escribirConfigLocal({ tunelActivado: activar });
     return reply.status(200).send({ datos: estado });
   });
 
